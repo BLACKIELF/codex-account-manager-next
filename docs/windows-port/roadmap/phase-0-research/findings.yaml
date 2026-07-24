@@ -1,47 +1,78 @@
 # codexU Windows Data Path Findings
-# Generated: (run probe.ps1 to generate)
+# Generated: 2026-07-24T20:34:09
 
 codex:
-  supported: null
-  data_root: null
+  supported: true
+  data_root: "C:\\Users\\ADMIN\\.codex"
   state_5_sqlite:
-    exists: null
-    path: null
-    schema_matches_macos: null
-    schema_notes: null
+    exists: true
+    path: "C:\\Users\\ADMIN\\.codex\\state_5.sqlite"
+    schema_matches_macos: true
+    schema_notes: schema matches macOS reference
   sessions_jsonl:
-    exists: null
-    pattern: null
-    sample_path: null
-    event_types: []
-    all_fields: []
-    has_bom: null
+    exists: true
+    pattern: "C:\\Users\\ADMIN\\.codex\\sessions\\**\\rollout-*.jsonl"
+    sample_path: "C:\\Users\\ADMIN\\.codex\\sessions\\2026\\03\\04\\rollout-2026-03-04T02-09-15-019cb4e3-d4b4-7331-bda4-6d0630ea6c88.jsonl"
+    event_types:
+    all_fields:
+      - payload
+      - timestamp
+      - type
+    has_bom: false
   automations:
-    exists: null
-    pattern: null
+    exists: true
+    pattern: "C:\\Users\\ADMIN\\.codex\\automations\\**\\automation.toml"
   app_server:
-    available: null
-    notes: null
+    available: true
+    notes: "[experimental] Run the app server or related tooling
+
+Usage: codex app-server [OPTIONS] [COMMAND]
+
+Commands:
+  daemon                Manage the local app-server daemon
+  proxy                 Proxy st"
 
 claude_code:
-  supported: null
-  data_root: null
+  supported: true
+  data_root: "C:\\Users\\ADMIN\\.claude"
   transcripts:
-    exists: null
-    pattern: null
-    sample_path: null
-    fields: []
-    has_bom: null
+    exists: true
+    pattern: "C:\\Users\\ADMIN\\.claude\\projects\\**\\*.jsonl"
+    sample_path: "C:\\Users\\ADMIN\\.claude\\projects\\E--project-agent-for-planning\\33c97a49-0eac-4734-9ac2-251d449c23e8.jsonl"
+    fields:
+      - attachment
+      - cwd
+      - entrypoint
+      - gitBranch
+      - isSidechain
+      - isSnapshotUpdate
+      - message
+      - message.content
+      - message.role
+      - messageId
+      - parentUuid
+      - permissionMode
+      - promptId
+      - promptSource
+      - sessionId
+      - snapshot
+      - timestamp
+      - type
+      - userType
+      - uuid
+      - version
+    has_bom: false
   tasks:
-    exists: null
-    pattern: null
+    exists: false
+    pattern: "C:\\Users\\ADMIN\\.claude\\tasks\\**\\*.json"
   global_state:
-    exists: null
-    path: null
+    exists: true
+    path: "C:\\Users\\ADMIN\\.claude.json"
   statusline_snapshot:
-    exists: null
-    path: null
-    notes: null
+    exists: false
+    path: "C:\\Users\\ADMIN\\AppData\\Local\\codexU\\claude-code\\statusline-snapshot.json"
+    notes: Run Claude Code with codexU integration to generate
 
-risk_assessment: []
-recommendation: "TBD - run probe.ps1"
+risk_assessment:
+
+recommendation: "GO: Enter phase-1-core-prototype. Consider deferring Claude Code provider if its data is missing."

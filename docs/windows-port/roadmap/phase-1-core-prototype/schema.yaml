@@ -2,9 +2,9 @@
 
 meta:
   title: "Phase 1：跨平台核心读取原型"
-  subtitle: "命令行工具 codexu-probe：读取 Claude Code transcript，输出 LocalUsage JSON"
+  subtitle: "命令行工具 codexu-probe：读取 Codex session JSONL，输出 LocalUsage JSON（Claude Code provider deferred）"
   updated: "2026-07-24"
-  version: "0.1"
+  version: "0.2"
   direction: top_to_bottom
 
 categories:
@@ -26,24 +26,45 @@ categories:
     stroke: "#f59e0b"
 
 nodes:
+  - id: codex_jsonl
+    label: "~/.codex/archived_sessions/*.jsonl"
+    category: external
+    signature: "payload.timestamp · payload.type · info.last_token_usage"
+    layer: top
+
   - id: claude_transcript
     label: "~/.claude/projects/*.jsonl"
     category: external
     signature: "message.usage · tool_use · attribution"
     layer: top
+    note: "deferred: Windows 数据路径尚未出现"
 
   - id: cache_file
-    label: "%LOCALAPPDATA%\\codexU\\claude-code\\session-usage-v1.json"
+    label: "%LOCALAPPDATA%\\codexU\\codex\\session-usage-v1.json"
     category: external
     signature: "文件指纹缓存"
     shape: cylinder
     layer: top
 
+  - id: codex_reader
+    label: "CodexTranscriptReader"
+    category: core
+    signature: "load_local_usage()"
+    note: "递归扫描 · fingerprint 缓存 · 流式解析 · payload 字段映射"
+    layer: middle
+
   - id: claude_reader
     label: "ClaudeCodeTranscriptReader"
     category: core
     signature: "load_local_usage()"
-    note: "递归扫描 · fingerprint 缓存 · 流式解析"
+    note: "deferred: 保留实现，待数据路径确认"
+    layer: middle
+
+  - id: common
+    label: "readers::common"
+    category: core
+    signature: "enumerate · fingerprint · make_local_usage"
+    note: "provider 无关的聚合逻辑"
     layer: middle
 
   - id: models
@@ -55,7 +76,7 @@ nodes:
   - id: cli
     label: "codexu-probe"
     category: cli
-    signature: "命令行入口"
+    signature: "命令行入口 · --provider codex|claude-code"
     layer: middle
 
   - id: json_output
@@ -66,9 +87,12 @@ nodes:
     layer: bottom
 
 edges:
-  - {from: claude_transcript, to: claude_reader, kind: data_flow, label: "transcript"}
-  - {from: cache_file, to: claude_reader, kind: calibration, label: "命中则跳过"}
-  - {from: claude_reader, to: cache_file, kind: data_flow, label: "写入缓存"}
-  - {from: claude_reader, to: models, kind: data_flow, label: "聚合为 LocalUsage"}
+  - {from: codex_jsonl, to: codex_reader, kind: data_flow, label: "session JSONL"}
+  - {from: claude_transcript, to: claude_reader, kind: data_flow, label: "transcript", style: dashed}
+  - {from: cache_file, to: codex_reader, kind: calibration, label: "命中则跳过"}
+  - {from: codex_reader, to: cache_file, kind: data_flow, label: "写入缓存"}
+  - {from: codex_reader, to: common, kind: data_flow, label: "deltas"}
+  - {from: claude_reader, to: common, kind: data_flow, label: "deltas", style: dashed}
+  - {from: common, to: models, kind: data_flow, label: "聚合为 LocalUsage"}
   - {from: models, to: cli, kind: data_flow}
   - {from: cli, to: json_output, kind: data_flow}

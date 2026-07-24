@@ -29,7 +29,9 @@ impl TokenBreakdown {
 
     /// Cached input tokens cannot exceed total input tokens.
     pub fn billable_cached_input_tokens(&self) -> i64 {
-        self.cached_input_tokens.max(0).min(self.input_tokens.max(0))
+        self.cached_input_tokens
+            .max(0)
+            .min(self.input_tokens.max(0))
     }
 
     pub fn uncached_input_tokens(&self) -> i64 {
@@ -37,7 +39,8 @@ impl TokenBreakdown {
     }
 
     pub fn visible_total_tokens(&self) -> i64 {
-        self.total_tokens.max(self.input_tokens + self.output_tokens)
+        self.total_tokens
+            .max(self.input_tokens + self.output_tokens)
     }
 
     pub fn split_total_tokens(&self) -> i64 {
