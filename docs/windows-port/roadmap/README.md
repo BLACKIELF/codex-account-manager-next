@@ -9,8 +9,8 @@
 
 ```text
 docs/windows-port/roadmap/
-├── phase-0-research/        ← 数据路径与格式调研
-├── phase-1-core-prototype/  ← 跨平台核心读取原型
+├── phase-0-research/        ← 数据路径与格式调研（已完成）
+├── phase-1-core-prototype/  ← 跨平台核心读取原型（当前阶段）
 ├── phase-2-codex-provider/  ← Codex RuntimeProvider 完整实现
 ├── phase-3-claude-provider/ ← Claude Code RuntimeProvider 完整实现
 ├── phase-4-ui/              ← Windows 系统托盘 + 主窗口
@@ -23,14 +23,25 @@ docs/windows-port/roadmap/
 
 **目标**：在 Windows 上确认 Codex / Claude Code 的数据是否存在、在哪里、格式是否与 macOS 一致。
 
+**状态**：✅ 已完成（2026-07-24）
+
 **交付物**：
 - [`phase-0-research/RESEARCH.md`](phase-0-research/RESEARCH.md) —— 调研报告
-- [`phase-0-research/probe.ps1`](phase-0-research/probe.ps1) —— Windows 数据路径探测脚本
+- [`phase-0-research/probe.ps1`](phase-0-research/probe.ps1) —— Windows 数据路径探测脚本（PowerShell 7）
+- [`phase-0-research/probe_py.py`](phase-0-research/probe_py.py) —— 等价 Python 探测脚本（兼容 Bash/PS5.1）
 - [`phase-0-research/findings.yaml`](phase-0-research/findings.yaml) —— 结构化发现清单
 
+**关键结论**：
+- Codex 数据路径与 macOS 高度一致：`%USERPROFILE%\.codex` 对应 `~/.codex`。
+- `state_5.sqlite` 存在且 schema 与 macOS 一致。
+- 活跃 sessions 与 archived sessions JSONL 均存在，顶层字段为 `payload`、`timestamp`、`type`。
+- automations 存在 3 个：`opengu-daily-log`、`travel-map`、`check-cc-switch-issue-4885`。
+- `codex app-server` 在 Windows 上可用。
+- Claude Code 数据根为 `%USERPROFILE%\.claude`，transcripts 存在；tasks 与 statusline snapshot 未生成，可延后。
+- JSONL 编码为 UTF-8 无 BOM。
+
 **决策点**：
-- 如果 Codex 数据路径和格式与 macOS 高度一致 → 进入阶段 1
-- 如果差异巨大 → 调整阶段 1-2 的范围，可能先做纯本地数据版本
+- ✅ Codex 数据路径和格式与 macOS 高度一致 → **进入阶段 1**
 
 ---
 
@@ -98,9 +109,9 @@ docs/windows-port/roadmap/
 
 ---
 
-## 当前阶段：Phase 0
+## 当前阶段：Phase 1
 
-见 [`phase-0-research/`](phase-0-research/)，开始调研 Windows 数据路径。
+见 [`phase-1-core-prototype/`](phase-1-core-prototype/)，开始实现跨平台核心读取原型。
 
 ---
 

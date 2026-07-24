@@ -2,7 +2,8 @@
 
 > 状态：草案 / 待讨论  
 > 关联 issue: [#7](https://github.com/shanggqm/codexU/issues/7)、[#31](https://github.com/shanggqm/codexU/issues/31)  
-> 目标：在不改变核心架构的前提下，将 codexU 的能力迁移到 Windows 平台。
+> 目标：在不改变核心架构的前提下，将 codexU 的能力迁移到 Windows 平台。  
+> 数据路径调研：Phase 0 已完成（见 [`roadmap/phase-0-research/RESEARCH.md`](./roadmap/phase-0-research/RESEARCH.md)）
 
 ---
 
@@ -103,32 +104,44 @@ GitHub 上已有用户多次请求 Windows 版本：
 
 ---
 
-## 四、Windows 数据路径调研清单（必须完成）
+## 四、Windows 数据路径调研清单（Phase 0 已完成）
 
 在写第一行代码前，先确认以下路径和格式：
 
 ### 4.1 Codex on Windows
 
-- [ ] Codex CLI / Codex 桌面应用是否支持 Windows？
-- [ ] Windows 上 `~/.codex/` 对应 `%USERPROFILE%\.codex\` 还是 `%LOCALAPPDATA%\Codex\`？
-- [ ] `state_5.sqlite` 文件路径与表结构是否与 macOS 一致？
-- [ ] `sessions/**/*.jsonl` / `archived_sessions/*.jsonl` 路径与事件格式是否一致？
-- [ ] `automations/**/automation.toml` 是否存在？
-- [ ] Windows 上是否有 `codex app-server` 或等价的本地 API？
+- [x] Codex CLI / Codex 桌面应用是否支持 Windows？
+- [x] Windows 上 `~/.codex/` 对应 `%USERPROFILE%\.codex\` 还是 `%LOCALAPPDATA%\Codex\`？
+- [x] `state_5.sqlite` 文件路径与表结构是否与 macOS 一致？
+- [x] `sessions/**/*.jsonl` / `archived_sessions/*.jsonl` 路径与事件格式是否一致？
+- [x] `automations/**/automation.toml` 是否存在？
+- [x] Windows 上是否有 `codex app-server` 或等价的本地 API？
 
 ### 4.2 Claude Code on Windows
 
-- [ ] Claude Code 是否有 Windows 原生版本？
-- [ ] Windows 上 `~/.claude/projects/**/*.jsonl` 对应路径？
-- [ ] `~/.claude/tasks/**/*.json` 对应路径？
-- [ ] `~/.claude.json` 全局状态文件是否存在？
+- [x] Claude Code 是否有 Windows 原生版本？
+- [x] Windows 上 `~/.claude/projects/**/*.jsonl` 对应路径？
+- [x] Windows 上 `~/.claude/tasks/**/*.json` 对应路径？
+- [x] `~/.claude.json` 全局状态文件是否存在？
 - [ ] Claude Code statusLine snapshot 在 Windows 上如何生成？
 
 ### 4.3 通用
 
-- [ ] Windows 上 JSONL 文件编码是否为 UTF-8（含 BOM 问题）？
-- [ ] Windows 上 SQLite 是否可用系统 `sqlite3.exe`，还是需要内嵌？
-- [ ] Windows 路径分隔符、符号链接、文件锁对扫描是否有影响？
+- [x] Windows 上 JSONL 文件编码是否为 UTF-8（含 BOM 问题）？
+- [x] Windows 上 SQLite 是否可用系统 `sqlite3.exe`，还是需要内嵌？
+- [ ] Windows 路径分隔符、符号链接、文件锁对扫描是否有影响？（可在 phase-1 验证）
+
+### 4.4 Phase 0 关键结论
+
+- **数据根**：Codex 与 Claude Code 的实际数据根均为 `%USERPROFILE%\.<name>`，与 macOS 的 `~/` 模式一致。
+- **state_5.sqlite**：存在且 schema 与 macOS 一致（含 `threads`、`rollout_path`、`thread_spawn_edges`）。
+- **sessions JSONL**：活跃 sessions 与 archived sessions 均存在；顶层字段为 `payload`、`timestamp`、`type`，具体事件类型需解析 `payload`。
+- **automations**：存在 3 个 automation（`opengu-daily-log`、`travel-map`、`check-cc-switch-issue-4885`），`automation.toml` 结构与 macOS 设计一致。
+- **app-server**：`codex app-server --help` 可用，本地额度 API 可依赖。
+- **Claude Code transcripts**：存在，字段结构与 macOS 预期一致；`tasks/*.json` 与 statusline snapshot 尚未生成，可延后。
+- **编码**：JSONL 为 UTF-8 无 BOM，可直接用标准库读取。
+
+完整探测结果见 [`roadmap/phase-0-research/findings.yaml`](./roadmap/phase-0-research/findings.yaml)。
 
 ---
 
@@ -209,6 +222,8 @@ GitHub 上已有用户多次请求 Windows 版本：
 
 ## 八、相关文档
 
+- [`roadmap/phase-0-research/RESEARCH.md`](./roadmap/phase-0-research/RESEARCH.md) —— Windows 数据路径调研报告
+- [`roadmap/phase-0-research/findings.yaml`](./roadmap/phase-0-research/findings.yaml) —— 结构化探测结果
 - [`../architecture/schema.yaml`](../architecture/schema.yaml) —— macOS 版本架构真值
 - [`../architecture/BLUEPRINT.md`](../../BLUEPRINT.md) —— macOS 版本完整蓝图
 - [`./blueprint/schema.yaml`](./blueprint/schema.yaml) —— Windows 版本架构 schema（待创建）
