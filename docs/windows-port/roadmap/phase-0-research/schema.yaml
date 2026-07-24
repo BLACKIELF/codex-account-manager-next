@@ -1,0 +1,89 @@
+# Phase 0 调研阶段架构图 schema
+
+meta:
+  title: "Phase 0：Windows 数据路径调研"
+  subtitle: "不读取敏感内容，只探测路径、格式、schema 一致性"
+  updated: "2026-07-24"
+  version: "0.1"
+  direction: left_to_right
+
+categories:
+  external:
+    role: "Windows 本地数据源"
+    fill: "#dbeafe"
+    stroke: "#3b82f6"
+  tool:
+    role: "调研工具"
+    fill: "#fef3c7"
+    stroke: "#f59e0b"
+  output:
+    role: "调研产出"
+    fill: "#d1fae5"
+    stroke: "#10b981"
+
+nodes:
+  - id: windows_env
+    label: "Windows User Environment"
+    category: external
+    signature: "%USERPROFILE% · %LOCALAPPDATA% · %APPDATA%"
+    layer: top
+
+  - id: codex_windows
+    label: "Codex on Windows"
+    category: external
+    signature: "CLI / Desktop app"
+    note: "数据路径待确认"
+    layer: top
+
+  - id: claude_windows
+    label: "Claude Code on Windows"
+    category: external
+    signature: "CLI / Desktop app"
+    note: "数据路径待确认"
+    layer: top
+
+  - id: probe_script
+    label: "probe.ps1"
+    category: tool
+    signature: "PowerShell 7"
+    note: "扫描路径、检查 schema、抽取字段名"
+    layer: middle
+
+  - id: sqlite_check
+    label: "SQLite Schema Check"
+    category: tool
+    signature: "sqlite3 .schema"
+    note: "对比 macOS 表结构"
+    layer: middle
+
+  - id: jsonl_sampler
+    label: "JSONL Field Sampler"
+    category: tool
+    signature: "前 5 行字段名提取"
+    note: "不读取值，只检查字段"
+    layer: middle
+
+  - id: findings_yaml
+    label: "findings.yaml"
+    category: output
+    signature: "结构化调研结果"
+    layer: bottom
+
+  - id: research_md
+    label: "RESEARCH.md"
+    category: output
+    signature: "人工补充与决策记录"
+    layer: bottom
+
+edges:
+  - {from: windows_env, to: codex_windows, kind: config_input}
+  - {from: windows_env, to: claude_windows, kind: config_input}
+  - {from: codex_windows, to: probe_script, kind: data_flow, label: "Codex 数据路径"}
+  - {from: claude_windows, to: probe_script, kind: data_flow, label: "Claude 数据路径"}
+  - {from: codex_windows, to: sqlite_check, kind: data_flow, label: "state_5.sqlite"}
+  - {from: codex_windows, to: jsonl_sampler, kind: data_flow, label: "*.jsonl"}
+  - {from: claude_windows, to: jsonl_sampler, kind: data_flow, label: "*.jsonl"}
+  - {from: probe_script, to: findings_yaml, kind: data_flow}
+  - {from: sqlite_check, to: findings_yaml, kind: data_flow}
+  - {from: jsonl_sampler, to: findings_yaml, kind: data_flow}
+  - {from: findings_yaml, to: research_md, kind: orchestration}

@@ -1,0 +1,63 @@
+%% source of truth: docs/windows-port/blueprint/schema.yaml
+%% 这是 README/GitHub 自渲染的 fallback view。
+flowchart TB
+    codex_app_server["Codex app-server / CLI<br/>(Windows 本地 API 或 CLI 调用)<br/>额度、账户、云端 lifetime tokens"]:::external
+    codex_sqlite[("%USERPROFILE%\\.codex\\state_5.sqlite<br/>(本地 SQLite)<br/>线程元数据、rollout 路径")]:::external
+    codex_jsonl[("%USERPROFILE%\\.codex\\sessions\\*.jsonl<br/>(token_count / task_started / task_complete)<br/>细粒度 token 事件")]:::external
+    codex_automation[/"%USERPROFILE%\\.codex\\automations<br/>(automation.toml)<br/>定时任务元数据"/]:::external
+    claude_transcript[("%USERPROFILE%\\.claude\\projects\\*.jsonl<br/>(message.usage · tool_use · attribution)<br/>Claude Code Windows transcript")]:::external
+    claude_tasks[/"%USERPROFILE%\\.claude\\tasks\\*.json<br/>(task status / subject)<br/>Claude Code 任务"/]:::external
+    claude_statusline[/"statusline-snapshot.json<br/>(%LOCALAPPDATA%\\codexU\\claude-code\\)<br/>Claude Code 活跃额度快照"/]:::external
+    github_releases["GitHub Releases API<br/>(shanggqm/codexU 或 codexU-windows)<br/>版本检查与更新元数据"]:::external
+
+    codex_provider["CodexRuntimeProvider<br/>(RuntimeUsageProvider trait)<br/>读取 SQLite + JSONL + automations"]:::runtime
+    claude_provider["ClaudeCodeRuntimeProvider<br/>(RuntimeUsageProvider trait)<br/>读取 transcript + tasks + statusLine"]:::runtime
+    provider_registry["RuntimeProviderRegistry<br/>(注册表)<br/>聚合 Codex / Claude Code"]:::runtime
+
+    multi_reader["MultiRuntimeUsageReader<br/>(load() · load_task_board())<br/>统一入口；性能测时"]:::core
+    aggregator["AgentUsageAggregator<br/>(aggregate(runtimes))<br/>跨 runtime 合并用量与任务"]:::core
+    leadership_reader["LeadershipDataReader<br/>(load(context))<br/>文件指纹缓存；增量解析 34 天数据"]:::core
+    leadership_model["LeadershipScoreModel v1.3<br/>(四维加权几何平均)<br/>span · leverage · orchestration · autonomy"]:::core
+    task_runtime["TaskRuntime<br/>(Codex / Claude 任务状态归一)<br/>active / pending / scheduled / done"]:::core
+    quota_continuity["RuntimeQuotaContinuity<br/>(reconcile(previous, incoming))<br/>配额失败时复用旧值，防闪烁"]:::core
+
+    design_system["DesignSystem / Palettes<br/>(青花瓷 · 故宫红 · 敦煌飞天 · 兰亭晨曦)<br/>复用 codexU 配色 token"]:::config
+    system_tray["Windows System Tray<br/>(NotifyIcon / Tauri Tray)<br/>实时额度环、今日 token、Runtime 菜单"]:::front
+    main_window["Main Window<br/>(WinUI 3 / Tauri WebView)<br/>主窗口仪表盘"]:::front
+    settings_window["Settings Window<br/>(语言 · 外观 · 状态栏配置)<br/>设置窗口"]:::front
+
+    build_scripts["Build Scripts / CI<br/>(cargo tauri build / msbuild)<br/>构建、打包、测试"]:::infra
+    installer["Installer / Updater<br/>(MSI / MSIX / NSIS)<br/>安装包与自动更新"]:::infra
+
+    codex_app_server -- "额度 / 账户" --> codex_provider
+    codex_sqlite -- "线程元数据" --> codex_provider
+    codex_jsonl -- "token 事件" --> codex_provider
+    codex_automation -- "定时任务" --> codex_provider
+    claude_transcript -- "usage / tools" --> claude_provider
+    claude_tasks -- "任务状态" --> claude_provider
+    claude_statusline -- "额度快照" --> claude_provider
+    codex_provider --> provider_registry
+    claude_provider --> provider_registry
+    provider_registry --> multi_reader
+    multi_reader -- "合并多 runtime" --> aggregator
+    multi_reader -- "34 天数据" --> leadership_reader
+    leadership_reader -- "workers + intervals" --> leadership_model
+    leadership_model -- "AI 领导力报告" --> main_window
+    aggregator -- "聚合用量 / 任务" --> main_window
+    codex_provider --> task_runtime
+    claude_provider --> task_runtime
+    task_runtime -- "统一任务板" --> main_window
+    quota_continuity -. "防闪烁" .-> multi_reader
+    design_system --> system_tray
+    design_system --> main_window
+    design_system --> settings_window
+    aggregator -- "托盘摘要" --> system_tray
+    github_releases -- "版本检查" --> installer
+    build_scripts --> installer
+
+    classDef external fill:#dbeafe,stroke:#3b82f6,color:#000
+    classDef runtime fill:#fce7f3,stroke:#ec4899,color:#000
+    classDef core fill:#d1fae5,stroke:#10b981,color:#000
+    classDef front fill:#e0e7ff,stroke:#6366f1,color:#000
+    classDef config fill:#fef3c7,stroke:#f59e0b,color:#000
+    classDef infra fill:#f3f4f6,stroke:#6b7280,color:#000

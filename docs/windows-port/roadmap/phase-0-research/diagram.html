@@ -1,0 +1,138 @@
+<!doctype html><meta charset='utf-8'><title>Architecture Diagram</title><style>body{margin:0;background:#f8fafc}svg{display:block;max-width:100%;height:auto;margin:auto}</style><?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="825" viewBox="0 0 1800 825">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+<path d="M2,2 L10,6 L2,10 Z" fill="#64748b"/>
+</marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="620.0" y="62.0" font-size="34" font-weight="800" fill="#0f172a">
+<tspan x="620.0" dy="0">Phase 0：Windows 数据路径调研</tspan>
+</text>
+<text x="570.0" y="96.0" font-size="17" font-weight="400" fill="#64748b">
+<tspan x="570.0" dy="0">不读取敏感内容，只探测路径、格式、schema 一致性</tspan>
+</text>
+<text x="1535.0" y="42.0" font-size="12" font-weight="600" fill="#94a3b8">
+<tspan x="1535.0" dy="0">source: schema.yaml · 2026-07-24</tspan>
+</text>
+<g id="edges">
+<g class="edge edge-windows_env-codex_windows"><polyline points="421.0,261.0 421.0,203.0 900.0,203.0 900.0,145.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-windows_env-claude_windows"><polyline points="421.0,261.0 421.0,203.0 1379.0,203.0 1379.0,145.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-codex_windows-probe_script"><polyline points="900.0,261.0 900.0,319.0 421.0,319.0 421.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="588.5" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="596.5" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="596.5" dy="0">Codex 数据路径</tspan>
+</text></g>
+<g class="edge edge-claude_windows-probe_script"><polyline points="1379.0,261.0 1379.0,319.0 421.0,319.0 421.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">Claude 数据路径</tspan>
+</text></g>
+<g class="edge edge-codex_windows-sqlite_check"><polyline points="900.0,261.0 900.0,319.0 900.0,319.0 900.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">state_5.sqlite</tspan>
+</text></g>
+<g class="edge edge-codex_windows-jsonl_sampler"><polyline points="900.0,261.0 900.0,319.0 1379.0,319.0 1379.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1067.5" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1075.5" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="1075.5" dy="0">*.jsonl</tspan>
+</text></g>
+<g class="edge edge-claude_windows-jsonl_sampler"><polyline points="1379.0,261.0 1379.0,319.0 1379.0,319.0 1379.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1307.0" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1315.0" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="1315.0" dy="0">*.jsonl</tspan>
+</text></g>
+<g class="edge edge-probe_script-findings_yaml"><polyline points="421.0,493.0 421.0,551.0 580.7,551.0 580.7,609.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-sqlite_check-findings_yaml"><polyline points="900.0,493.0 900.0,551.0 580.7,551.0 580.7,609.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-jsonl_sampler-findings_yaml"><polyline points="1379.0,493.0 1379.0,551.0 580.7,551.0 580.7,609.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-findings_yaml-research_md"><polyline points="580.7,725.0 580.7,667.0 1219.3,667.0 1219.3,609.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+</g>
+<g id="nodes">
+<g id="node-windows_env">
+<rect x="271.0" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="293.0" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="293.0" dy="0">Windows User</tspan>
+<tspan x="293.0" dy="25">Environment</tspan>
+</text>
+<text x="293.0" y="232.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="293.0" dy="0">%USERPROFILE% · %LOCALAPPDATA% ·</tspan>
+<tspan x="293.0" dy="19">%APPDATA%</tspan>
+</text>
+</g>
+<g id="node-codex_windows">
+<rect x="750.0" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="772.0" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="772.0" dy="0">Codex on Windows</tspan>
+</text>
+<text x="772.0" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="772.0" dy="0">CLI / Desktop app</tspan>
+</text>
+<line x1="772.0" y1="230.0" x2="1028.0" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="772.0" y="252.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="772.0" dy="0">数据路径待确认</tspan>
+</text>
+</g>
+<g id="node-claude_windows">
+<rect x="1229.0" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="1251.0" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1251.0" dy="0">Claude Code on</tspan>
+<tspan x="1251.0" dy="25">Windows</tspan>
+</text>
+<text x="1251.0" y="232.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="1251.0" dy="0">CLI / Desktop app</tspan>
+</text>
+<line x1="1251.0" y1="254.0" x2="1507.0" y2="254.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1251.0" y="276.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1251.0" dy="0">数据路径待确认</tspan>
+</text>
+</g>
+<g id="node-probe_script">
+<rect x="271.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<text x="293.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="293.0" dy="0">probe.ps1</tspan>
+</text>
+<text x="293.0" y="440.0" font-size="13" font-weight="700" fill="#f59e0b">
+<tspan x="293.0" dy="0">PowerShell 7</tspan>
+</text>
+<line x1="293.0" y1="462.0" x2="549.0" y2="462.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="293.0" y="484.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="293.0" dy="0">扫描路径、检查 schema、抽取字段名</tspan>
+</text>
+</g>
+<g id="node-sqlite_check">
+<rect x="750.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<text x="772.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="772.0" dy="0">SQLite Schema Check</tspan>
+</text>
+<text x="772.0" y="440.0" font-size="13" font-weight="700" fill="#f59e0b">
+<tspan x="772.0" dy="0">sqlite3 .schema</tspan>
+</text>
+<line x1="772.0" y1="462.0" x2="1028.0" y2="462.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="772.0" y="484.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="772.0" dy="0">对比 macOS 表结构</tspan>
+</text>
+</g>
+<g id="node-jsonl_sampler">
+<rect x="1229.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<text x="1251.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1251.0" dy="0">JSONL Field Sampler</tspan>
+</text>
+<text x="1251.0" y="440.0" font-size="13" font-weight="700" fill="#f59e0b">
+<tspan x="1251.0" dy="0">前 5 行字段名提取</tspan>
+</text>
+<line x1="1251.0" y1="462.0" x2="1507.0" y2="462.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1251.0" y="484.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1251.0" dy="0">不读取值，只检查字段</tspan>
+</text>
+</g>
+<g id="node-findings_yaml">
+<rect x="430.7" y="609.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="452.7" y="641.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="452.7" dy="0">findings.yaml</tspan>
+</text>
+<text x="452.7" y="672.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="452.7" dy="0">结构化调研结果</tspan>
+</text>
+</g>
+<g id="node-research_md">
+<rect x="1069.3" y="609.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="1091.3" y="641.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1091.3" dy="0">RESEARCH.md</tspan>
+</text>
+<text x="1091.3" y="672.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="1091.3" dy="0">人工补充与决策记录</tspan>
+</text>
+</g>
+</g>
+</svg>

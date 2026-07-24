@@ -1,0 +1,47 @@
+# codexU Windows Data Path Findings
+# Generated: (run probe.ps1 to generate)
+
+codex:
+  supported: null
+  data_root: null
+  state_5_sqlite:
+    exists: null
+    path: null
+    schema_matches_macos: null
+    schema_notes: null
+  sessions_jsonl:
+    exists: null
+    pattern: null
+    sample_path: null
+    event_types: []
+    all_fields: []
+    has_bom: null
+  automations:
+    exists: null
+    pattern: null
+  app_server:
+    available: null
+    notes: null
+
+claude_code:
+  supported: null
+  data_root: null
+  transcripts:
+    exists: null
+    pattern: null
+    sample_path: null
+    fields: []
+    has_bom: null
+  tasks:
+    exists: null
+    pattern: null
+  global_state:
+    exists: null
+    path: null
+  statusline_snapshot:
+    exists: null
+    path: null
+    notes: null
+
+risk_assessment: []
+recommendation: "TBD - run probe.ps1"

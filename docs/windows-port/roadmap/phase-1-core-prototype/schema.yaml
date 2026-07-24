@@ -1,0 +1,74 @@
+# Phase 1 架构图 schema
+
+meta:
+  title: "Phase 1：跨平台核心读取原型"
+  subtitle: "命令行工具 codexu-probe：读取 Claude Code transcript，输出 LocalUsage JSON"
+  updated: "2026-07-24"
+  version: "0.1"
+  direction: top_to_bottom
+
+categories:
+  external:
+    role: "本地数据源"
+    fill: "#dbeafe"
+    stroke: "#3b82f6"
+  core:
+    role: "核心库 codexu-core"
+    fill: "#d1fae5"
+    stroke: "#10b981"
+  cli:
+    role: "命令行工具"
+    fill: "#e0e7ff"
+    stroke: "#6366f1"
+  output:
+    role: "产出"
+    fill: "#fef3c7"
+    stroke: "#f59e0b"
+
+nodes:
+  - id: claude_transcript
+    label: "~/.claude/projects/*.jsonl"
+    category: external
+    signature: "message.usage · tool_use · attribution"
+    layer: top
+
+  - id: cache_file
+    label: "%LOCALAPPDATA%\\codexU\\claude-code\\session-usage-v1.json"
+    category: external
+    signature: "文件指纹缓存"
+    shape: cylinder
+    layer: top
+
+  - id: claude_reader
+    label: "ClaudeCodeTranscriptReader"
+    category: core
+    signature: "load_local_usage()"
+    note: "递归扫描 · fingerprint 缓存 · 流式解析"
+    layer: middle
+
+  - id: models
+    label: "Domain Models"
+    category: core
+    signature: "TokenBreakdown · LocalUsage · UsageTrend"
+    layer: middle
+
+  - id: cli
+    label: "codexu-probe"
+    category: cli
+    signature: "命令行入口"
+    layer: middle
+
+  - id: json_output
+    label: "codexu-probe.json"
+    category: output
+    signature: "与 macOS --dump-json 兼容"
+    shape: page
+    layer: bottom
+
+edges:
+  - {from: claude_transcript, to: claude_reader, kind: data_flow, label: "transcript"}
+  - {from: cache_file, to: claude_reader, kind: calibration, label: "命中则跳过"}
+  - {from: claude_reader, to: cache_file, kind: data_flow, label: "写入缓存"}
+  - {from: claude_reader, to: models, kind: data_flow, label: "聚合为 LocalUsage"}
+  - {from: models, to: cli, kind: data_flow}
+  - {from: cli, to: json_output, kind: data_flow}
