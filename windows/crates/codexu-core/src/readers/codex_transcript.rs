@@ -261,9 +261,7 @@ async fn parse_transcript(
             if let Some(cwd) = codex_string_value(payload.get("cwd")) {
                 summary.project_path = cwd;
             }
-            if let Some(model_provider) = codex_string_value(payload.get("model_provider")) {
-                summary.model = summary.model.clone().or(Some(model_provider));
-            }
+            // model_provider (e.g. "openai") is not a model name; ignore it.
         } else if envelope_type == Some("turn_context") {
             if let Some(cwd) = codex_string_value(payload.get("cwd")) {
                 summary.project_path = cwd;

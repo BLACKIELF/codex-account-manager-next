@@ -453,8 +453,8 @@ pub fn short_workspace_name(path: &str) -> String {
 /// Estimates USD cost from a token breakdown and an optional model name.
 ///
 /// Supports Claude and OpenAI/Codex model families with approximate list prices.
-/// When the model is unknown the cost is zero; callers may choose to interpolate
-/// from the total if they need a non-zero estimate.
+/// Prices are per-million-tokens and are best-effort; update them when official
+/// pricing changes. When the model is unknown the cost is zero.
 pub fn estimated_cost_usd(tokens: &TokenBreakdown, model: Option<&str>) -> f64 {
     let model_lower = model.map(|m| m.to_lowercase());
     let m = model_lower.as_deref();
@@ -464,10 +464,16 @@ pub fn estimated_cost_usd(tokens: &TokenBreakdown, model: Option<&str>) -> f64 {
         Some((3.0, 0.3, 15.0))
     } else if m == Some("claude-haiku") || m.map(|s| s.contains("haiku")).unwrap_or(false) {
         Some((0.8, 0.08, 4.0))
+    } else if m.map(|s| s.contains("gpt-5.5")).unwrap_or(false) {
+        // Approximate higher-tier GPT-5.5 pricing.
+        Some((5.0, 1.25, 20.0))
     } else if m.map(|s| s.contains("gpt-5")).unwrap_or(false) {
+        // Approximate GPT-5.4 / base GPT-5 pricing.
         Some((2.5, 0.625, 10.0))
-    } else if m.map(|s| s.contains("gpt-4")).unwrap_or(false) {
+    } else if m.map(|s| s.contains("gpt-4o")).unwrap_or(false) {
         Some((2.5, 1.25, 10.0))
+    } else if m.map(|s| s.contains("gpt-4")).unwrap_or(false) {
+        Some((10.0, 5.0, 30.0))
     } else if m
         .map(|s| s.contains("gpt-3.5") || s.contains("gpt-35"))
         .unwrap_or(false)
