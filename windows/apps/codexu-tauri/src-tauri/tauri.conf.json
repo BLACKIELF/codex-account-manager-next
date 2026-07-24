@@ -52,7 +52,7 @@
       },
       "nsis": {
         "installerIcon": "icons/icon.ico",
-        "installMode": "perUser",
+        "installMode": "currentUser",
         "languages": ["English"]
       }
     }

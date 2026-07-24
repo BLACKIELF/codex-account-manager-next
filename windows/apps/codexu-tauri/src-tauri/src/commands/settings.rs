@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app_state::{AppConfig, AppState, ThemeMode, TrayDensity};
 
@@ -25,8 +25,7 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
         tauri::WebviewUrl::App("/".into()),
     )
     .title("Settings — codexU")
-    .width(540)
-    .height(680)
+    .inner_size(540.0, 680.0)
     .resizable(false)
     .maximizable(false)
     .minimizable(false)
@@ -41,7 +40,7 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_settings(
-    state: State<'_, std::sync::Arc<AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
 ) -> Result<SettingsDto, String> {
     let config = state.config.read().await.clone();
     Ok(SettingsDto {
@@ -62,7 +61,7 @@ pub struct UpdateSettingsRequest {
 #[tauri::command]
 pub async fn set_settings(
     app: AppHandle,
-    state: State<'_, std::sync::Arc<AppState>,
+    state: State<'_, std::sync::Arc<AppState>>,
     req: UpdateSettingsRequest,
 ) -> Result<AppConfig, String> {
     let config = state
@@ -92,15 +91,16 @@ pub async fn set_settings(
 }
 
 fn apply_theme(app: &AppHandle, theme: ThemeMode) {
-    use tauri::WebviewWindow;
     let windows = app.webview_windows();
     let dark = match theme {
-        ThemeMode::System => tauri::utils::platform::is_dark_mode(),
+        ThemeMode::System => {
+            // Frontend will detect system preference on load.
+            return;
+        }
         ThemeMode::Light => false,
         ThemeMode::Dark => true,
     };
     for (_, window) in windows {
-        let class = if dark { "dark" } else { "" };
         let _ = window.eval(&format!(
             "document.documentElement.classList.remove('dark'); if ({}) document.documentElement.classList.add('dark');",
             dark

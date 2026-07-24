@@ -11,8 +11,7 @@
 *.log
 
 # Tauri generated files
-src-tauri/gen/schemas/*.json
-!src-tauri/gen/schemas/.gitkeep
+**/gen/
 
 # IDE / OS
 .DS_Store

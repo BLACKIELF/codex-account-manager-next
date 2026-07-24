@@ -1,9 +1,7 @@
-use tauri::{AppHandle, Emitter, Manager, State};
-
-use crate::app_state::AppState;
+use tauri::{AppHandle, Emitter, State};
 
 #[tauri::command]
-pub async fn get_local_usage(state: State<'_, std::sync::Arc<AppState>) -> Result<Option<codexu_core::models::LocalUsage>, String> {
+pub async fn get_local_usage(state: State<'_, std::sync::Arc<crate::app_state::AppState>>) -> Result<Option<codexu_core::models::LocalUsage>, String> {
     let config = state.config.read().await;
     let max_age = config.refresh_interval_secs;
     drop(config);
@@ -16,7 +14,7 @@ pub async fn get_local_usage(state: State<'_, std::sync::Arc<AppState>) -> Resul
 #[tauri::command]
 pub async fn refresh_usage(
     app: AppHandle,
-    state: State<'_, std::sync::Arc<AppState>,
+    state: State<'_, std::sync::Arc<crate::app_state::AppState>>,
 ) -> Result<Option<codexu_core::models::LocalUsage>, String> {
     let usage = state
         .refresh_usage()
@@ -27,7 +25,7 @@ pub async fn refresh_usage(
 }
 
 #[tauri::command]
-pub async fn clear_cache(state: State<'_, std::sync::Arc<AppState>) -> Result<(), String> {
+pub async fn clear_cache(state: State<'_, std::sync::Arc<crate::app_state::AppState>>) -> Result<(), String> {
     crate::app_state::clear_cache(&state).await;
     Ok(())
 }

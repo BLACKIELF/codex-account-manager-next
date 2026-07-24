@@ -195,9 +195,9 @@ impl AppState {
 }
 
 /// Clears the codexU file cache for the configured cache directory.
-pub async fn clear_cache(self: &Arc<AppState>) {
+pub async fn clear_cache(state: &Arc<AppState>) {
     let cache_dir = {
-        let config = self.config.read().await;
+        let config = state.config.read().await;
         config.cache_dir.clone()
     };
     let codex_cache = cache_dir.join("codex").join("session-usage-v1.json");
@@ -212,7 +212,7 @@ pub async fn clear_cache(self: &Arc<AppState>) {
         }
     }
     {
-        let mut guard = self.snapshot.write().await;
+        let mut guard = state.snapshot.write().await;
         *guard = None;
     }
     info!("Cleared codexU cache");
