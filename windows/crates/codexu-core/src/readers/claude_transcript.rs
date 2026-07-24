@@ -428,6 +428,10 @@ fn make_local_usage_from_claude(
                 })
                 .collect(),
             tool_calls: s.tool_calls,
+            title: None,
+            archived: false,
+            git_branch: None,
+            git_origin_url: None,
         })
         .collect();
     make_local_usage(common_summaries, now)

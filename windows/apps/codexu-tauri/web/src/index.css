@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Default light palette */
+  --accent: #2866f7;
+  --accent-secondary: #8b5cf6;
+  --surface: #ffffff;
+  --surface-elevated: #f8fafc;
+  --surface-inset: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --border: #e2e8f0;
+  --status-ok: #22c55e;
+  --status-warn: #f97316;
+  --status-error: #ef4444;
+  --data-primary: #2866f7;
+  --data-secondary: #8b5cf6;
+  --data-tertiary: #06b6d4;
+}
+
+.dark {
+  --accent: #5c8aff;
+  --accent-secondary: #a78bfa;
+  --surface: #0f172a;
+  --surface-elevated: #1e293b;
+  --surface-inset: #020617;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  --border: #334155;
+  --status-ok: #4ade80;
+  --status-warn: #fb923c;
+  --status-error: #f87171;
+  --data-primary: #5c8aff;
+  --data-secondary: #a78bfa;
+  --data-tertiary: #22d3ee;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--surface);
+  color: var(--text-primary);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+@layer utilities {
+  .text-primary {
+    color: var(--text-primary);
+  }
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+  .text-tertiary {
+    color: var(--text-tertiary);
+  }
+  .bg-surface {
+    background-color: var(--surface);
+  }
+  .bg-surface-elevated {
+    background-color: var(--surface-elevated);
+  }
+  .bg-surface-inset {
+    background-color: var(--surface-inset);
+  }
+  .border-theme {
+    border-color: var(--border);
+  }
+}

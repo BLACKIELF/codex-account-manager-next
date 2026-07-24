@@ -49,34 +49,39 @@ docs/windows-port/roadmap/
 
 **目标**：用 Rust 实现最小命令行工具，能读取 Codex/Claude 数据并输出与 macOS `--dump-json` 等价的 JSON。
 
+**状态**：✅ 已完成
+
 **交付物**：
 - [`phase-1-core-prototype/`](phase-1-core-prototype/) —— Rust 工程
 - `models/` —— `TokenBreakdown`、`DetailedUsage`、`UsageTrend` 等
-- `readers/` —— JSONL 流式读取、SQLite 查询、fingerprint 缓存
+- `readers/` —— JSONL 流式读取、fingerprint 缓存
 - `main.rs` —— CLI：`codexu-probe --output json`
 
 **决策点**：
-- CLI 输出与 macOS `--dump-json` 结构一致 → 进入阶段 2
-- 不一致 → 调整模型设计
+- ✅ CLI 输出与 macOS `--dump-json` 结构一致 → 进入阶段 2
 
 ---
 
 ## 阶段 2：Codex RuntimeProvider 完整实现
 
-**目标**：实现 Codex 的完整数据读取：SQLite 元数据、JSONL token 事件、automation、app-server / CLI 额度。
+**状态**：✅ 已完成（2026-07-25）
+
+**目标**：读取 `state_5.sqlite` 为 Codex JSONL 解析补充线程级元数据（标题、路径、模型、归档状态、Git 信息）。
 
 **交付物**：
-- [`phase-2-codex-provider/`](phase-2-codex-provider/) —— 独立 crate 或模块
-- Codex provider 实现
-- 单测（用 Windows 上采集的样本数据）
+- [`phase-2-codex-provider/`](phase-2-codex-provider/) —— 本阶段蓝图
+- `readers/codex_state.rs` —— `CodexStateReader`
+- `readers/codex_transcript.rs` —— 元数据富化
+- 单测（覆盖 SQLite 读取与富化逻辑）
 
 **决策点**：
-- Codex provider 能正确输出额度、用量、趋势、任务 → 进入阶段 3 或阶段 4
-- 如果 Claude Code Windows 版数据难获取 → 可以跳过阶段 3，先做纯 Codex UI
+- ✅ Codex provider 能正确读取 SQLite 并输出 enriched usage → 按用户要求跳过阶段 3，进入阶段 4
 
 ---
 
 ## 阶段 3：Claude Code RuntimeProvider 完整实现
+
+**状态**：⏭️ 已跳过（按用户指令）
 
 **目标**：实现 Claude Code 的数据读取：transcript JSONL、tasks JSON、statusLine snapshot、global skill usage。
 
@@ -89,11 +94,13 @@ docs/windows-port/roadmap/
 
 ## 阶段 4：Windows UI
 
+**状态**：🚧 当前阶段
+
 **目标**：系统托盘 + 弹出菜单 + 主窗口仪表盘 + 设置窗口。
 
 **交付物**：
 - [`phase-4-ui/`](phase-4-ui/) —— Tauri 或 WinUI 3 工程
-- 复用阶段 1-3 的核心库
+- 复用阶段 1-2 的核心库
 - 主窗口：额度环、趋势图、任务板、AI 领导力
 
 ---
@@ -109,9 +116,9 @@ docs/windows-port/roadmap/
 
 ---
 
-## 当前阶段：Phase 1
+## 当前阶段：Phase 4
 
-见 [`phase-1-core-prototype/`](phase-1-core-prototype/)，开始实现跨平台核心读取原型。
+见 [`phase-4-ui/`](phase-4-ui/)，开始实现 Windows UI。
 
 ---
 
@@ -121,6 +128,7 @@ docs/windows-port/roadmap/
 
 - Phase 0 完成：提交调研报告 issue，确认数据格式兼容性
 - Phase 1 完成：展示 CLI 原型，询问是否愿意未来共享核心算法
+- Phase 2 完成：说明 Codex provider 已可读取 SQLite 元数据
 - Phase 4 完成：发布 beta 版，邀请 Windows 用户测试
 
 这样即使原作者不参与，也能保持信息透明。

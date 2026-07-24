@@ -1,5 +1,25 @@
-/target
-Cargo.lock
-*.exe
-*.pdb
-codexu-probe.json
+# Rust / Tauri build artifacts
+**/target/
+**/Cargo.lock
+
+# Frontend build artifacts
+**/dist/
+**/node_modules/
+
+# Cache / logs
+**/.cache/
+*.log
+
+# Tauri generated files
+src-tauri/gen/schemas/*.json
+!src-tauri/gen/schemas/.gitkeep
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local env files
+.env
+.env.local

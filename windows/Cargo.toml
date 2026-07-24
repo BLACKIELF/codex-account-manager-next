@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/codexu-core", "crates/codexu-cli"]
+members = ["crates/codexu-core", "crates/codexu-cli", "apps/codexu-tauri/src-tauri"]
 resolver = "2"
 
 [workspace.package]

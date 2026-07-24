@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Context;
 use chrono::Utc;
 use clap::Parser;
-use codexu_core::readers::{ClaudeCodeTranscriptReader, CodexTranscriptReader};
+use codexu_core::readers::{ClaudeCodeTranscriptReader, CodexStateReader, CodexTranscriptReader};
 use tracing::{info, warn};
 
 #[derive(Parser, Debug)]
@@ -60,13 +60,37 @@ async fn main() -> anyhow::Result<()> {
     match args.provider {
         Provider::Codex => {
             let codex_root = args.codex_root.unwrap_or_else(|| home.join(".codex"));
+            let state_db_path = codex_root.join("state_5.sqlite");
             info!("Codex data root: {}", codex_root.display());
+            info!("Codex state DB: {}", state_db_path.display());
             info!("Cache directory: {}", cache_dir.display());
 
             let reader = CodexTranscriptReader::new(&cache_dir);
             let now = Utc::now();
 
-            match reader.load_local_usage(&codex_root, now).await {
+            let metadata = if tokio::fs::try_exists(&state_db_path).await.unwrap_or(false) {
+                match CodexStateReader::new(&state_db_path).load_metadata().await {
+                    Ok(m) => {
+                        info!("Loaded metadata for {} threads from state DB", m.len());
+                        m
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Failed to load Codex state metadata ({}); continuing without it",
+                            e
+                        );
+                        std::collections::HashMap::new()
+                    }
+                }
+            } else {
+                info!("Codex state DB not found; continuing without metadata enrichment");
+                std::collections::HashMap::new()
+            };
+
+            match reader
+                .load_local_usage_with_metadata(&codex_root, metadata, now)
+                .await
+            {
                 Ok(Some(local_usage)) => {
                     info!(
                         "Parsed {} files, {} unique usage events",

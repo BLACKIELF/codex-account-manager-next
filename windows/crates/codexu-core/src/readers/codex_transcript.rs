@@ -34,6 +34,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::common::*;
+use super::codex_state::CodexThreadMetadata;
 use crate::models::*;
 
 const CODEX_CACHE_VERSION: i32 = 1;
@@ -102,6 +103,17 @@ impl CodexTranscriptReader {
         data_root: impl AsRef<Path>,
         now: DateTime<Utc>,
     ) -> anyhow::Result<Option<LocalUsage>> {
+        self.load_local_usage_with_metadata(data_root, HashMap::new(), now)
+            .await
+    }
+
+    /// Loads usage and enriches each session with metadata from `state_5.sqlite`.
+    pub async fn load_local_usage_with_metadata(
+        &self,
+        data_root: impl AsRef<Path>,
+        metadata: HashMap<String, CodexThreadMetadata>,
+        now: DateTime<Utc>,
+    ) -> anyhow::Result<Option<LocalUsage>> {
         let data_root = data_root.as_ref();
         if !tokio::fs::try_exists(data_root).await.unwrap_or(false) {
             return Ok(None);
@@ -161,7 +173,7 @@ impl CodexTranscriptReader {
         }
 
         self.write_cache(&cache).await;
-        Ok(make_local_usage_from_codex(summaries, now))
+        Ok(make_local_usage_from_codex(summaries, metadata, now))
     }
 
     async fn read_cache(&self) -> CodexSessionDiskCache {
@@ -409,29 +421,55 @@ fn codex_date_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> 
 
 fn make_local_usage_from_codex(
     summaries: Vec<CodexTranscriptSummary>,
+    metadata: HashMap<String, CodexThreadMetadata>,
     now: DateTime<Utc>,
 ) -> Option<LocalUsage> {
     let common_summaries: Vec<SessionSummary> = summaries
         .into_iter()
-        .map(|s| SessionSummary {
-            file_path: s.file_path,
-            session_id: s.session_id,
-            project_path: s.project_path,
-            model: s.model,
-            last_active_at: s.last_active_at,
-            deltas: s
-                .deltas
-                .into_iter()
-                .map(|d| UsageDelta {
-                    message_id: d.turn_id,
-                    date: d.date,
-                    tokens: d.tokens,
-                    model: d.model,
-                    project_path: d.project_path,
-                    session_id: d.session_id,
-                })
-                .collect(),
-            tool_calls: s.tool_calls,
+        .map(|s| {
+            let key = Path::new(&s.file_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| s.session_id.clone());
+            let meta = metadata.get(&key);
+
+            let project_path = meta
+                .and_then(|m| m.cwd.as_ref())
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or(s.project_path);
+            let model = s.model.or_else(|| meta.and_then(|m| m.model.clone()));
+            let last_active_at = match (s.last_active_at, meta.and_then(|m| m.updated_at)) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            };
+
+            SessionSummary {
+                file_path: s.file_path,
+                session_id: s.session_id,
+                project_path: project_path.clone(),
+                model,
+                last_active_at,
+                deltas: s
+                    .deltas
+                    .into_iter()
+                    .map(|d| UsageDelta {
+                        message_id: d.turn_id,
+                        date: d.date,
+                        tokens: d.tokens,
+                        model: d.model,
+                        project_path: project_path.clone(),
+                        session_id: d.session_id,
+                    })
+                    .collect(),
+                tool_calls: s.tool_calls,
+                title: meta.and_then(|m| m.title.clone()),
+                archived: meta.map(|m| m.archived).unwrap_or(false),
+                git_branch: meta.and_then(|m| m.git_branch.clone()),
+                git_origin_url: meta.and_then(|m| m.git_origin_url.clone()),
+            }
         })
         .collect();
     make_local_usage(common_summaries, now)
@@ -440,6 +478,7 @@ fn make_local_usage_from_codex(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readers::CodexStateReader;
 
     #[tokio::test]
     async fn parses_codex_session_jsonl() {
@@ -500,5 +539,165 @@ mod tests {
 
         // Should sum last_token_usage deltas (150 + 75 = 225), not total_token_usage totals.
         assert_eq!(usage.lifetime_tokens, 225);
+    }
+
+    #[tokio::test]
+    async fn enriches_session_with_state_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-test.jsonl");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:53:47.164Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#,
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let db_path = temp.path().join("state_5.sqlite");
+        create_test_state_db(
+            &db_path,
+            "rollout-test.jsonl",
+            "Test Thread Title",
+            "h:\\project\\demo",
+            "gpt-5.4",
+            true,
+        );
+
+        let metadata = CodexStateReader::new(&db_path)
+            .load_metadata()
+            .await
+            .unwrap();
+        assert_eq!(metadata.len(), 1);
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let usage = reader
+            .load_local_usage_with_metadata(temp.path(), metadata, Utc::now())
+            .await
+            .unwrap()
+            .expect("should produce LocalUsage");
+
+        assert_eq!(usage.recent_threads.len(), 1);
+        let thread = &usage.recent_threads[0];
+        assert_eq!(thread.title, "Test Thread Title");
+        assert_eq!(thread.cwd, "h:\\project\\demo");
+        assert_eq!(thread.model.as_deref(), Some("gpt-5.4"));
+        assert!(thread.archived);
+
+        let projects = &usage.project_board.as_ref().unwrap().all_projects;
+        assert_eq!(projects[0].full_path, "h:\\project\\demo");
+    }
+
+    #[tokio::test]
+    async fn falls_back_to_short_path_when_title_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-test.jsonl");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:53:47.164Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}"#,
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let db_path = temp.path().join("state_5.sqlite");
+        create_test_state_db(
+            &db_path,
+            "rollout-test.jsonl",
+            "",
+            "h:\\project\\demo",
+            "",
+            false,
+        );
+
+        let metadata = CodexStateReader::new(&db_path)
+            .load_metadata()
+            .await
+            .unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let usage = reader
+            .load_local_usage_with_metadata(temp.path(), metadata, Utc::now())
+            .await
+            .unwrap()
+            .expect("should produce LocalUsage");
+
+        assert_eq!(usage.recent_threads[0].title, "demo");
+    }
+
+    fn create_test_state_db(
+        path: &std::path::Path,
+        rollout_filename: &str,
+        title: &str,
+        cwd: &str,
+        model: &str,
+        archived: bool,
+    ) {
+        use rusqlite::Connection;
+        let conn = Connection::open(path).unwrap();
+        conn.execute(
+            "CREATE TABLE threads (
+                id TEXT PRIMARY KEY,
+                rollout_path TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                model_provider TEXT NOT NULL,
+                cwd TEXT NOT NULL,
+                title TEXT NOT NULL,
+                sandbox_policy TEXT NOT NULL,
+                approval_mode TEXT NOT NULL,
+                tokens_used INTEGER NOT NULL DEFAULT 0,
+                has_user_event INTEGER NOT NULL DEFAULT 0,
+                archived INTEGER NOT NULL DEFAULT 0,
+                archived_at INTEGER,
+                git_sha TEXT,
+                git_branch TEXT,
+                git_origin_url TEXT,
+                cli_version TEXT NOT NULL DEFAULT '',
+                first_user_message TEXT NOT NULL DEFAULT '',
+                agent_nickname TEXT,
+                agent_role TEXT,
+                memory_mode TEXT NOT NULL DEFAULT 'enabled',
+                model TEXT,
+                reasoning_effort TEXT,
+                agent_path TEXT,
+                created_at_ms INTEGER,
+                updated_at_ms INTEGER,
+                thread_source TEXT,
+                preview TEXT NOT NULL DEFAULT '',
+                recency_at INTEGER NOT NULL DEFAULT 0,
+                recency_at_ms INTEGER NOT NULL DEFAULT 0,
+                history_mode TEXT NOT NULL DEFAULT 'legacy',
+                name TEXT
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO threads (
+                id, rollout_path, created_at, updated_at, source, model_provider,
+                cwd, title, sandbox_policy, approval_mode, archived,
+                model, created_at_ms, updated_at_ms
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            rusqlite::params![
+                "thread-1",
+                rollout_filename,
+                0i64,
+                0i64,
+                "source",
+                "openai",
+                cwd,
+                title,
+                "sandbox",
+                "approval",
+                archived as i64,
+                if model.is_empty() { None::<String> } else { Some(model.to_string()) },
+                1711434827000i64,
+                1711434827000i64,
+            ],
+        )
+        .unwrap();
     }
 }

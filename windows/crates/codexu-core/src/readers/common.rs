@@ -44,6 +44,14 @@ pub struct SessionSummary {
     pub last_active_at: Option<DateTime<Utc>>,
     pub deltas: Vec<UsageDelta>,
     pub tool_calls: HashMap<String, i64>,
+    /// Thread title from the Codex state database, if available.
+    pub title: Option<String>,
+    /// Whether this thread has been archived according to the state database.
+    pub archived: bool,
+    /// Git branch captured when the thread was created.
+    pub git_branch: Option<String>,
+    /// Git origin URL captured when the thread was created.
+    pub git_origin_url: Option<String>,
 }
 
 /// Enumerates all `.jsonl` files under `root`, sorted.
@@ -204,14 +212,19 @@ pub fn make_local_usage(summaries: Vec<SessionSummary>, now: DateTime<Utc>) -> O
                 .iter()
                 .map(|d| d.tokens.visible_total_tokens())
                 .sum();
+            let title = s
+                .title
+                .as_ref()
+                .map(|t| truncate_title(t))
+                .unwrap_or_else(|| short_workspace_name(&s.project_path));
             LocalThread {
                 id: s.session_id.clone(),
-                title: short_workspace_name(&s.project_path),
+                title,
                 tokens,
                 updated_at: s.last_active_at,
                 model: s.model.clone(),
                 cwd: s.project_path.clone(),
-                archived: false,
+                archived: s.archived,
             }
         })
         .collect();
@@ -446,8 +459,29 @@ pub fn tool_category(name: &str) -> String {
 }
 
 pub fn short_workspace_name(path: &str) -> String {
-    let trimmed = path.trim_matches('/');
-    trimmed.split('/').next_back().unwrap_or(path).to_string()
+    let trimmed = path.trim_matches(|c| c == '/' || c == '\\');
+    trimmed
+        .split(|c| c == '/' || c == '\\')
+        .next_back()
+        .unwrap_or(path)
+        .to_string()
+}
+
+const MAX_TITLE_CHARS: usize = 200;
+
+/// Truncates a thread title to a display-safe length.
+///
+/// Codex stores the first user message (or a generated summary) in the `title`
+/// column, which can be very long. We keep enough for the UI while avoiding
+/// storing full prompts in memory.
+pub fn truncate_title(title: &str) -> String {
+    if title.chars().count() <= MAX_TITLE_CHARS {
+        title.to_string()
+    } else {
+        let mut result: String = title.chars().take(MAX_TITLE_CHARS).collect();
+        result.push('…');
+        result
+    }
 }
 
 /// Estimates USD cost from a token breakdown and an optional model name.
