@@ -36,7 +36,7 @@ export function TrendChart({ trend }: TrendChartProps) {
 
   if (!trend || data.length === 0) {
     return (
-      <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+      <div className="glass-panel p-4 sm:p-5">
         <h3 className="text-sm font-semibold text-primary mb-4">Usage Trend</h3>
         <p className="text-secondary text-sm">No trend data available.</p>
       </div>
@@ -44,18 +44,18 @@ export function TrendChart({ trend }: TrendChartProps) {
   }
 
   return (
-    <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+    <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-primary">Usage Trend</h3>
-        <div className="flex gap-1">
+        <div className="flex gap-1 glass-toolbar p-0.5 rounded-full">
           {RANGES.map((r) => (
             <button
               key={r.days}
               onClick={() => setRange(r.days)}
-              className={`px-2 py-1 text-xs rounded-md transition-colors ${
+              className={`px-2.5 py-1 rounded-full text-xs transition-all ${
                 range === r.days
-                  ? 'bg-accent text-white'
-                  : 'bg-surface-inset text-secondary hover:text-primary'
+                  ? 'glass-button-solid'
+                  : 'text-secondary glass-button'
               }`}
             >
               {r.label}

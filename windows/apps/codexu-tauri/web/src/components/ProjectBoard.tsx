@@ -8,7 +8,7 @@ interface ProjectBoardProps {
 export function ProjectBoard({ projects }: ProjectBoardProps) {
   if (projects.length === 0) {
     return (
-      <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+      <div className="glass-panel p-4 sm:p-5">
         <h3 className="text-sm font-semibold text-primary mb-4">Projects</h3>
         <p className="text-secondary text-sm">No projects found.</p>
       </div>
@@ -18,7 +18,7 @@ export function ProjectBoard({ projects }: ProjectBoardProps) {
   const maxTokens = Math.max(...projects.map((p) => p.tokens), 1);
 
   return (
-    <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+    <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-primary">Projects</h3>
         <span className="text-xs text-tertiary">{projects.length} total</span>
@@ -41,7 +41,7 @@ export function ProjectBoard({ projects }: ProjectBoardProps) {
             </div>
             {p.estimated_cost_usd !== null && (
               <p className="text-xs text-tertiary">
-                ${p.estimated_cost_usd.toFixed(2)} · {p.thread_count} threads
+                ${p.estimated_cost_usd.toFixed(2)} cost estimate · {p.thread_count} threads
               </p>
             )}
           </div>

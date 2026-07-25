@@ -1,5 +1,6 @@
 import { RefreshCw, Settings, Sun, Moon, Monitor } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { isTauriRuntimeAvailable } from '../utils/tauri';
 import type { ThemeMode } from '../types/settings';
 
 interface HeaderProps {
@@ -18,14 +19,26 @@ export function Header({
   refreshing,
 }: HeaderProps) {
   const openSettings = async () => {
-    await invoke('open_settings_window');
+    if (!isTauriRuntimeAvailable()) {
+      return;
+    }
+
+    try {
+      await invoke('open_settings_window');
+    } catch (error) {
+      console.error('Failed to open settings window:', error);
+    }
   };
 
   return (
-    <header className="flex items-center justify-between px-6 py-4 border-b border-theme bg-surface-elevated">
+    <header className="mx-4 mt-4 glass-toolbar px-5 py-3 rounded-2xl flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white font-bold">
-          cU
+        <div className="w-8 h-8 rounded-xl glass-button-solid flex items-center justify-center overflow-hidden">
+          <img
+            src="/icons/icon.png"
+            alt="codexU icon"
+            className="w-full h-full object-contain"
+          />
         </div>
         <div>
           <h1 className="text-lg font-semibold text-primary leading-tight">codexU</h1>
@@ -38,11 +51,13 @@ export function Header({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center bg-surface-inset rounded-lg p-0.5 border border-theme">
+        <div className="flex items-center glass-toolbar rounded-full p-0.5">
           <button
             onClick={() => onThemeChange('light')}
-            className={`p-1.5 rounded-md transition-colors ${
-              theme === 'light' ? 'bg-surface text-primary shadow-sm' : 'text-secondary'
+            className={`p-1.5 rounded-full transition-all ${
+              theme === 'light'
+                ? 'glass-button-solid'
+                : 'text-secondary glass-button'
             }`}
             title="Light"
           >
@@ -50,8 +65,8 @@ export function Header({
           </button>
           <button
             onClick={() => onThemeChange('dark')}
-            className={`p-1.5 rounded-md transition-colors ${
-              theme === 'dark' ? 'bg-surface text-primary shadow-sm' : 'text-secondary'
+            className={`p-1.5 rounded-full transition-all ${
+              theme === 'dark' ? 'glass-button-solid' : 'text-secondary glass-button'
             }`}
             title="Dark"
           >
@@ -59,8 +74,10 @@ export function Header({
           </button>
           <button
             onClick={() => onThemeChange('system')}
-            className={`p-1.5 rounded-md transition-colors ${
-              theme === 'system' ? 'bg-surface text-primary shadow-sm' : 'text-secondary'
+            className={`p-1.5 rounded-full transition-all ${
+              theme === 'system'
+                ? 'glass-button-solid'
+                : 'text-secondary glass-button'
             }`}
             title="System"
           >
@@ -71,7 +88,7 @@ export function Header({
         <button
           onClick={onRefresh}
           disabled={refreshing}
-          className="p-2 rounded-lg bg-surface-inset text-secondary hover:text-primary border border-theme transition-colors disabled:opacity-50"
+          className="p-2 rounded-full glass-button text-secondary hover:text-primary transition-colors disabled:opacity-50"
           title="Refresh"
         >
           <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
@@ -79,7 +96,7 @@ export function Header({
 
         <button
           onClick={openSettings}
-          className="p-2 rounded-lg bg-accent text-white hover:opacity-90 transition-opacity"
+          className="p-2 rounded-full glass-button-solid"
           title="Settings"
         >
           <Settings size={16} />

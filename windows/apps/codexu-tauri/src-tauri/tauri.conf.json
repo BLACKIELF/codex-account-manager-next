@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.codexU.app",
   "build": {
-    "beforeDevCommand": "cd web && npm run dev",
-    "beforeBuildCommand": "cd web && npm run build",
+    "beforeDevCommand": "node src-tauri/scripts/frontend-hook.mjs dev",
+    "beforeBuildCommand": "node src-tauri/scripts/frontend-hook.mjs build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../web/dist"
   },

@@ -26,7 +26,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['SF Pro Text', 'Inter', 'Segoe UI', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },

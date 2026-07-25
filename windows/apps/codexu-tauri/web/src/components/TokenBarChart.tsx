@@ -20,7 +20,7 @@ export function TokenBarChart({ data }: TokenBarChartProps) {
   }));
 
   return (
-    <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+    <div className="glass-panel p-4 sm:p-5">
       <h3 className="text-sm font-semibold text-primary mb-4">7-Day Usage</h3>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">

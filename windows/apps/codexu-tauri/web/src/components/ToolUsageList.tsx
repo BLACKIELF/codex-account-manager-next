@@ -8,7 +8,7 @@ interface ToolUsageListProps {
 export function ToolUsageList({ tools }: ToolUsageListProps) {
   if (tools.length === 0) {
     return (
-      <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+      <div className="glass-panel p-4 sm:p-5">
         <h3 className="text-sm font-semibold text-primary mb-4">Tools</h3>
         <p className="text-secondary text-sm">No tool usage found.</p>
       </div>
@@ -18,7 +18,7 @@ export function ToolUsageList({ tools }: ToolUsageListProps) {
   const maxCalls = Math.max(...tools.map((t) => t.call_count), 1);
 
   return (
-    <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+    <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-primary">Tools</h3>
         <span className="text-xs text-tertiary">{tools.length} total</span>
@@ -30,7 +30,7 @@ export function ToolUsageList({ tools }: ToolUsageListProps) {
               <div className="flex items-center gap-2">
                 <Wrench size={14} className="text-secondary" />
                 <span className="font-medium text-primary">{t.name}</span>
-                <span className="text-xs px-1.5 py-0.5 rounded bg-surface-inset text-tertiary capitalize">
+                <span className="text-xs px-1.5 py-0.5 rounded chip-like bg-surface-inset text-tertiary capitalize">
                   {t.category}
                 </span>
               </div>

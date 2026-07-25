@@ -8,7 +8,7 @@ interface ThreadListProps {
 export function ThreadList({ threads }: ThreadListProps) {
   if (threads.length === 0) {
     return (
-      <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+      <div className="glass-panel p-4 sm:p-5">
         <h3 className="text-sm font-semibold text-primary mb-4">Recent Threads</h3>
         <p className="text-secondary text-sm">No threads found.</p>
       </div>
@@ -22,7 +22,7 @@ export function ThreadList({ threads }: ThreadListProps) {
   });
 
   return (
-    <div className="bg-surface-elevated border border-theme rounded-xl p-4">
+    <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-primary">Recent Threads</h3>
         <span className="text-xs text-tertiary">{threads.length} total</span>
@@ -31,13 +31,13 @@ export function ThreadList({ threads }: ThreadListProps) {
         {sorted.slice(0, 20).map((t) => (
           <div
             key={t.id}
-            className="flex items-center justify-between gap-3 p-3 rounded-lg bg-surface-inset/50 hover:bg-surface-inset transition-colors"
+            className="flex items-center justify-between gap-3 p-3 rounded-xl glass-input hover:border-theme/80 transition-colors"
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-medium text-primary truncate">{t.title}</p>
                 {t.archived && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-status-warn/10 text-status-warn">
+                  <span className="inline-flex items-center gap-1 chip-like bg-status-warn/12 text-status-warn border-status-warn/30">
                     <Archive size={10} /> Archived
                   </span>
                 )}
