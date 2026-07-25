@@ -103,6 +103,82 @@ export interface UsageTrend {
   source_quality: 'detailed' | 'approximate';
 }
 
+export interface LeadershipWorker {
+  id: string;
+  runtime: string;
+  kind: 'main' | 'subagent' | 'automation';
+  project_id: string;
+  project_name: string;
+  parent_id: string | null;
+}
+
+export interface LeadershipInterval {
+  id: string;
+  worker_id: string;
+  runtime: string;
+  worker_kind: 'main' | 'subagent' | 'automation';
+  project_id: string;
+  start_at: number;
+  end_at: number;
+  quality: 'fact' | 'derived' | 'estimated';
+  is_autonomous: boolean;
+}
+
+export interface LeadershipDimension {
+  kind: 'span' | 'leverage' | 'orchestration' | 'autonomy';
+  score: number;
+  confidence: number;
+  summary_value: number;
+}
+
+export interface LeadershipTitle {
+  level: number;
+  name: string;
+  english_name: string;
+  lower_bound: number;
+  upper_bound: number;
+}
+
+export interface LeadershipDayPoint {
+  day: number;
+  agent_count: number;
+  ai_hours: number;
+  peak_concurrency: number;
+}
+
+export interface LeadershipProjectContribution {
+  project_id: string;
+  project_name: string;
+  agent_count: number;
+  ai_hours: number;
+  autonomous_hours: number;
+}
+
+export interface LeadershipReport {
+  period: string;
+  score: number | null;
+  core_score: number | null;
+  title: LeadershipTitle | null;
+  dimensions: LeadershipDimension[];
+  maturity: number;
+  evidence_coverage: number;
+  active_day_count: number;
+  agent_count: number | null;
+  ai_hours: number | null;
+  autonomous_hours: number | null;
+  average_parallelism: number | null;
+  peak_concurrency: number | null;
+  project_count: number;
+  daily_points: LeadershipDayPoint[];
+  projects: LeadershipProjectContribution[];
+}
+
+export interface LeadershipDashboardSnapshot {
+  model_version: string;
+  refreshed_at: number;
+  reports: LeadershipReport[];
+}
+
 export interface LocalUsage {
   lifetime_tokens: number;
   today_tokens: number;
@@ -116,4 +192,5 @@ export interface LocalUsage {
   project_board: ProjectBoard | null;
   tool_usages: ToolUsage[];
   skill_usages: unknown[];
+  leadership: LeadershipDashboardSnapshot | null;
 }

@@ -231,7 +231,9 @@ pub fn make_local_usage(summaries: Vec<SessionSummary>, now: DateTime<Utc>) -> O
 
     let tool_usages = make_tool_usages(&summaries, &lifetime);
 
-    Some(LocalUsage {
+    let leadership = build_stub_leadership_snapshot(&summaries, now);
+
+    let usage = LocalUsage {
         lifetime_tokens: lifetime.tokens.visible_total_tokens(),
         today_tokens: today.tokens.visible_total_tokens(),
         seven_day_tokens: seven_day.tokens.visible_total_tokens(),
@@ -247,7 +249,46 @@ pub fn make_local_usage(summaries: Vec<SessionSummary>, now: DateTime<Utc>) -> O
         }),
         tool_usages,
         skill_usages: Vec::new(), // TODO: implement skill resolver
-    })
+        leadership: Some(leadership),
+    };
+
+    Some(usage)
+}
+
+fn build_stub_leadership_snapshot(
+    summaries: &[SessionSummary],
+    now: DateTime<Utc>,
+) -> LeadershipDashboardSnapshot {
+    LeadershipDashboardSnapshot {
+        model_version: "1.3-stub".to_string(),
+        refreshed_at: now,
+        reports: if summaries.is_empty() {
+            vec![]
+        } else {
+            vec![LeadershipReport {
+                period: "28d".to_string(),
+                score: None,
+                core_score: None,
+                title: None,
+                dimensions: Vec::new(),
+                maturity: 0.0,
+                evidence_coverage: 0.0,
+                active_day_count: 0,
+                agent_count: Some(summaries.len() as i64),
+                ai_hours: None,
+                autonomous_hours: None,
+                average_parallelism: None,
+                peak_concurrency: None,
+                project_count: summaries
+                    .iter()
+                    .map(|s| s.project_path.clone())
+                    .collect::<std::collections::HashSet<_>>()
+                    .len() as i64,
+                daily_points: Vec::new(),
+                projects: Vec::new(),
+            }]
+        },
+    }
 }
 
 fn make_seven_day_buckets(
