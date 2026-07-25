@@ -73,13 +73,17 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
 
   const report = snapshot.reports[0];
   const title = report.title?.name ?? 'No Title';
-  const subtitle = report.title ? `${report.title.english_name} · ${title}` : 'AI leadership profile';
+  const titleMeta = report.title
+    ? `${report.title.english_name} | ${title}`
+    : 'AI leadership profile';
+  const levelLabel = report.title ? `L${report.title.level}` : 'L0';
+  const levelRange = report.title ? `${report.title.lower_bound}-${report.title.upper_bound}` : null;
   const score = report.score ?? 0;
+  const scoreBand = buildScoreBand(score, report.title?.name);
   const confidence = Math.round(report.evidence_coverage * 100);
   const trend = buildTrendSummary(report.daily_points);
   const sortedProjects = sortProjects(report.projects, 'ai_hours');
   const latest = report.daily_points.length > 0 ? report.daily_points[report.daily_points.length - 1] : null;
-  const scoreBand = buildScoreBand(score);
   const isStub = snapshot.model_version.toLowerCase().includes('stub');
 
   return (
@@ -89,9 +93,9 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
           <div className="flex items-start gap-2">
             <AlertTriangle size={16} className="text-orange-500 mt-0.5" />
             <div>
-              <p className="font-semibold text-primary">当前为占位/引擎未接入</p>
+              <p className="font-semibold text-primary">This is a fallback snapshot / engine not connected</p>
               <p className="text-xs text-tertiary mt-1">
-                当前快照版本为 <code>{snapshot.model_version}</code>，当前为占位展示，部分字段为降级值。
+                Current snapshot version is <code>{snapshot.model_version}</code>; some fields may be downgraded.
               </p>
             </div>
           </div>
@@ -102,11 +106,17 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</p>
-            <h2 className="text-2xl sm:text-3xl font-semibold mt-1 text-primary leading-tight">{subtitle}</h2>
-            <p className="text-sm text-secondary mt-1">
-              Period: {report.period} · snapshot {snapshot.model_version}
+            <div className="mt-1 inline-flex items-center gap-2 text-xs">
+              <span className="px-2 py-1 rounded-full border border-accent/40 bg-accent/12 text-accent font-medium">
+                {levelLabel}
+              </span>
+              <span className="text-primary font-medium">Current title</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-semibold mt-2 text-primary leading-tight">{titleMeta}</h2>
+            <p className="text-sm text-secondary mt-1">Period: {report.period} | snapshot {snapshot.model_version}</p>
+            <p className="text-xs text-tertiary mt-2">
+              {report.title ? `Score band: ${scoreBand} (${levelRange})` : scoreBand}
             </p>
-            <p className="text-xs text-tertiary mt-2">{scoreBand}</p>
           </div>
           <div className="w-20 h-20 rounded-full bg-surface-inset border border-theme flex flex-col items-center justify-center text-center">
             <span className="text-xs text-tertiary">Score</span>
@@ -157,7 +167,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
                       <span className="text-tertiary ml-2">({meta.weight})</span>
                     </span>
                     <span className="text-tertiary">
-                    {dimension.score.toFixed(1)} / 100 · {confidencePct}% conf
+                      {dimension.score.toFixed(1)} / 100 | {confidencePct}% conf
                     </span>
                   </div>
                   <p className="text-xs text-tertiary">{meta.description}</p>
@@ -201,7 +211,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <div className="mt-4 p-3 rounded-lg border border-theme bg-surface-inset text-sm">
               <p className="text-primary font-medium">Latest day signal</p>
               <p className="text-xs text-secondary mt-1">
-                {formatPointDate(latest.day)} · {latest.agent_count} agents, {latest.ai_hours.toFixed(1)}h AI hours,
+                {formatPointDate(latest.day)} | {latest.agent_count} agents, {latest.ai_hours.toFixed(1)}h AI hours,
                 peak {latest.peak_concurrency}
               </p>
             </div>
@@ -233,7 +243,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
                     <span className="text-tertiary text-xs">#{project.project_id}</span>
                   </div>
                   <p className="text-xs text-secondary mt-1">
-                    Agents {project.agent_count} · AI Hours {project.ai_hours.toFixed(1)} · Autonomous{' '}
+                    Agents {project.agent_count} | AI Hours {project.ai_hours.toFixed(1)} | Autonomous{' '}
                     {project.autonomous_hours.toFixed(1)}h
                   </p>
                   <div className="mt-2 h-1.5 bg-surface rounded-full overflow-hidden">
@@ -311,13 +321,14 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
-function buildScoreBand(score: number): string {
-  if (score >= 90) return 'Tier: Architect';
-  if (score >= 75) return 'Tier: Operator';
-  if (score >= 60) return 'Tier: Navigator';
-  if (score >= 45) return 'Tier: Co-Pilot';
-  if (score >= 30) return 'Tier: Starter';
-  return 'Tier: Rookie';
+function buildScoreBand(score: number, explicitTitle?: string | null): string {
+  if (explicitTitle) return explicitTitle;
+  if (score >= 90) return 'Architect';
+  if (score >= 75) return 'Operator';
+  if (score >= 60) return 'Navigator';
+  if (score >= 45) return 'Co-Pilot';
+  if (score >= 30) return 'Starter';
+  return 'Rookie';
 }
 
 function sortProjects(projects: LeadershipProjectContribution[], field: SortField): LeadershipProjectContribution[] {
