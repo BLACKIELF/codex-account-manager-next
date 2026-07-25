@@ -30,13 +30,12 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
             .build()
             .map_err(|e| format!("Failed to create settings window: {}", e))?;
 
-    apply_theme(
-        &app,
-        app.state::<std::sync::Arc<AppState>>()
-            .config
-            .blocking_read()
-            .theme,
-    );
+    let app_state = app.state::<std::sync::Arc<AppState>>();
+    let theme = {
+        let config = app_state.config.read().await;
+        config.theme
+    };
+    apply_theme(&app, theme);
     let _ = window.show();
     Ok(())
 }

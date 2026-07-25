@@ -38,6 +38,20 @@ export function Settings() {
 
   const config = settings.config;
 
+  const flashSaved = () => {
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  const runUpdate = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+      flashSaved();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const pickDirectory = async (key: 'codex_root' | 'cache_dir') => {
     if (!canInvokeTauri) {
       return;
@@ -45,8 +59,9 @@ export function Settings() {
 
     const selected = await open({ directory: true });
     if (selected) {
-      await update({ [key]: selected });
-      flashSaved();
+      await runUpdate(async () => {
+        await update({ [key]: selected });
+      });
     }
   };
 
@@ -55,9 +70,10 @@ export function Settings() {
       return;
     }
 
-    await update({ theme });
-    applyTheme(theme);
-    flashSaved();
+    await runUpdate(async () => {
+      await update({ theme });
+      applyTheme(theme);
+    });
   };
 
   const handleDensity = async (tray_density: TrayDensity) => {
@@ -65,8 +81,9 @@ export function Settings() {
       return;
     }
 
-    await update({ tray_density });
-    flashSaved();
+    await runUpdate(async () => {
+      await update({ tray_density });
+    });
   };
 
   const handleInterval = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,8 +93,9 @@ export function Settings() {
 
     const secs = parseInt(e.target.value, 10);
     if (!isNaN(secs)) {
-      await update({ refresh_interval_secs: secs });
-      flashSaved();
+      await runUpdate(async () => {
+        await update({ refresh_interval_secs: secs });
+      });
     }
   };
 
@@ -107,11 +125,6 @@ export function Settings() {
     } catch (e) {
       console.error(e);
     }
-  };
-
-  const flashSaved = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
   };
 
   return (
@@ -213,6 +226,7 @@ export function Settings() {
           </Section>
 
           {saved && <p className="text-center text-sm text-status-ok">Settings saved.</p>}
+          {error && <p className="text-center text-sm text-status-error">{error}</p>}
         </div>
       </main>
     </div>

@@ -37,14 +37,16 @@ export function useSettings() {
     }
   }, []);
 
-  const update = useCallback(async (patch: Partial<AppConfig>) => {
+  const update = useCallback(async (patch: Partial<AppConfig>): Promise<AppConfig> => {
     setError(null);
     try {
       requireTauriRuntime();
-      const updated = await invoke<AppConfig>('set_settings', patch);
+      const updated = await invoke<AppConfig>('set_settings', { req: patch });
       setSettings((prev) => (prev ? { ...prev, config: updated } : null));
+      return updated;
     } catch (e) {
       setError(String(e));
+      throw e;
     }
   }, []);
 
