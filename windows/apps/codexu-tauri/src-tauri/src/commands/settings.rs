@@ -19,21 +19,24 @@ pub async fn open_settings_window(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "settings",
-        tauri::WebviewUrl::App("/".into()),
-    )
-    .title("Settings — codexU")
-    .inner_size(540.0, 680.0)
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .center()
-    .build()
-    .map_err(|e| format!("Failed to create settings window: {}", e))?;
+    let window =
+        tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("/".into()))
+            .title("Settings — codexU")
+            .inner_size(540.0, 680.0)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .center()
+            .build()
+            .map_err(|e| format!("Failed to create settings window: {}", e))?;
 
-    apply_theme(&app, app.state::<std::sync::Arc<AppState>>().config.blocking_read().theme);
+    apply_theme(
+        &app,
+        app.state::<std::sync::Arc<AppState>>()
+            .config
+            .blocking_read()
+            .theme,
+    );
     let _ = window.show();
     Ok(())
 }

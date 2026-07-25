@@ -6,6 +6,7 @@ import {
   Brain,
   Calendar,
   Clock3,
+  AlertTriangle,
   Cpu,
   Eye,
   Globe,
@@ -79,9 +80,24 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
   const sortedProjects = sortProjects(report.projects, 'ai_hours');
   const latest = report.daily_points.length > 0 ? report.daily_points[report.daily_points.length - 1] : null;
   const scoreBand = buildScoreBand(score);
+  const isStub = snapshot.model_version.toLowerCase().includes('stub');
 
   return (
     <div className="space-y-6">
+      {isStub ? (
+        <section className="glass-panel border border-orange-400/30 bg-orange-500/10 p-4 text-sm">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="text-orange-500 mt-0.5" />
+            <div>
+              <p className="font-semibold text-primary">当前为占位/引擎未接入</p>
+              <p className="text-xs text-tertiary mt-1">
+                当前快照版本为 <code>{snapshot.model_version}</code>，当前为占位展示，部分字段为降级值。
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="glass-panel p-5 space-y-5">
         <div className="flex items-start justify-between gap-4">
           <div>

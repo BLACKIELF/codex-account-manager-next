@@ -33,8 +33,8 @@ use std::path::{Path, PathBuf};
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::common::*;
 use super::codex_state::CodexThreadMetadata;
+use super::common::*;
 use crate::models::*;
 
 const CODEX_CACHE_VERSION: i32 = 1;
@@ -693,7 +693,11 @@ mod tests {
                 "sandbox",
                 "approval",
                 archived as i64,
-                if model.is_empty() { None::<String> } else { Some(model.to_string()) },
+                if model.is_empty() {
+                    None::<String>
+                } else {
+                    Some(model.to_string())
+                },
                 1711434827000i64,
                 1711434827000i64,
             ],

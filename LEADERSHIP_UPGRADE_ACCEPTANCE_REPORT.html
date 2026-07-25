@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>AI Leadership 升级验收报告（Windows）</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, "Noto Sans SC", sans-serif; margin: 24px; line-height: 1.45; color: #111827; }
+    h1 { font-size: 1.6rem; margin-bottom: 0.2rem; }
+    h2 { margin-top: 1.4rem; margin-bottom: 0.4rem; }
+    p, li { margin: 0.35rem 0; }
+    table { width: 100%; border-collapse: collapse; margin: 0.8rem 0; }
+    th, td { border: 1px solid #d1d5db; padding: 8px 10px; vertical-align: top; }
+    th { background: #f3f4f6; text-align: left; }
+    .ok { color: #047857; font-weight: 600; }
+    .warn { color: #b45309; font-weight: 600; }
+    .code { background: #f9fafb; border: 1px solid #e5e7eb; padding: 10px; overflow: auto; white-space: pre-wrap; font-family: Consolas, "Courier New", monospace; }
+  </style>
+</head>
+<body>
+  <h1>AI Leadership 真实链路验收报告（Windows）</h1>
+  <p><strong>日期：</strong>2026-07-26</p>
+  <p><strong>范围：</strong>Windows <code>codexu-tauri</code> + <code>codexu-core</code></p>
+
+  <h2>1. 结论（先说结果）</h2>
+  <ul>
+    <li>已完成从 stub 到真实聚合链路：<code>LeadershipDashboardSnapshot.model_version</code> 由 <code>1.3-stub</code> 升级为 <code>1.4-real</code>。</li>
+    <li><code>windows/crates/codexu-core/src/readers/common.rs</code> 已替换真实聚合逻辑，补齐后端单测。</li>
+    <li><code>windows/apps/codexu-tauri/web/src/components/LeadershipPanel.tsx</code> 已新增 stub 版本提示横幅。</li>
+    <li>本地验证通过：<code>cargo test -p codexu-core</code>、<code>cargo build</code>、<code>npm run build</code>。</li>
+    <li>关键字段不再是 stub 空壳返回；在无数据场景使用可解释降级值（0/空集合/null）。</li>
+  </ul>
+
+  <h2>2. 参考自 mac baseline 对齐</h2>
+  <p>基于 <code>Sources/CodexUsageWidget/Domain/LeadershipModel.swift</code> 与 <code>Services/LeadershipDataReader.swift</code> 的实现约束，mac 侧可确认：</p>
+  <ul>
+    <li>四大维度：span / leverage / orchestration / autonomy。</li>
+    <li>存在 28-day trend 点位（<code>dailyPoints</code>）。</li>
+    <li>存在 project contribution 区块。</li>
+    <li>存在 <code>score / core score / title / maturity / evidence coverage / activeDayCount</code> 等指标。</li>
+  </ul>
+  <p>Windows 侧保持字段结构一致，并在缺失数据时降级为可解释值，不再返回全 stub。</p>
+
+  <h2>3. 验收功能清单</h2>
+  <table>
+    <thead>
+      <tr><th>项目</th><th>目标</th><th>结果</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>模型版本</td><td>非 stub</td><td class="ok">PASS</td></tr>
+      <tr><td>score</td><td>非空或明确降级</td><td class="ok">PASS</td></tr>
+      <tr><td>core_score</td><td>非空或明确降级</td><td class="ok">PASS</td></tr>
+      <tr><td>title</td><td>非空或明确降级</td><td class="ok">PASS</td></tr>
+      <tr><td>dimensions</td><td>至少 4 维</td><td class="ok">PASS（4 维固定）</td></tr>
+      <tr><td>maturity</td><td>有定义值</td><td class="ok">PASS</td></tr>
+      <tr><td>evidence_coverage</td><td>有定义值</td><td class="ok">PASS</td></tr>
+      <tr><td>active_day_count</td><td>有定义值</td><td class="ok">PASS</td></tr>
+      <tr><td>ai_hours</td><td>有定义值</td><td class="ok">PASS（无数据=0）</td></tr>
+      <tr><td>autonomous_hours</td><td>非空或明确降级</td><td class="warn">PASS（有数据时有值；无事件时 null）</td></tr>
+      <tr><td>average_parallelism</td><td>有定义值</td><td class="ok">PASS（无数据=0）</td></tr>
+      <tr><td>peak_concurrency</td><td>有定义值</td><td class="ok">PASS（无数据=0）</td></tr>
+      <tr><td>daily_points</td><td>28-day trend 有点位</td><td class="ok">PASS（固定 28）</td></tr>
+      <tr><td>projects</td><td>有数据时至少 1 项</td><td class="ok">PASS（后端测试覆盖）</td></tr>
+      <tr><td>stub 横幅</td><td>model_version 包含 stub 时显式提示</td><td class="ok">PASS</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. 剩余 fallback 字段</h2>
+  <table>
+    <thead>
+      <tr><th>字段</th><th>降级场景</th><th>当前行为</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>autonomous_hours</td><td>无可计算事件</td><td>返回 <code>null</code></td></tr>
+      <tr><td>projects</td><td>无可识别项目/事件</td><td>返回空数组</td></tr>
+      <tr><td>score/core_score/title</td><td>低活动场景</td><td>返回低档可解释值</td></tr>
+      <tr><td>dimensions</td><td>活动不足</td><td>返回 4 个维度低值（非空）</td></tr>
+      <tr><td>active_day_count / ai_hours / average_parallelism / peak_concurrency</td><td>无活动</td><td>返回 0</td></tr>
+    </tbody>
+  </table>
+
+  <h2>5. 关键日志</h2>
+  <p><strong>cargo test -p codexu-core</strong></p>
+  <pre class="code">running 9 tests
+test readers::common::tests::builds_real_leadership_snapshot_from_usage ... ok
+test readers::common::tests::preserves_empty_fallback_when_no_delta_points ... ok
+test result: ok. 9 passed; 0 failed</pre>
+
+  <p><strong>cargo build</strong></p>
+  <pre class="code">Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.41s</pre>
+
+  <p><strong>npm run build</strong></p>
+  <pre class="code">vite v5.4.21 building for production...
+✓ 2394 modules transformed.
+✓ built in 2.48s</pre>
+
+  <h2>6. 改动文件清单</h2>
+  <ul>
+    <li><code>windows/crates/codexu-core/src/readers/common.rs</code>（后端聚合替换 + 2 条单测）</li>
+    <li><code>windows/apps/codexu-tauri/web/src/components/LeadershipPanel.tsx</code>（stub 横幅）</li>
+  </ul>
+
+  <h2>7. 截图说明</h2>
+  <p>当前环境为命令行构建验证，无可交付 UI 截图；建议在本机运行后补拍 4 张图：面板头部、维度卡片、28-day trend、项目贡献。</p>
+</body>
+</html>

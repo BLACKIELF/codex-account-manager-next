@@ -11,13 +11,10 @@ pub fn setup_tray(app: &AppHandle) -> anyhow::Result<()> {
     let separator = PredefinedMenuItem::separator(app)?;
     let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[
-        &open_i,
-        &settings_i,
-        &refresh_i,
-        &separator,
-        &quit_i,
-    ])?;
+    let menu = Menu::with_items(
+        app,
+        &[&open_i, &settings_i, &refresh_i, &separator, &quit_i],
+    )?;
 
     TrayIconBuilder::new()
         .icon(app.default_window_icon().unwrap().clone())
@@ -59,7 +56,12 @@ pub fn show_main_window(app: &AppHandle) {
     } else {
         let _ = tauri::WebviewWindowBuilder::from_config(
             app,
-            &app.config().app.windows.first().cloned().unwrap_or_default(),
+            &app.config()
+                .app
+                .windows
+                .first()
+                .cloned()
+                .unwrap_or_default(),
         )
         .unwrap_or_else(|_| panic!("Failed to create main window"))
         .build();

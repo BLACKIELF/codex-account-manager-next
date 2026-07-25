@@ -201,9 +201,7 @@ pub async fn clear_cache(state: &Arc<AppState>) {
         config.cache_dir.clone()
     };
     let codex_cache = cache_dir.join("codex").join("session-usage-v1.json");
-    let claude_cache = cache_dir
-        .join("claude-code")
-        .join("session-usage-v1.json");
+    let claude_cache = cache_dir.join("claude-code").join("session-usage-v1.json");
     for path in [codex_cache, claude_cache] {
         if let Err(e) = tokio::fs::remove_file(&path).await {
             if e.kind() != std::io::ErrorKind::NotFound {
