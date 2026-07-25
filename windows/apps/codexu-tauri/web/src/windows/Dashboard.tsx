@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type KeyboardEvent } from 'react';
 import {
   Activity,
   Calendar,
@@ -41,6 +41,24 @@ export function Dashboard() {
     applyTheme(theme);
   };
 
+  const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+
+    const currentIndex = TABS.findIndex((item) => item.id === activeTab);
+    if (currentIndex < 0) return;
+
+    event.preventDefault();
+    const nextIndex =
+      event.key === 'ArrowRight'
+        ? (currentIndex + 1) % TABS.length
+        : (currentIndex - 1 + TABS.length) % TABS.length;
+    setActiveTab(TABS[nextIndex].id);
+  };
+
+  const hasUsage = usage !== null && usage !== undefined;
+
   if (error) {
     return (
       <div className="h-full flex flex-col">
@@ -81,6 +99,30 @@ export function Dashboard() {
       />
 
       <main className="flex-1 overflow-auto p-6 md:p-7">
+        {!hasUsage ? (
+          <div className="glass-panel p-6 mb-6" role="status" aria-live="polite">
+            {loading ? (
+              <>
+                <h2 className="text-sm font-semibold text-primary">Loading usage data</h2>
+                <p className="text-sm text-secondary mt-1">Collecting local snapshots…</p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-sm font-semibold text-primary">No usage snapshot yet</h2>
+                <p className="text-sm text-secondary mt-1">
+                  No local usage data is available yet. Click Refresh to sample your latest sessions.
+                </p>
+                <button
+                  onClick={refresh}
+                  className="mt-4 px-4 py-2 rounded-full glass-button-solid text-sm"
+                >
+                  Refresh now
+                </button>
+              </>
+            )}
+          </div>
+        ) : null}
+
         <div className="max-w-6xl mx-auto w-full space-y-6">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -97,15 +139,19 @@ export function Dashboard() {
           </div>
 
           <div
+            onKeyDown={handleTabKeyDown}
             className="rounded-2xl p-1 glass-toolbar flex gap-1.5 flex-wrap"
             role="tablist"
             aria-label="dashboard tabs"
+            tabIndex={0}
           >
             {TABS.map((tab) => (
               <button
                 key={tab.id}
+                id={`dashboard-tab-${tab.id}`}
                 role="tab"
                 aria-selected={activeTab === tab.id}
+                aria-controls={`dashboard-panel-${tab.id}`}
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-3 py-2 rounded-xl text-sm transition-all ${
                   activeTab === tab.id ? 'glass-button-solid' : 'text-secondary glass-button'
@@ -117,7 +163,12 @@ export function Dashboard() {
           </div>
 
           {activeTab === 'overview' && (
-            <section className="space-y-6">
+            <section
+              role="tabpanel"
+              id="dashboard-panel-overview"
+              aria-labelledby="dashboard-tab-overview"
+              className="space-y-6"
+            >
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
                   label="Today"
@@ -164,11 +215,17 @@ export function Dashboard() {
           )}
 
           {activeTab === 'threads' && (
-            <section className="space-y-4">
+            <section
+              role="tabpanel"
+              id="dashboard-panel-threads"
+              aria-labelledby="dashboard-tab-threads"
+              className="space-y-4"
+            >
               <header className="glass-panel p-4 sm:p-5">
                 <div className="flex items-center justify-between text-sm">
                   <h2 className="font-semibold text-primary">Threads</h2>
                   <button
+                    aria-label="Back to Overview"
                     className="inline-flex items-center gap-1 text-secondary hover:text-primary"
                     onClick={() => setActiveTab('overview')}
                   >
@@ -182,11 +239,17 @@ export function Dashboard() {
           )}
 
           {activeTab === 'projects' && (
-            <section className="space-y-4">
+            <section
+              role="tabpanel"
+              id="dashboard-panel-projects"
+              aria-labelledby="dashboard-tab-projects"
+              className="space-y-4"
+            >
               <header className="glass-panel p-4 sm:p-5">
                 <div className="flex items-center justify-between text-sm">
                   <h2 className="font-semibold text-primary">Projects</h2>
                   <button
+                    aria-label="Back to Overview"
                     className="inline-flex items-center gap-1 text-secondary hover:text-primary"
                     onClick={() => setActiveTab('overview')}
                   >
@@ -203,7 +266,11 @@ export function Dashboard() {
           )}
 
           {activeTab === 'leadership' && (
-            <section>
+            <section
+              role="tabpanel"
+              id="dashboard-panel-leadership"
+              aria-labelledby="dashboard-tab-leadership"
+            >
               {isLeadershipAvailable ? (
                 <LeadershipPanel snapshot={usage?.leadership ?? null} />
               ) : (
