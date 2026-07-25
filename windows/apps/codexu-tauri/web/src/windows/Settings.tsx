@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../hooks/useSettings';
 import type { ThemeMode, TrayDensity } from '../types/settings';
 import { isTauriRuntimeAvailable, requireTauriRuntime } from '../utils/tauri';
+import { applyAppTheme } from '../utils/appTheme';
 
 export function Settings() {
   const canInvokeTauri = isTauriRuntimeAvailable();
@@ -12,7 +13,7 @@ export function Settings() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    applyTheme(settings?.config.theme ?? 'system');
+    applyAppTheme(settings?.config.theme ?? 'system');
   }, [settings?.config.theme]);
 
   if (!settings) {
@@ -72,7 +73,7 @@ export function Settings() {
 
     await runUpdate(async () => {
       await update({ theme });
-      applyTheme(theme);
+      applyAppTheme(theme);
     });
   };
 
@@ -269,11 +270,4 @@ function PathField({
       </div>
     </div>
   );
-}
-
-function applyTheme(theme: ThemeMode) {
-  const root = document.documentElement;
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark = theme === 'dark' || (theme === 'system' && prefersDark);
-  root.classList.toggle('dark', isDark);
 }

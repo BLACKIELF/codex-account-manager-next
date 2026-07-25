@@ -1,0 +1,274 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Windows UI Parity Report: Dashboard Leadership and Theme Parity</title>
+  <style>
+    body {
+      margin: 20px;
+      font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    h1, h2, h3 {
+      color: #0b1220;
+      margin: 0 0 10px;
+    }
+    h1 { font-size: 26px; }
+    h2 { font-size: 18px; margin-top: 20px; }
+    h3 { font-size: 16px; }
+    p { margin: 6px 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px;
+      table-layout: fixed;
+    }
+    th,
+    td {
+      border: 1px solid #d1d5db;
+      padding: 7px 8px;
+      text-align: left;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+    }
+    ul { margin: 6px 0 0 20px; padding: 0; }
+    li { margin: 4px 0; }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 12px;
+    }
+    .status-ok { color: #047857; font-weight: 600; }
+    .status-warn { color: #b45309; font-weight: 600; }
+    .verdict {
+      padding: 10px;
+      background: #f1f5f9;
+      border-left: 4px solid #2563eb;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 12px;
+      margin: 8px 0 16px;
+    }
+    figure {
+      margin: 0;
+      padding: 8px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    figure img {
+      width: 100%;
+      max-height: 320px;
+      display: block;
+      object-fit: cover;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+    figure figcaption {
+      margin-top: 6px;
+      color: #334155;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Windows UI Parity Report: Dashboard Leadership and Theme Parity</h1>
+  <p><strong>Report date:</strong> 2026-07-26</p>
+  <p><strong>Scope:</strong> Windows Tauri UI parity for AI Leadership default hero, leadership level mapping, metric layout semantics, settings panel integrity, theme centralization, and dark-mode regression fix.</p>
+  <p><strong>Files modified:</strong></p>
+  <ul>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/index.css</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/utils/leadershipTitles.ts</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/components/LeadershipPanel.tsx</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/main.tsx</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/windows/Dashboard.tsx</span></li>
+    <li><span class="mono">windows/apps/codexu-tauri/web/src/windows/Settings.tsx</span></li>
+    <li><span class="mono">docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.md</span></li>
+    <li><span class="mono">docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.html</span></li>
+  </ul>
+
+  <h2>Mac authoritative mapping (Leadership levels)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Band</th>
+        <th>Canonical id</th>
+        <th>Score range</th>
+        <th>中文</th>
+        <th>English</th>
+        <th>Badge file</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>L1</td><td><span class="mono">l1</span></td><td>0–19</td><td>碳基牛马</td><td>Carbon Laborer</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l1.png</span></td></tr>
+      <tr><td>L2</td><td><span class="mono">l2</span></td><td>20–34</td><td>赛博监工</td><td>Cyber Overseer</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l2.png</span></td></tr>
+      <tr><td>L3</td><td><span class="mono">l3</span></td><td>35–49</td><td>分身队长</td><td>Clone Captain</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l3.png</span></td></tr>
+      <tr><td>L4</td><td><span class="mono">l4</span></td><td>50–64</td><td>硅基领主</td><td>Silicon Lord</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l4.png</span></td></tr>
+      <tr><td>L5</td><td><span class="mono">l5</span></td><td>65–79</td><td>硅基统帅</td><td>Silicon Marshal</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l5.png</span></td></tr>
+      <tr><td>L6</td><td><span class="mono">l6</span></td><td>80–92</td><td>超级个体</td><td>Super Individual</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l6.png</span></td></tr>
+      <tr><td>L7</td><td><span class="mono">l7</span></td><td>93–100</td><td>人类最强者</td><td>Humanity&apos;s Apex</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l7.png</span></td></tr>
+    </tbody>
+  </table>
+  <p class="mono" style="color:#475569;">Source references: Sources/CodexUsageWidget/Domain/LeadershipModel.swift and Sources/CodexUsageWidget/UI/LeadershipViews.swift.</p>
+
+  <h2>Resource/token ownership table</h2>
+  <table>
+    <thead>
+      <tr><th>Token class</th><th>Owned by</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Palette-owned accent</td><td><span class="mono">Resources/Palettes/codexu.default</span> (accent.primary, accent.primaryStrong, accent.secondary, accent.secondaryStrong, accent.highlight)</td></tr>
+      <tr><td>Palette-owned quota</td><td><span class="mono">Resources/Palettes/codexu.default</span> (quota.primary, quota.secondary)</td></tr>
+      <tr><td>Palette-owned data</td><td><span class="mono">Resources/Palettes/codexu.default</span> (data.*)</td></tr>
+      <tr><td>Palette-owned selection</td><td><span class="mono">Resources/Palettes/codexu.default</span> (selection.*)</td></tr>
+      <tr><td>Palette-owned ornament</td><td><span class="mono">Resources/Palettes/codexu.default</span> (ornament.*)</td></tr>
+      <tr><td>App theme-owned surface</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--surface*)</td></tr>
+      <tr><td>App theme-owned text</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--text-*)</td></tr>
+      <tr><td>App theme-owned status</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--status-*)</td></tr>
+      <tr><td>Palette color facts</td><td><span class="mono">accent.primary #2866F7; accent.primaryStrong #1F59ED; accent.secondary #8B6DFF; data.tokenInput #0A84FF; data.tokenCached #8B6DFF; data.tokenOutput #FF9F0A</span></td></tr>
+    </tbody>
+  </table>
+
+  <h2>Screenshot evidence gallery</h2>
+  <p>Windows acceptance assets in <span class="mono">docs/windows-port/reports/assets</span> and mac promo references:</p>
+  <div class="gallery">
+    <figure>
+      <img src="assets/baseline-dashboard.png" alt="baseline-dashboard.png" />
+      <figcaption>baseline-dashboard.png — Legacy Overview/Usage baseline before this UI iteration.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/baseline-leadership.png" alt="baseline-leadership.png" />
+      <figcaption>baseline-leadership.png — Baseline Leadership before canonical L1–L7 and real badges.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/baseline-settings.png" alt="baseline-settings.png" />
+      <figcaption>baseline-settings.png — Baseline Settings before the UI iteration.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/final-leadership.png" alt="final-leadership.png" />
+      <figcaption>final-leadership.png — Final Leadership hero with 78px hero badge, canonical L1–L7 track, and score outside orbit.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/final-usage.png" alt="final-usage.png" />
+      <figcaption>final-usage.png — Final Usage dashboard with Usage/Threads/Projects retained and Usage section label (renamed from Overview).</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/final-settings.png" alt="final-settings.png" />
+      <figcaption>final-settings.png — Final Settings panel with no clipping and complete controls.</figcaption>
+    </figure>
+  </div>
+  <div class="gallery">
+    <figure>
+      <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="screenshot-v1.2.0-ai-leadership.png" />
+      <figcaption>screenshot-v1.2.0-ai-leadership.png — mac reference visual baseline.</figcaption>
+    </figure>
+    <figure>
+      <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="screenshot-v1.1.0-palette-gallery.png" />
+      <figcaption>screenshot-v1.1.0-palette-gallery.png — mac reference palette and branding context.</figcaption>
+    </figure>
+  </div>
+
+  <h2>Comparison matrix</h2>
+  <table>
+    <thead>
+      <tr><th>Axis</th><th>Baseline</th><th>Final</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Hierarchy</td><td>Legacy Windows implementation used operator-style semantics and non-canonical badge pathing in parts of the flow.</td><td>Leadership defaults now follow canonical mac hierarchy with L1–L7 mapping and real badge assets.</td></tr>
+      <tr><td>Rank recognition</td><td>Rank labels/track existed but lacked full canonical behavior and hero-state consistency.</td><td>L1–L7 track is rendered with canonical levels and badge/title pairing; score is placed outside the progress ring.</td></tr>
+      <tr><td>Primary color</td><td>Palette tokens were used for accent/data while theme surfaces still mixed baseline assumptions.</td><td>Palette ownership preserved for shared accents; theme surfaces/text/status centralized and fixed in app theme layer.</td></tr>
+      <tr><td>Chart density</td><td>Key metric density not explicitly validated against final Leadership/Usage state.</td><td>2×2 key metric layout retained with Usage/Threads/Projects structure.</td></tr>
+      <tr><td>Material/readability</td><td>Dark mode had reduced readability due to white-like background behavior.</td><td>Main agent re-ran Light/Dark/System and confirmed dark-mode readability is normal after fix.</td></tr>
+      <tr><td>Navigation</td><td>Navigation sections (Usage/Threads/Projects) existed, but Usage naming and hero flow were inconsistent with acceptance labels.</td><td>Navigation/content structure retained; Usage is the active acceptance label (renamed from Overview).</td></tr>
+      <tr><td>Whitespace</td><td>No deliberate whitespace reset before this pass.</td><td>Spacing behavior unchanged; no additional whitespace layout restructuring in this iteration.</td></tr>
+      <tr><td>Focus</td><td>Focus treatment came from palette defaults.</td><td>Focus remains palette-owned and unchanged.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>已对齐</h2>
+  <ul>
+    <li>AI Leadership default hero now uses canonical L1–L7 mapping and real badge assets.</li>
+    <li>Hero badge size is 78px and score is displayed outside orbit.</li>
+    <li>L1–L7 rank track renders correctly and Usage/Threads/Projects are retained.</li>
+    <li>Usage label is updated from Overview to Usage.</li>
+    <li>Theme token centralization fixed, including dark-mode readibility regression.</li>
+    <li>Settings panel clipping issue removed.</li>
+  </ul>
+
+  <h2>保留的 Windows 平台差异</h2>
+  <ul>
+    <li>Windows keeps `Resources/Palettes/codexu.default` as palette source and uses explicit Windows assets for rendering.
+    </li>
+    <li>Windows acceptance does not attempt to copy macOS dark promo-artwork exactly; mac references are used only for design checks.</li>
+  </ul>
+
+  <h2>已知缺口与下一步</h2>
+  <ul>
+    <li>no-signal/live-state screenshots for empty-data path were not collected in this acceptance run.</li>
+    <li>No manual pixel-diff versus mac images was executed.</li>
+    <li>Next step: run a short acceptance pass that captures no-signal/no-data artifacts for Leadership and Settings.</li>
+  </ul>
+
+  <h2>Validation</h2>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>cwd</th><th>Exit</th><th>Raw output tail</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="mono">npm run build</td>
+        <td class="mono">windows/apps/codexu-tauri/web</td>
+        <td class="status-ok">0</td>
+        <td class="mono">✓ built in 3.18s</td>
+      </tr>
+      <tr>
+        <td class="mono">cargo test --workspace</td>
+        <td class="mono">windows</td>
+        <td class="status-ok">0</td>
+        <td class="mono">running 9 tests, test result: ok. 9 passed</td>
+      </tr>
+      <tr>
+        <td class="mono">cargo tauri build --no-bundle (attempt 1)</td>
+        <td class="mono">windows/apps/codexu-tauri/src-tauri</td>
+        <td class="status-warn">1</td>
+        <td class="mono">error: failed to remove file ... codexu-tauri.exe (os error 5)</td>
+      </tr>
+      <tr>
+        <td class="mono">cargo tauri build --no-bundle (retry)</td>
+        <td class="mono">windows/apps/codexu-tauri/src-tauri</td>
+        <td class="status-ok">0</td>
+        <td class="mono">Finished `release` profile ... Built application at: E:\project\codexU\windows\target\release\codexu-tauri.exe</td>
+      </tr>
+      <tr>
+        <td class="mono">git diff --check</td>
+        <td class="mono">repo root</td>
+        <td class="status-ok">0</td>
+        <td class="mono">No whitespace errors detected (warning: LF→CRLF conversion note only).</td>
+      </tr>
+      <tr>
+        <td class="mono">windows/target/release/codexu-tauri.exe (manual smoke)</td>
+        <td class="mono">repo root</td>
+        <td class="status-ok">0</td>
+        <td class="mono">started_process_id=45220; window_count=1; process closed successfully.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Conclusion / Alignment</h2>
+  <div class="verdict">
+    <p>AI Leadership UI defaults and theme behavior are aligned with the mac intent for canonical level mapping, hero presentation, and key metric/data layout, with dark-mode regression fixed through theme centralization.</p>
+    <p>No claim is made for full pixel-level parity in this run.</p>
+  </div>
+
+  <h2>Suggested commit message</h2>
+  <p class="mono">feat(windows-ui): align AI Leadership visual hierarchy</p>
+</body>
+</html>

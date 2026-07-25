@@ -17,12 +17,13 @@ import { ToolUsageList } from '../components/ToolUsageList';
 import { TrendChart } from '../components/TrendChart';
 import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
+import { applyAppTheme } from '../utils/appTheme';
 
 type DashboardTab = 'overview' | 'leadership' | 'threads' | 'projects';
 
 const TABS: Array<{ id: DashboardTab; title: string }> = [
-  { id: 'overview', title: 'Overview' },
   { id: 'leadership', title: 'AI Leadership' },
+  { id: 'overview', title: 'Usage' },
   { id: 'threads', title: 'Threads' },
   { id: 'projects', title: 'Projects' },
 ];
@@ -30,15 +31,15 @@ const TABS: Array<{ id: DashboardTab; title: string }> = [
 export function Dashboard() {
   const { usage, loading, error, refresh } = useUsage();
   const { settings, update } = useSettings();
-  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('leadership');
 
   useEffect(() => {
-    applyTheme(settings?.config.theme ?? 'system');
+    applyAppTheme(settings?.config.theme ?? 'system');
   }, [settings?.config.theme]);
 
   const handleThemeChange = async (theme: 'system' | 'light' | 'dark') => {
     await update({ theme });
-    applyTheme(theme);
+    applyAppTheme(theme);
   };
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -104,7 +105,7 @@ export function Dashboard() {
             {loading ? (
               <>
                 <h2 className="text-sm font-semibold text-primary">Loading usage data</h2>
-                <p className="text-sm text-secondary mt-1">Collecting local snapshots…</p>
+                <p className="text-sm text-secondary mt-1">Collecting local snapshots...</p>
               </>
             ) : (
               <>
@@ -225,12 +226,12 @@ export function Dashboard() {
                 <div className="flex items-center justify-between text-sm">
                   <h2 className="font-semibold text-primary">Threads</h2>
                   <button
-                    aria-label="Back to Overview"
+                    aria-label="Back to Leadership"
                     className="inline-flex items-center gap-1 text-secondary hover:text-primary"
-                    onClick={() => setActiveTab('overview')}
+                    onClick={() => setActiveTab('leadership')}
                   >
                     <ChevronRight size={14} className="rotate-180" />
-                    Overview
+                    Leadership
                   </button>
                 </div>
               </header>
@@ -249,12 +250,12 @@ export function Dashboard() {
                 <div className="flex items-center justify-between text-sm">
                   <h2 className="font-semibold text-primary">Projects</h2>
                   <button
-                    aria-label="Back to Overview"
+                    aria-label="Back to Leadership"
                     className="inline-flex items-center gap-1 text-secondary hover:text-primary"
-                    onClick={() => setActiveTab('overview')}
+                    onClick={() => setActiveTab('leadership')}
                   >
                     <ChevronRight size={14} className="rotate-180" />
-                    Overview
+                    Leadership
                   </button>
                 </div>
               </header>
@@ -287,13 +288,6 @@ export function Dashboard() {
       </main>
     </div>
   );
-}
-
-function applyTheme(theme: 'system' | 'light' | 'dark') {
-  const root = document.documentElement;
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark = theme === 'dark' || (theme === 'system' && prefersDark);
-  root.classList.toggle('dark', isDark);
 }
 
 function formatNumber(n: number): string {
