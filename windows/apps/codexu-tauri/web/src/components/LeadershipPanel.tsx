@@ -1,17 +1,15 @@
-﻿import {
+import {
   AlertTriangle,
   BookOpenText,
   Brain,
   Calendar,
-  Clock3,
   Cpu,
   Eye,
   Globe,
   ShieldQuestion,
   TrendingUp,
-  Users,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import type {
   LeadershipDashboardSnapshot,
   LeadershipDayPoint,
@@ -104,17 +102,17 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <h2 className="text-2xl sm:text-3xl font-semibold mt-1 text-primary leading-tight">
               {hasSignal
                 ? `${activeBand.zhName} / ${activeBand.enName}`
-                : 'Not enough records'}
+                : 'Leadership score pending'}
             </h2>
             <p className="text-sm text-secondary mt-1">
               {hasSignal
-                ? `Period ${report.period} | Evidence ${confidence}%`
-                : 'Need longer sample to unlock authoritative title and scoring lane.'}
+                ? `Period ${report.period} | ${report.active_day_count} active days | Evidence ${confidence}%`
+                : `Record insufficient for authoritative title | Period ${report.period}`}
             </p>
             <div className="mt-3 flex items-center gap-2">
               {hasSignal ? (
                 <>
-                  <span className="px-2 py-1 rounded-full border border-accent/50 bg-accent/12 text-accent text-xs font-medium">
+                  <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
                     L{activeBand.level}
                   </span>
                   <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
@@ -134,31 +132,17 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
           </div>
         </div>
 
-        <div className="leadership-rank-path">
-          {LEADERSHIP_BANDS.map((band) => {
-            const isCurrent = activeBand?.id === band.id;
-            return (
-              <div
-                key={band.id}
-                className={`leadership-rank-item ${isCurrent ? 'leadership-rank-item-active' : ''}`}
-                aria-label={`${band.level} ${band.enName}`}
-              >
-                <img src={band.badge} alt="" className="leadership-rank-badge" />
-                <span className="text-xs">L{band.level}</span>
-              </div>
-            );
-          })}
-        </div>
+        <LeadershipCommandRail
+          bands={LEADERSHIP_BANDS}
+          hasSignal={hasSignal}
+          score={hasSignal ? scoreForVisual : 0}
+        />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Pill icon={<Users size={14} />} label="Agents" value={formatNumberish(report.agent_count)} />
-          <Pill icon={<Clock3 size={14} />} label="AI Hours" value={formatHours(report.ai_hours)} />
+        <div className="leadership-hero-metrics-grid">
+          <Pill icon={<Brain size={14} />} label="Leadership Score" value={formatScore(hasSignal ? scoreForVisual : null)} />
+          <Pill icon={<Calendar size={14} />} label="28-day Agents" value={formatNumberish(report.agent_count)} />
+          <Pill icon={<Globe size={14} />} label="AI Hours" value={formatHours(report.ai_hours)} />
           <Pill icon={<TrendingUp size={14} />} label="Peak Concurrency" value={formatNumberish(report.peak_concurrency)} />
-          <Pill
-            icon={<Calendar size={14} />}
-            label="Active days"
-            value={report.active_day_count > 0 ? String(report.active_day_count) : '0'}
-          />
         </div>
       </section>
 
@@ -340,8 +324,84 @@ function ScoreOrbit({
         </svg>
       </div>
       <div className={`leadership-orbit-score ${!hasSignal ? 'leadership-orbit-score-empty' : ''}`}>
-        {hasSignal ? `${safeScore}` : '—'}
+        {hasSignal ? `${safeScore}` : '--'}
       </div>
+    </div>
+  );
+}
+
+function LeadershipCommandRail({
+  bands,
+  hasSignal,
+  score,
+}: {
+  bands: readonly LeadershipBand[];
+  hasSignal: boolean;
+  score: number;
+}) {
+  const safeScore = clampPercent(score);
+
+  return (
+    <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
+      <div className="leadership-rail-track" />
+      {hasSignal ? (
+        <div
+          className="leadership-rail-fill"
+          style={{ ['--progress' as keyof CSSProperties]: `${safeScore}%` } as CSSProperties}
+        />
+      ) : null}
+
+      {hasSignal ? (
+        <div className="leadership-threshold-points">
+          {bands.map((band) => {
+            const isCurrent = score >= band.scoreMin && score <= band.scoreMax;
+            const thresholdPercent = clampPercent((band.scoreMin / 100) * 100);
+            const isLargeBadge = band.level === 6;
+            const isLeftEdge = band.scoreMin === 0;
+            const nodeClass = [
+              'leadership-rail-node',
+              isCurrent ? 'leadership-rail-node-current' : '',
+              isLeftEdge ? 'leadership-rail-node-left-edge' : '',
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+            return (
+              <Fragment key={band.id}>
+                <div
+                  className={nodeClass}
+                  style={{ left: `${thresholdPercent}%` }}
+                  aria-label={`Band ${band.level} start at ${band.scoreMin}`}
+                >
+                  <span className="leadership-rail-dot" aria-hidden="true" />
+                  <span className="leadership-rail-node-label">L{band.level}</span>
+                </div>
+                <img
+                  src={band.badge}
+                  alt=""
+                  style={{ left: `${thresholdPercent}%` }}
+                  className={[
+                    'leadership-rail-badge',
+                    isCurrent ? 'leadership-rail-badge-current' : '',
+                    isLeftEdge ? 'leadership-rail-badge-left-edge' : '',
+                    isLargeBadge ? 'leadership-rail-badge-large' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                />
+              </Fragment>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {hasSignal ? (
+        <div className="leadership-rail-score-marker" style={{ left: `${safeScore}%` }}>
+          <span className="leadership-rail-score-text">{`${safeScore} / 100`}</span>
+          <span className="leadership-rail-score-stem" aria-hidden="true" />
+          <span className="leadership-rail-score-pin" aria-hidden="true" />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -415,13 +475,18 @@ function formatCoreScore(value: number | null | undefined): string {
 }
 
 function formatHours(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'N/A';
+  if (value == null || !Number.isFinite(value)) return '--';
   return `${value.toFixed(1)}h`;
 }
 
 function formatNumberish(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'N/A';
+  if (value == null || !Number.isFinite(value)) return '--';
   return String(value);
+}
+
+function formatScore(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return '--';
+  return `${Math.round(value)} / 100`;
 }
 
 function formatRatio(value: number | null | undefined): string {

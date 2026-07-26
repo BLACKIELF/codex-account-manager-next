@@ -47,7 +47,7 @@
   - `docs/windows-port/reports/assets/baseline-dashboard.png` — Baseline Dashboard in legacy Overview/Usage view before this UI iteration.
   - `docs/windows-port/reports/assets/baseline-leadership.png` — Baseline Leadership panel before canonical L1–L7 and real badge adoption.
   - `docs/windows-port/reports/assets/baseline-settings.png` — Baseline Settings before the UI iteration.
-  - `docs/windows-port/reports/assets/final-leadership.png` — Final Leadership hero with canonical mac L1–L7 + real badge assets, 78px hero badge, L1→L7 rank track, and score rendered outside orbit ring.
+  - `docs/windows-port/reports/assets/final-leadership-command-rail.png` — Final native release capture, real 963×791 screenshot of final command rail (`leadership`), including visible badge art, score/title line, `L1–L7` markers, and compact marker at runtime.
   - `docs/windows-port/reports/assets/final-usage.png` — Final Usage dashboard showing `Usage` (renamed from `Overview`) plus 2×2 key metrics and retained Usage/Threads/Projects structure.
   - `docs/windows-port/reports/assets/final-settings.png` — Final Settings panel without clipping.
 
@@ -61,7 +61,7 @@
 
 ![baseline-settings](assets/baseline-settings.png)
 
-![final-leadership](assets/final-leadership.png)
+![final-leadership-command-rail](assets/final-leadership-command-rail.png)
 
 ![final-usage](assets/final-usage.png)
 
@@ -75,50 +75,52 @@
 
 | Axis | Baseline | Final |
 | --- | --- | --- |
-| Hierarchy | Legacy Windows implementation used an `Operator`-style hero and real badge assets were not fully aligned to mac canonical mapping. | Leadership default hero now follows mac baseline semantics: canonical L1–L7, no fake/placeholder operator treatment, and canonical badge mapping. |
-| Rank recognition | Orbit and badge state were present but not fully aligned to mac label-to-badge semantics. | L1→L7 rank track renders with canonical title/badge behavior and 78px hero badge; score shown outside the ring. |
-| Primary color | Core accent/data tokens were still shared, but no full theme token separation for surfaces/text/status. | Palette remains source for accent/quota/data/selection/ornament; dark-mode regression fixed via theme centralization with app-owned `--surface`, `--text`, and `--status` tokens. |
-| Chart density | Dashboard/leadership metrics and 2×2 card density were not consistently validated against the new hero state. | Final UI keeps the intended 2×2 key metrics on leadership/usage flow and remains visually consistent with usage thread/project structure. |
-| Material/readability | Dark mode showed insufficient readability on white-like surfaces. | Main agent re-run under release confirmed Light, Dark, System themes are responsive; dark readability is normal after fix. |
-| Navigation | `Usage/Threads/Projects` and settings path were present but not validated together with final hero/state changes. | `Usage`, `Threads`, `Projects` remain retained, and `Overview` label is renamed to `Usage` in final state. |
-| Whitespace | Not formally measured with final hero iteration in baseline snapshot. | No layout overhaul was introduced; spacing and panel alignment are preserved in this scope. |
-| Focus | Focus ring style came from palette and was not in scope in baseline review. | Focus state is unchanged because it remains palette-owned. |
+| Architecture | Leadership rendering used a rank row and orbit flow but not all levels, thresholds, and badge linkage were represented as a continuous command rail in native UI. | Final architecture uses a continuous command rail with real `l1`–`l7` resources at canonical thresholds `0/20/35/50/65/80/93`, score/title row, and compact 83/100 marker context. |
+| Rank/gradient behavior | L1/L7 semantics existed, but native score-to-fill behavior and clipping at score boundary were not fully verified in final capture. | Semantic gradient spans 0–100 and is physically clipped at `score`; marker and fill now align with band boundaries and current score semantics. |
+| Primary color | Palette and app tokens were mixed without explicit ownership boundaries for all surfaces/text. | Palette remains canonical for accent/quota/data/selection/ornament; app layer owns `--surface`, `--text`, and `--status` semantics. |
+| Layout density | 2×2 metric grid was not finalized against the latest hero state. | Final Leadership hero keeps 2×2 metric matrix with score/title block and command rail context. |
+| Navigation/consistency | `Usage/Threads/Projects` was present but visual intent vs mac hierarchy was mixed with theme assumptions. | Windows keeps white tool surface and nav structure intentionally; mac shots are retained only as hierarchy reference, not as dark marketing-theme pixel target. |
+| Validation depth | No native final native screenshot for this exact command-rail state. | Final native release screenshot now exists as definitive state evidence (final-leadership-command-rail.png). |
+| Readability | Prior behavior showed reduced dark readability until theme split was stabilized. | Light/Dark/System behavior is stable after theme token fix and release smoke launch. |
 
 ## 已对齐
 
-- AI Leadership hero now uses mac-aligned canonical text/badge semantics.
-- 78px hero badge, L1–L7 rank track, and score below orbit are present.
-- `Usage` is retained as a section with 2×2 key metrics and coexists with `Threads`, `Projects`.
-- Theme tokenization is centralized with dark-mode material and text regression fixed.
-- Settings panel visual clipping issue removed in final acceptance screenshots.
+- AI Leadership now renders a continuous command rail with canonical `L1`–`L7` badge/threshold mapping at `0/20/35/50/65/80/93`.
+- Semantic score presentation includes score/title row and compact marker context (`83/100` in captured state) with natural clipped fill from a full 0–100 gradient.
+- L1–L7 badge assets are visible natively in the acceptance screenshot; no image placeholder issue remains.
+- 2×2 Leadership metric matrix is preserved in hero layout.
+- `Usage`, `Threads`, `Projects` navigation remains retained and `Overview` is labeled as `Usage`.
+- Theme token split between palette/app ownership is consistent and dark-mode readability regression is resolved.
+- Settings clipping issue is removed.
 
 ## 保留的 Windows 平台差异
 
-- Windows keeps `Resources/Palettes/codexu.default` for all palette-owned fields and badge resources.
-- Windows does not reproduce macOS dark promotional screenshot artifact style; behavior is validated by release run and captured acceptance artifacts.
-- No pixel-diff pipeline was executed in this pass.
+- Windows keeps white tool surface and native white navigation while still matching mac hierarchy semantics.
+- Mac screenshots (`screenshot-v1.2.0-ai-leadership.png`, `screenshot-v1.1.0-palette-gallery.png`) are used as semantic references only; they are not copied as pixel targets.
+- No pixel diff run was completed in this acceptance pass.
+- No-signal/no-data native state artifact is still missing.
 
 ## 已知缺口与下一步
 
-- no-signal/live-state screenshot for runtime empty-data state was not collected in this run.
-- No manual pixel-diff vs mac captures was executed.
-- Next step: capture no-signal/no-data state artifacts for both Hero and Settings when a fresh acceptance environment is available.
+- no-signal/live-state native screenshot for empty-data state was not collected in this run.
+- No manual pixel-diff versus mac captures was executed.
+- Next step: capture no-signal/no-data native screenshots for Leadership and Settings in a fresh acceptance environment.
 
 ## Validation
 
 | Command | cwd | Exit | Raw output tail |
 | --- | --- | --- | --- |
-| `npm run build` | `windows/apps/codexu-tauri/web` | 0 | `✓ built in 3.18s` |
+| `npm run build` | `windows/apps/codexu-tauri/web` | 0 | `✓ built in 3.15s` |
 | `cargo test --workspace` | `windows` | 0 | `running 9 tests`, `test result: ok. 9 passed` |
-| `cargo tauri build --no-bundle` (attempt 1) | `windows/apps/codexu-tauri/src-tauri` | 1 | `failed to remove file ... codexu-tauri.exe (os error 5)` |
+| `cargo tauri build --no-bundle` (attempt 1) | `windows/apps/codexu-tauri/src-tauri` | 1 | `error: failed to remove file ... codexu-tauri.exe (os error 5)` |
 | `cargo tauri build --no-bundle` (retry) | `windows/apps/codexu-tauri/src-tauri` | 0 | `Finished 'release' profile ... Built application at: E:\project\codexU\windows\target\release\codexu-tauri.exe` |
 | `git diff --check` | repo root | 0 | `No whitespace errors detected (warning: LF→CRLF conversion note only).` |
-| `windows/target/release/codexu-tauri.exe` manual smoke | repo root | 0 | `started_process_id=45220`, `window_count=1`, process closed successfully. |
+| `windows/target/release/codexu-tauri.exe` release smoke launch | repo root | 0 | `process_count=1`, `window_count=1` at captured 963×791 native target for `final-leadership-command-rail.png`. |
 
 ## Conclusion / Alignment
 
-- Alignment target: Leadership/default dashboard behavior and theme baseline across light/dark/system, plus acceptance-level dark-mode regression fix, are functionally aligned with the mac reference intent as implemented in this release iteration.
-- Known non-claim: no assertion of pixel-perfect parity.
+- Alignment target: Leadership/default dashboard behavior, badge/level semantics, and theme ownership are functionally aligned for this release stage.
+- Remaining gap is process scope: no pixel-diff comparison and no no-signal native artifact in this pass.
 
 ## Files touched summary
 
@@ -134,5 +136,4 @@
 
 ## Suggested commit message
 
-`feat(windows-ui): align AI Leadership visual hierarchy`
-
+`feat(windows-ui): add Leadership command rail`

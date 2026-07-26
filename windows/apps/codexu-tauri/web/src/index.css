@@ -199,6 +199,12 @@ body {
     gap: 1rem;
   }
 
+  .leadership-hero-metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
   .leadership-orbit {
     position: relative;
     width: 132px;
@@ -218,6 +224,7 @@ body {
     width: 132px;
     height: 132px;
     transform: rotate(-90deg);
+    overflow: visible;
   }
 
   .orbit-track {
@@ -227,11 +234,11 @@ body {
   }
 
   .orbit-value {
-    stroke: var(--accent);
+    stroke: color-mix(in oklab, var(--accent) 65%, var(--text-secondary));
     stroke-width: 8;
     stroke-linecap: round;
     fill: none;
-    transition: stroke-dashoffset 240ms ease, stroke 240ms ease;
+    transition: stroke-dashoffset 240ms ease;
   }
 
   .leadership-orbit-score {
@@ -252,7 +259,7 @@ body {
     height: 78px;
     object-fit: contain;
     border-radius: 999px;
-    box-shadow: 0 0 0 2px color-mix(in oklab, var(--surface-elevated-strong) 55%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-elevated-strong) 60%, transparent);
   }
 
   .leadership-orbit-neutral-icon {
@@ -266,39 +273,196 @@ body {
     box-sizing: border-box;
   }
 
-  .leadership-rank-path {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 0.35rem;
+  .leadership-command-rail {
+    --rail-track-top: 78px;
+    --rail-track-center: calc(var(--rail-track-top) + 6.5px);
+    position: relative;
+    padding: 0.35rem 0.55rem 0.5rem;
+    min-height: 132px;
   }
 
-  .leadership-rank-item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.35rem 0.25rem;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: color-mix(in oklab, var(--surface-elevated) 70%, transparent);
-    color: var(--text-tertiary);
-  }
-
-  .leadership-rank-item-active {
-    color: var(--text-primary);
-    border-color: color-mix(in oklab, var(--accent) 45%, transparent);
-    background: color-mix(in oklab, var(--accent) 18%, transparent);
-  }
-
-  .leadership-rank-badge {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
+  .leadership-rail-track,
+  .leadership-rail-fill {
+    position: absolute;
+    left: 0.6rem;
+    right: 0.6rem;
+    height: 13px;
     border-radius: 999px;
+    top: var(--rail-track-top);
   }
 
-  .leadership-orbit-ring {
-    overflow: visible;
+  .leadership-rail-track {
+    background: color-mix(in oklab, var(--surface) 84%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-tertiary) 10%, transparent);
+  }
+
+  .leadership-rail-fill {
+    background: linear-gradient(
+      90deg,
+      var(--quota-primary-start),
+      var(--quota-primary-end),
+      var(--accent-secondary)
+    );
+    border: 1px solid color-mix(in oklab, var(--accent) 18%, transparent);
+    box-shadow: 0 6px 16px -12px color-mix(in oklab, var(--accent) 40%, transparent);
+    --progress: 0%;
+    will-change: clip-path;
+    clip-path: inset(0 calc(100% - var(--progress)) 0 0);
+  }
+
+  .leadership-threshold-points {
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    top: 0;
+    height: 112px;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .leadership-rail-node {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 132px;
+    pointer-events: none;
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+
+  .leadership-rail-dot {
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    left: 50%;
+    top: calc(var(--rail-track-center) - 3.5px);
+    border-radius: 999px;
+    background: var(--text-tertiary);
+    border: 1px solid color-mix(in oklab, var(--surface-elevated-strong) 64%, transparent);
+  }
+
+  .leadership-rail-badge {
+    position: absolute;
+    left: 0;
+    top: calc(var(--rail-track-top) - 80px);
+    width: 36px;
+    height: 36px;
+    transform: translateX(-50%);
+    display: block;
+    padding: 0;
+    object-fit: contain;
+    object-position: center;
+    image-rendering: auto;
+    border-radius: 999px;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    opacity: 1;
+    box-sizing: border-box;
+    mix-blend-mode: normal;
+    z-index: 2;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+
+  .leadership-rail-badge-large {
+    top: calc(var(--rail-track-top) - 94px);
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    opacity: 1;
+    transform: translateX(-50%) scale(1.04);
+    filter: drop-shadow(0 0 0 1px color-mix(in oklab, var(--surface-elevated-strong) 45%, transparent))
+      drop-shadow(0 0 6px color-mix(in oklab, var(--accent) 22%, transparent));
+  }
+
+  .leadership-rail-badge-current {
+    opacity: 0.96;
+    transform: translateX(-50%) scale(1.04);
+    filter: drop-shadow(0 0 0 1px color-mix(in oklab, var(--accent) 32%, transparent));
+  }
+
+  .leadership-rail-badge-left-edge {
+    left: 0% !important;
+    transform: translateX(0);
+  }
+
+  .leadership-rail-node-left-edge {
+    transform: translateX(0);
+    left: 0% !important;
+  }
+
+  .leadership-rail-node-current .leadership-rail-dot {
+    background: var(--accent);
+    border-color: color-mix(in oklab, var(--surface-elevated-strong) 72%, transparent);
+  }
+
+  .leadership-rail-node-label {
+    position: absolute;
+    left: 50%;
+    top: calc(var(--rail-track-center) + 20px);
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    line-height: 1;
+  }
+
+  .leadership-rail-node-current .leadership-rail-node-label {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .leadership-rail-score-marker {
+    position: absolute;
+    top: 0;
+    transform: translate(-50%, 0);
+    width: 0;
+    height: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .leadership-rail-score-text {
+    position: absolute;
+    left: 50%;
+    top: calc(var(--rail-track-top) - 42px);
+    transform: translateX(-50%);
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 1.15;
+    color: var(--text-primary);
+    font-weight: 600;
+    padding: 0.16rem 0.45rem;
+    background: color-mix(in oklab, var(--surface-elevated-strong) 84%, transparent);
+    border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+    border-radius: 999px;
+    box-shadow: 0 10px 24px -14px color-mix(in oklab, var(--text-tertiary) 25%, transparent);
+  }
+
+  .leadership-rail-score-stem {
+    pointer-events: none;
+    position: absolute;
+    left: 50%;
+    top: calc(var(--rail-track-top) - 17px);
+    transform: translateX(-50%);
+    width: 1px;
+    height: 17px;
+    background: color-mix(in oklab, var(--text-tertiary) 56%, transparent);
+  }
+
+  .leadership-rail-score-pin {
+    pointer-events: none;
+    position: absolute;
+    left: 50%;
+    top: var(--rail-track-center);
+    transform: translate(-50%, -50%);
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--surface-elevated-strong) 74%, transparent);
   }
 
   .chip-like {

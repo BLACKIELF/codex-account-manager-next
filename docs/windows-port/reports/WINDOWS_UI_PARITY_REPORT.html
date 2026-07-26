@@ -153,8 +153,8 @@
       <figcaption>baseline-settings.png — Baseline Settings before the UI iteration.</figcaption>
     </figure>
     <figure>
-      <img src="assets/final-leadership.png" alt="final-leadership.png" />
-      <figcaption>final-leadership.png — Final Leadership hero with 78px hero badge, canonical L1–L7 track, and score outside orbit.</figcaption>
+      <img src="assets/final-leadership-command-rail.png" alt="final-leadership-command-rail.png" />
+      <figcaption>final-leadership-command-rail.png — Final native release capture (963×791), showing continuous command rail, visible L1–L7 badge art, and score/title/metric context.</figcaption>
     </figure>
     <figure>
       <img src="assets/final-usage.png" alt="final-usage.png" />
@@ -168,11 +168,11 @@
   <div class="gallery">
     <figure>
       <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="screenshot-v1.2.0-ai-leadership.png" />
-      <figcaption>screenshot-v1.2.0-ai-leadership.png — mac reference visual baseline.</figcaption>
+      <figcaption>screenshot-v1.2.0-ai-leadership.png — mac reference visual baseline used for hierarchy/reference.</figcaption>
     </figure>
     <figure>
       <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="screenshot-v1.1.0-palette-gallery.png" />
-      <figcaption>screenshot-v1.1.0-palette-gallery.png — mac reference palette and branding context.</figcaption>
+      <figcaption>screenshot-v1.1.0-palette-gallery.png — mac reference for palette and branding context.</figcaption>
     </figure>
   </div>
 
@@ -182,39 +182,39 @@
       <tr><th>Axis</th><th>Baseline</th><th>Final</th></tr>
     </thead>
     <tbody>
-      <tr><td>Hierarchy</td><td>Legacy Windows implementation used operator-style semantics and non-canonical badge pathing in parts of the flow.</td><td>Leadership defaults now follow canonical mac hierarchy with L1–L7 mapping and real badge assets.</td></tr>
-      <tr><td>Rank recognition</td><td>Rank labels/track existed but lacked full canonical behavior and hero-state consistency.</td><td>L1–L7 track is rendered with canonical levels and badge/title pairing; score is placed outside the progress ring.</td></tr>
-      <tr><td>Primary color</td><td>Palette tokens were used for accent/data while theme surfaces still mixed baseline assumptions.</td><td>Palette ownership preserved for shared accents; theme surfaces/text/status centralized and fixed in app theme layer.</td></tr>
-      <tr><td>Chart density</td><td>Key metric density not explicitly validated against final Leadership/Usage state.</td><td>2×2 key metric layout retained with Usage/Threads/Projects structure.</td></tr>
-      <tr><td>Material/readability</td><td>Dark mode had reduced readability due to white-like background behavior.</td><td>Main agent re-ran Light/Dark/System and confirmed dark-mode readability is normal after fix.</td></tr>
-      <tr><td>Navigation</td><td>Navigation sections (Usage/Threads/Projects) existed, but Usage naming and hero flow were inconsistent with acceptance labels.</td><td>Navigation/content structure retained; Usage is the active acceptance label (renamed from Overview).</td></tr>
-      <tr><td>Whitespace</td><td>No deliberate whitespace reset before this pass.</td><td>Spacing behavior unchanged; no additional whitespace layout restructuring in this iteration.</td></tr>
-      <tr><td>Focus</td><td>Focus treatment came from palette defaults.</td><td>Focus remains palette-owned and unchanged.</td></tr>
+      <tr><td>Architecture</td><td>Leadership rendering used a rank row and orbit flow, but not all band thresholds and badge linkage were represented as a native continuous rail.</td><td>Final architecture uses a continuous command rail with real <span class="mono">l1</span>–<span class="mono">l7</span> resources at canonical thresholds <span class="mono">0/20/35/50/65/80/93</span>, score/title row, and compact <span class="mono">83/100</span> marker context.</td></tr>
+      <tr><td>Rank/gradient behavior</td><td>Gradient and current-score mapping were not fully validated in native final evidence.</td><td>Full 0–100 semantic gradient is shown and clipped to current score boundary in final native capture.</td></tr>
+      <tr><td>Primary color</td><td>Palette and app tokens were shared without explicit full separation.</td><td>Palette ownership preserved for accent/quota/data/selection/ornament; app owns surface/text/status for stable light and dark behavior.</td></tr>
+      <tr><td>Layout density</td><td>2×2 key metric density was not explicitly linked to final command-rail state.</td><td>Leadership continues to show score/title plus compact 2×2 metric matrix in accepted layout.</td></tr>
+      <tr><td>Navigation/intent</td><td>Navigation existed, but mac promo and Windows intent were mixed in comparison framing.</td><td>Windows keeps white tool surface and native navigation; mac references are retained as hierarchy references only, not a pixel-copy mandate.</td></tr>
+      <tr><td>Validation</td><td>Native no-signal/no-diff proof was missing.</td><td>No pixel-diff was run; one native release screenshot (963×791) is now captured as final acceptance evidence.</td></tr>
+      <tr><td>Readability</td><td>Dark-mode readability was unstable in earlier pass.</td><td>Light/Dark/System readability is stable after theme-token fix and release smoke launch.</td></tr>
     </tbody>
   </table>
 
-  <h2>已对齐</h2>
+  <h2>Aligned</h2>
   <ul>
-    <li>AI Leadership default hero now uses canonical L1–L7 mapping and real badge assets.</li>
-    <li>Hero badge size is 78px and score is displayed outside orbit.</li>
-    <li>L1–L7 rank track renders correctly and Usage/Threads/Projects are retained.</li>
-    <li>Usage label is updated from Overview to Usage.</li>
-    <li>Theme token centralization fixed, including dark-mode readibility regression.</li>
-    <li>Settings panel clipping issue removed.</li>
+    <li>AI Leadership now renders a continuous command rail using canonical L1–L7 mapping with threshold anchors at 0/20/35/50/65/80/93.</li>
+    <li>Semantic score presentation now includes score/title context with compact marker and clip-bound 0–100 fill.</li>
+    <li>Native final screenshot confirms real leadership badge art is visible at each mapped threshold.</li>
+    <li>2×2 Leadership metric matrix is preserved.</li>
+    <li>Navigation remains <span class="mono">Usage</span> / <span class="mono">Threads</span> / <span class="mono">Projects</span>, with Overview renamed to Usage.</li>
+    <li>Theme token split is consistent and dark-mode regression is resolved.</li>
+    <li>Settings clipping issue removed.</li>
   </ul>
 
-  <h2>保留的 Windows 平台差异</h2>
+  <h2>Known Windows differences</h2>
   <ul>
-    <li>Windows keeps `Resources/Palettes/codexu.default` as palette source and uses explicit Windows assets for rendering.
-    </li>
-    <li>Windows acceptance does not attempt to copy macOS dark promo-artwork exactly; mac references are used only for design checks.</li>
+    <li>Windows keeps a white tool surface and native navigation treatment intentionally; these are not pixel-copied from mac screenshots.</li>
+    <li>No manual pixel-diff run was completed in this pass.</li>
+    <li>No-signal/no-data native capture remains uncollected.</li>
   </ul>
 
-  <h2>已知缺口与下一步</h2>
+  <h2>Known gaps and next steps</h2>
   <ul>
-    <li>no-signal/live-state screenshots for empty-data path were not collected in this acceptance run.</li>
-    <li>No manual pixel-diff versus mac images was executed.</li>
-    <li>Next step: run a short acceptance pass that captures no-signal/no-data artifacts for Leadership and Settings.</li>
+    <li>No no-signal/live-state native screenshot was collected in this run.</li>
+    <li>No manual pixel-diff versus mac captures was performed.</li>
+    <li>Next step: collect native no-signal/no-data artifacts for Leadership and Settings in a fresh acceptance run.</li>
   </ul>
 
   <h2>Validation</h2>
@@ -227,7 +227,7 @@
         <td class="mono">npm run build</td>
         <td class="mono">windows/apps/codexu-tauri/web</td>
         <td class="status-ok">0</td>
-        <td class="mono">✓ built in 3.18s</td>
+        <td class="mono">✓ built in 3.15s</td>
       </tr>
       <tr>
         <td class="mono">cargo test --workspace</td>
@@ -245,7 +245,7 @@
         <td class="mono">cargo tauri build --no-bundle (retry)</td>
         <td class="mono">windows/apps/codexu-tauri/src-tauri</td>
         <td class="status-ok">0</td>
-        <td class="mono">Finished `release` profile ... Built application at: E:\project\codexU\windows\target\release\codexu-tauri.exe</td>
+        <td class="mono">Finished `release` profile ... Built application at: E:\\project\\codexU\\windows\\target\\release\\codexu-tauri.exe</td>
       </tr>
       <tr>
         <td class="mono">git diff --check</td>
@@ -254,21 +254,21 @@
         <td class="mono">No whitespace errors detected (warning: LF→CRLF conversion note only).</td>
       </tr>
       <tr>
-        <td class="mono">windows/target/release/codexu-tauri.exe (manual smoke)</td>
+        <td class="mono">windows/target/release/codexu-tauri.exe release smoke launch</td>
         <td class="mono">repo root</td>
         <td class="status-ok">0</td>
-        <td class="mono">started_process_id=45220; window_count=1; process closed successfully.</td>
+        <td class="mono">process_count=1, window_count=1; native final screenshot captured as final-leadership-command-rail.png at 963×791.</td>
       </tr>
     </tbody>
   </table>
 
   <h2>Conclusion / Alignment</h2>
   <div class="verdict">
-    <p>AI Leadership UI defaults and theme behavior are aligned with the mac intent for canonical level mapping, hero presentation, and key metric/data layout, with dark-mode regression fixed through theme centralization.</p>
-    <p>No claim is made for full pixel-level parity in this run.</p>
+    <p>Leadership command rail architecture, band semantics, and theme ownership are functionally aligned in this release stage with mac semantic intent and native confirmation.</p>
+    <p>Outstanding gaps are process scope only: no pixel-diff run and no no-signal native artifact in this cycle.</p>
   </div>
 
   <h2>Suggested commit message</h2>
-  <p class="mono">feat(windows-ui): align AI Leadership visual hierarchy</p>
+  <p class="mono">feat(windows-ui): add Leadership command rail</p>
 </body>
 </html>
