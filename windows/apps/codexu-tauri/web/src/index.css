@@ -479,6 +479,25 @@ body {
     border-radius: 12px;
     outline: none;
   }
+
+  .dashboard-home {
+    min-height: 0;
+  }
+
+  .dashboard-leadership-orbit-wrap {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dashboard-home-rail .leadership-command-rail {
+    --rail-track-top: 62px;
+    min-height: 112px;
+  }
+
+  .dashboard-home .glass-panel {
+    min-height: 0;
+  }
 }
 
 @media (max-width: 900px) {

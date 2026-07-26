@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Header';
 import { LeadershipPanel } from '../components/LeadershipPanel';
+import { DashboardHome } from '../components/DashboardHome';
 import { ProjectBoard } from '../components/ProjectBoard';
 import { StatCard } from '../components/StatCard';
 import { ThreadList } from '../components/ThreadList';
@@ -19,9 +20,10 @@ import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
 import { applyAppTheme } from '../utils/appTheme';
 
-type DashboardTab = 'overview' | 'leadership' | 'threads' | 'projects';
+type DashboardTab = 'home' | 'overview' | 'leadership' | 'threads' | 'projects';
 
 const TABS: Array<{ id: DashboardTab; title: string }> = [
+  { id: 'home', title: 'Dashboard' },
   { id: 'leadership', title: 'AI Leadership' },
   { id: 'overview', title: 'Usage' },
   { id: 'threads', title: 'Threads' },
@@ -31,7 +33,7 @@ const TABS: Array<{ id: DashboardTab; title: string }> = [
 export function Dashboard() {
   const { usage, loading, error, refresh } = useUsage();
   const { settings, update } = useSettings();
-  const [activeTab, setActiveTab] = useState<DashboardTab>('leadership');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('home');
 
   useEffect(() => {
     applyAppTheme(settings?.config.theme ?? 'system');
@@ -162,6 +164,17 @@ export function Dashboard() {
               </button>
             ))}
           </div>
+
+          {activeTab === 'home' && (
+            <section
+              role="tabpanel"
+              id="dashboard-panel-home"
+              aria-labelledby="dashboard-tab-home"
+              className="space-y-6"
+            >
+              <DashboardHome usage={usage} onOpenLeadership={() => setActiveTab('leadership')} />
+            </section>
+          )}
 
           {activeTab === 'overview' && (
             <section

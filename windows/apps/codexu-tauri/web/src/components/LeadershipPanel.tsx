@@ -128,7 +128,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             </div>
           </div>
           <div className="leadership-hero-right">
-            <ScoreOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
+                <LeadershipOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
           </div>
         </div>
 
@@ -287,7 +287,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
   );
 }
 
-function ScoreOrbit({
+export function LeadershipOrbit({
   score,
   hasSignal,
   activeBand,
@@ -305,7 +305,7 @@ function ScoreOrbit({
     <div className="leadership-orbit-wrap">
       <div className="leadership-orbit" role="img" aria-label="Leadership score orbit">
         {hasSignal && activeBand ? (
-          <img src={activeBand.badge} alt="Leadership badge" className="leadership-orbit-badge" />
+            <img src={activeBand.badge} alt="Leadership badge" className="leadership-orbit-badge" />
         ) : (
           <ShieldQuestion size={40} className="leadership-orbit-neutral-icon" />
         )}
@@ -330,7 +330,7 @@ function ScoreOrbit({
   );
 }
 
-function LeadershipCommandRail({
+export function LeadershipCommandRail({
   bands,
   hasSignal,
   score,
