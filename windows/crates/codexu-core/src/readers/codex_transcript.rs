@@ -38,9 +38,6 @@ use super::common::*;
 use crate::models::*;
 
 const CODEX_CACHE_VERSION: i32 = 2;
-/// Keep derived tasks at most as long as the longest leadership report window (28 days)
-/// so explicit long-running tasks are not silently dropped.
-const MAX_DERIVED_TASK_DURATION_MS: i64 = 28 * 24 * 60 * 60 * 1000;
 
 /// On-disk cache for Codex transcript summaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -509,9 +506,6 @@ fn parse_derived_task_started_at(
     if !duration_ms.is_finite() || duration_ms <= 0.0 {
         return None;
     }
-    if duration_ms > MAX_DERIVED_TASK_DURATION_MS as f64 {
-        return None;
-    }
     if duration_ms > i64::MAX as f64 {
         return None;
     }
@@ -783,18 +777,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_task_complete_with_duration_just_above_24h_is_accepted() {
+    async fn parse_task_complete_with_long_duration_is_accepted() {
         let temp = tempfile::tempdir().unwrap();
         let archived = temp.path().join("archived_sessions");
         tokio::fs::create_dir_all(&archived).await.unwrap();
         let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
 
         let session = archived.join("rollout-task-derived-just-above-24h.jsonl");
-        let lines = vec![format!(
-            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":86401001}}}}"#,
-            completed.to_rfc3339(),
-            completed.to_rfc3339()
-        )];
+        let long_ms: i64 = 29 * 24 * 60 * 60 * 1000;
+        let line = serde_json::json!({
+            "timestamp": completed.to_rfc3339(),
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn-1",
+                "completed_at": completed.to_rfc3339(),
+                "duration_ms": long_ms,
+            }
+        });
+        let lines = vec![line.to_string()];
         tokio::fs::write(&session, lines.join("\n")).await.unwrap();
 
         let cache = temp.path().join("cache");
@@ -808,7 +809,10 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].task_intervals.len(), 1);
         assert_eq!(summaries[0].task_intervals[0].quality, LeadershipEvidenceQuality::Derived);
-        assert_eq!(summaries[0].task_intervals[0].started_at, completed - Duration::milliseconds(86401001));
+        assert_eq!(
+            summaries[0].task_intervals[0].started_at,
+            completed - Duration::milliseconds(long_ms)
+        );
     }
 
     #[tokio::test]
@@ -819,7 +823,7 @@ mod tests {
         let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
 
         let session = archived.join("rollout-task-derived-excessive.jsonl");
-        let too_long_ms: i64 = 28 * 24 * 60 * 60 * 1000 + 1;
+        let too_long_ms: i64 = i64::MAX - 1;
         let line = serde_json::json!({
             "timestamp": completed.to_rfc3339(),
             "type": "event_msg",
