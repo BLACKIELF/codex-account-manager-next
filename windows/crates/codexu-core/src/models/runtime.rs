@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::models::leadership::LeadershipDashboardSnapshot;
 
 /// Supported AI runtimes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -110,6 +111,27 @@ pub struct MultiRuntimeUsageSnapshot {
     pub runtimes: Vec<RuntimeUsageSnapshot>,
     pub aggregate: UsageSnapshot,
     pub messages: Vec<String>,
+}
+
+/// Dashboard-level snapshot returned for Codex-only UI integration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodexDashboardSnapshot {
+    pub codex: RuntimeUsageSnapshot,
+    pub leadership: CodexLeadershipSignal,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub refreshed_at: chrono::DateTime<chrono::Utc>,
+    pub messages: Vec<String>,
+}
+
+/// Independent leadership signal for the dashboard.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodexLeadershipSignal {
+    pub score: Option<i32>,
+    pub evidence_coverage: f64,
+    pub active_day_count: i64,
+    pub period: String,
+    pub model_version: String,
+    pub report: Option<LeadershipDashboardSnapshot>,
 }
 
 // Re-export from usage module for convenience.
