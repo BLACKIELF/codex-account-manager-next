@@ -53,6 +53,8 @@ pub struct SessionSummary {
     pub project_path: String,
     pub model: Option<String>,
     pub last_active_at: Option<DateTime<Utc>>,
+    /// Factual creation time from state metadata.
+    pub created_at: Option<DateTime<Utc>>,
     pub deltas: Vec<UsageDelta>,
     pub tool_calls: HashMap<String, i64>,
     /// Thread title from the Codex state database, if available.
@@ -586,9 +588,4 @@ impl UsageDayBucket {
     fn tokens(&self) -> i64 {
         self.usage.tokens.visible_total_tokens()
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 }

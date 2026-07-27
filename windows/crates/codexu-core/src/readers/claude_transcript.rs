@@ -432,6 +432,7 @@ fn make_local_usage_from_claude(
             archived: false,
             thread_source: None,
             parent_thread_id: None,
+            created_at: None,
             task_intervals: Vec::new(),
             git_branch: None,
             git_origin_url: None,

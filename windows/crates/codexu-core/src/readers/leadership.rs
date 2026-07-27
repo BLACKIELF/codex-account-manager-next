@@ -1,18 +1,28 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{Datelike, DateTime, TimeZone, Utc};
-use chrono::Duration;
+use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, TimeZone, Utc};
 
 use crate::models::*;
-use crate::readers::common::{SessionSummary};
+use crate::readers::common::{CodexTaskInterval, SessionSummary};
 
 /// Build a leadership snapshot from parsed session summaries.
 pub fn build_leadership_snapshot(
     sessions: &[SessionSummary],
     now: DateTime<Utc>,
 ) -> LeadershipDashboardSnapshot {
+    let statistics_tz = *Local::now().offset();
+    build_leadership_snapshot_with_timezone(sessions, now, statistics_tz)
+}
+
+/// Build a leadership snapshot with an explicit local statistics boundary.
+/// This supports timezone-aware day bucketing in period metrics.
+pub fn build_leadership_snapshot_with_timezone(
+    sessions: &[SessionSummary],
+    now: DateTime<Utc>,
+    statistics_tz: FixedOffset,
+) -> LeadershipDashboardSnapshot {
     let workers = deduplicate_workers(sessions.iter().map(make_worker).collect());
-    let intervals = build_intervals(sessions, &workers);
+    let intervals = build_intervals(sessions, &workers, now);
     let periods = [
         ("today".to_string(), 1i64),
         ("sevenDays".to_string(), 7),
@@ -24,13 +34,15 @@ pub fn build_leadership_snapshot(
         refreshed_at: now,
         reports: periods
             .into_iter()
-            .map(|(period, days)| build_report(period, &workers, &intervals, now, days))
+            .map(|(period, days)| {
+                build_report(period, &workers, &intervals, now, days, statistics_tz)
+            })
             .collect(),
     }
 }
 
 fn make_worker(session: &SessionSummary) -> LeadershipWorker {
-    let (kind, automation_id) = classify_worker_kind(session);
+    let (kind, automation_id, _) = classify_worker_kind(session);
     LeadershipWorker {
         id: build_worker_id("codex", kind, &session.session_id, automation_id.as_deref()),
         runtime: "codex".to_string(),
@@ -44,6 +56,7 @@ fn make_worker(session: &SessionSummary) -> LeadershipWorker {
 fn build_intervals(
     sessions: &[SessionSummary],
     workers: &[LeadershipWorker],
+    now: DateTime<Utc>,
 ) -> Vec<LeadershipInterval> {
     let worker_map = workers
         .iter()
@@ -53,7 +66,7 @@ fn build_intervals(
     sessions
         .iter()
         .flat_map(|session| {
-            let (kind, automation_id) = classify_worker_kind(session);
+            let (kind, automation_id, has_factual_source) = classify_worker_kind(session);
             let worker_id = build_worker_id("codex", kind, &session.session_id, automation_id.as_deref());
             let worker = worker_map
                 .get(&worker_id)
@@ -65,11 +78,12 @@ fn build_intervals(
                 if interval.ended_at <= interval.started_at {
                     return None;
                 }
-                let quality = if kind == LeadershipWorkerKind::Automation && automation_id.is_none() {
-                    LeadershipEvidenceQuality::Derived
-                } else {
-                    interval.quality
-                };
+                let mut quality = interval.quality;
+                if !interval_has_factual_timing(session.created_at, interval, now) || !has_factual_source {
+                    quality = LeadershipEvidenceQuality::Estimated;
+                } else if kind == LeadershipWorkerKind::Automation && automation_id.is_none() {
+                    quality = LeadershipEvidenceQuality::Derived;
+                }
                 Some(LeadershipInterval {
                     id: format!(
                         "{}:{}",
@@ -102,8 +116,9 @@ fn build_report(
     intervals: &[LeadershipInterval],
     now: DateTime<Utc>,
     day_count: i64,
+    statistics_tz: FixedOffset,
 ) -> LeadershipReport {
-    let start = day_start(now) - Duration::days(day_count - 1);
+    let start = day_start(now, statistics_tz) - Duration::days(day_count - 1);
 
     let mut period_intervals = intervals
         .iter()
@@ -112,7 +127,7 @@ fn build_report(
         .collect::<Vec<_>>();
 
     period_intervals = merge_intervals(period_intervals);
-    let mut daily_points = build_daily_points(&period_intervals, start, now);
+    let mut daily_points = build_daily_points(&period_intervals, start, now, statistics_tz);
     let active_worker_ids = period_intervals
         .iter()
         .map(|interval| interval.worker_id.clone())
@@ -153,7 +168,7 @@ fn build_report(
     let autonomous_day_count = period_intervals
         .iter()
         .filter(|interval| interval.is_autonomous)
-        .map(|interval| day_start(interval.start_at))
+        .map(|interval| day_start(interval.start_at, statistics_tz))
         .collect::<HashSet<_>>()
         .len() as f64;
     let daily_ai_hours = if active_day_count > 0 {
@@ -260,15 +275,32 @@ fn build_report(
     }
 }
 
-fn classify_worker_kind(session: &SessionSummary) -> (LeadershipWorkerKind, Option<String>) {
-    match session.thread_source.as_deref().unwrap_or("main") {
-        "subagent" => (LeadershipWorkerKind::Subagent, None),
-        "automation" => (
+fn classify_worker_kind(session: &SessionSummary) -> (LeadershipWorkerKind, Option<String>, bool) {
+    match session.thread_source.as_deref() {
+        Some("main") => (LeadershipWorkerKind::Main, None, true),
+        Some("subagent") => (LeadershipWorkerKind::Subagent, None, true),
+        Some("automation") => (
             LeadershipWorkerKind::Automation,
             extract_automation_id(session.title.as_deref()),
+            true,
         ),
-        _ => (LeadershipWorkerKind::Main, None),
+        Some(_) => (LeadershipWorkerKind::Main, None, false),
+        None => (LeadershipWorkerKind::Main, None, false),
     }
+}
+
+fn interval_has_factual_timing(
+    created_at: Option<DateTime<Utc>>,
+    interval: &CodexTaskInterval,
+    now: DateTime<Utc>,
+) -> bool {
+    let Some(created_at) = created_at else {
+        return false;
+    };
+    if interval.ended_at > now + Duration::seconds(5) {
+        return false;
+    }
+    interval.started_at >= created_at - Duration::seconds(2)
 }
 
 fn extract_automation_id(title: Option<&str>) -> Option<String> {
@@ -463,10 +495,11 @@ fn build_daily_points(
     intervals: &[LeadershipInterval],
     start: DateTime<Utc>,
     now: DateTime<Utc>,
+    statistics_tz: FixedOffset,
 ) -> Vec<LeadershipDayPoint> {
     let mut points = Vec::new();
-    let mut day = day_start(start);
-    let end_day = day_start(now);
+    let mut day = day_start(start, statistics_tz);
+    let end_day = day_start(now, statistics_tz);
 
     while day <= end_day {
         let next = (day + Duration::days(1)).min(now);
@@ -762,10 +795,14 @@ fn hash_path(value: &str) -> String {
     format!("{hash:x}")
 }
 
-fn day_start(date: DateTime<Utc>) -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(date.year(), date.month(), date.day(), 0, 0, 0)
+fn day_start(date: DateTime<Utc>, statistics_tz: FixedOffset) -> DateTime<Utc> {
+    let local = date.with_timezone(&statistics_tz);
+    let local_midnight = statistics_tz
+        .with_ymd_and_hms(local.year(), local.month(), local.day(), 0, 0, 0)
         .single()
         .unwrap()
+        .with_timezone(&Utc);
+    local_midnight
 }
 
 fn duration_seconds(interval: &LeadershipInterval) -> f64 {
@@ -775,8 +812,12 @@ fn duration_seconds(interval: &LeadershipInterval) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::readers::CodexTranscriptReader;
+    use crate::readers::codex_state::CodexThreadMetadata;
     use crate::readers::codex_transcript::CodexTranscriptSummary;
     use crate::readers::common::CodexTaskInterval;
+    use std::collections::HashMap;
+    use tempfile::tempdir;
 
     fn mock_session(
         session_id: &str,
@@ -787,6 +828,7 @@ mod tests {
         started_offset_minutes: i64,
         duration_minutes: i64,
         title: Option<&str>,
+        created_at: Option<DateTime<Utc>>,
     ) -> SessionSummary {
         let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
@@ -803,6 +845,7 @@ mod tests {
             archived: false,
             git_branch: None,
             git_origin_url: None,
+            created_at: Some(created_at.unwrap_or(now)),
             thread_source: thread_source.map(std::string::ToString::to_string),
             parent_thread_id: parent_thread_id.map(std::string::ToString::to_string),
             task_intervals: vec![CodexTaskInterval {
@@ -828,6 +871,7 @@ mod tests {
             60,
             30,
             Some("Derived quality session"),
+            Some(Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap()),
         );
         let snapshot = build_leadership_snapshot(&[session], now);
         let report = snapshot
@@ -846,17 +890,20 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
-        let today = day_start(now);
         let session = mock_session(
             "thread-b",
             "C:\\Projects\\B",
             Some("subagent"),
             Some("thread-parent"),
             LeadershipEvidenceQuality::Fact,
-            -(today - now).num_minutes(), // keep within today window
-            120,
+            30,
+            30,
             Some("Task runner"),
+            Some(Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap() - Duration::minutes(45)),
         );
+        let (kind, _, has_factual_source) = classify_worker_kind(&session);
+        assert_eq!(kind, LeadershipWorkerKind::Subagent);
+        assert!(has_factual_source);
         let snapshot = build_leadership_snapshot(&[session], now);
         let report = snapshot
             .reports
@@ -864,7 +911,13 @@ mod tests {
             .find(|r| r.period == "twentyEightDays")
             .unwrap();
 
-        assert!(report.score.is_some());
+        assert!(
+            report.score.is_some(),
+            "score={:?}, evidence_coverage={}, active_day_count={}",
+            report.score,
+            report.evidence_coverage,
+            report.active_day_count
+        );
         assert!(report.title.is_some());
         assert_eq!(report.project_count, 1);
         assert_eq!(report.agent_count, Some(1));
@@ -893,6 +946,7 @@ mod tests {
             model: summary.model,
             last_active_at: summary.last_active_at,
             deltas: Vec::new(),
+            created_at: None,
             tool_calls: summary.tool_calls,
             title: None,
             archived: false,
@@ -969,5 +1023,215 @@ mod tests {
             build_worker_id("codex", LeadershipWorkerKind::Automation, "automation-session", None),
             "codex:automation:automation-session"
         );
+    }
+
+    #[tokio::test]
+    async fn valid_task_jsonl_without_metadata_is_not_scored() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let temp = tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-no-metadata.jsonl");
+        let lines = vec![
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_started","turn_id":"turn-1","started_at":"{}"}}}}"#,
+                (now - Duration::minutes(10)).to_rfc3339(),
+                (now - Duration::minutes(10)).to_rfc3339()
+            ),
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}"}}}}"#,
+                (now - Duration::minutes(9)).to_rfc3339(),
+                (now - Duration::minutes(9)).to_rfc3339()
+            ),
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let reader = CodexTranscriptReader::new(temp.path().join("cache"));
+        let sessions = reader
+            .load_local_session_summaries(temp.path(), HashMap::new())
+            .await
+            .unwrap()
+            .expect("should parse session");
+        let snapshot = build_leadership_snapshot(&sessions, now);
+        let report = snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+        assert_eq!(report.score, None);
+    }
+
+    #[tokio::test]
+    async fn valid_task_jsonl_with_source_metadata_scores() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let temp = tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let filename = "rollout-with-metadata.jsonl";
+        let session = archived.join(filename);
+        let lines = vec![
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_started","turn_id":"turn-1","started_at":"{}"}}}}"#,
+                (now - Duration::minutes(30)).to_rfc3339(),
+                (now - Duration::minutes(30)).to_rfc3339()
+            ),
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}"}}}}"#,
+                (now - Duration::minutes(10)).to_rfc3339(),
+                (now - Duration::minutes(10)).to_rfc3339()
+            ),
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let mut metadata = HashMap::new();
+        metadata.insert(
+            filename.to_string(),
+            CodexThreadMetadata {
+                thread_id: "thread-1".to_string(),
+                rollout_path: filename.to_string(),
+                title: None,
+                cwd: Some("C:\\Projects\\B".to_string()),
+                model: None,
+                archived: false,
+                created_at: Some((now - Duration::minutes(30)) - Duration::seconds(1)),
+                updated_at: Some(now - Duration::minutes(1)),
+                thread_source: Some("main".to_string()),
+                parent_thread_id: None,
+                git_branch: None,
+                git_origin_url: None,
+            },
+        );
+        let reader = CodexTranscriptReader::new(temp.path().join("cache"));
+        let sessions = reader
+            .load_local_session_summaries(temp.path(), metadata)
+            .await
+            .unwrap()
+            .expect("should parse session");
+        let snapshot = build_leadership_snapshot(&sessions, now);
+        let report = snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+        assert!(report.score.is_some());
+    }
+
+    #[test]
+    fn interval_far_in_the_future_is_not_scored_without_factual_gate() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let created_at = now - Duration::minutes(1);
+        let session = mock_session(
+            "thread-future",
+            "C:\\Projects\\Future",
+            Some("main"),
+            None,
+            LeadershipEvidenceQuality::Fact,
+            1,
+            1,
+            None,
+            Some(created_at),
+        );
+        let session = SessionSummary {
+            task_intervals: vec![CodexTaskInterval {
+                turn_id: Some("turn-1".to_string()),
+                started_at: now - Duration::minutes(1),
+                ended_at: now + Duration::seconds(10),
+                quality: LeadershipEvidenceQuality::Fact,
+            }],
+            ..session
+        };
+
+        let snapshot = build_leadership_snapshot(&[session], now);
+        let report = snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+        assert_eq!(report.score, None);
+    }
+
+    #[test]
+    fn interval_pre_created_before_factual_source_is_not_scored() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let created_at = now;
+        let session = mock_session(
+            "thread-past",
+            "C:\\Projects\\Past",
+            Some("main"),
+            None,
+            LeadershipEvidenceQuality::Fact,
+            1,
+            1,
+            None,
+            Some(created_at),
+        );
+        let session = SessionSummary {
+            task_intervals: vec![CodexTaskInterval {
+                turn_id: Some("turn-1".to_string()),
+                started_at: created_at - Duration::seconds(5),
+                ended_at: created_at - Duration::seconds(4),
+                quality: LeadershipEvidenceQuality::Fact,
+            }],
+            ..session
+        };
+
+        let snapshot = build_leadership_snapshot(&[session], now);
+        let report = snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+        assert_eq!(report.score, None);
+    }
+
+    #[test]
+    fn statistics_day_boundary_uses_supplied_timezone_not_utc() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 4, 0, 0).unwrap();
+        let local_tz = FixedOffset::east_opt(8 * 3600).unwrap();
+        let utc_tz = FixedOffset::east_opt(0).unwrap();
+
+        let session = SessionSummary {
+            file_path: "rollout-boundary.jsonl".to_string(),
+            session_id: "thread-boundary".to_string(),
+            project_path: "C:\\Projects\\Boundary".to_string(),
+            model: None,
+            last_active_at: Some(now),
+            deltas: Vec::new(),
+            tool_calls: HashMap::new(),
+            title: Some("Boundary task".to_string()),
+            archived: false,
+            created_at: Some(Utc.with_ymd_and_hms(2026, 7, 27, 15, 30, 0).unwrap()),
+            git_branch: None,
+            git_origin_url: None,
+            thread_source: Some("main".to_string()),
+            parent_thread_id: None,
+            task_intervals: vec![CodexTaskInterval {
+                turn_id: Some("turn-1".to_string()),
+                started_at: Utc.with_ymd_and_hms(2026, 7, 27, 15, 30, 0).unwrap(),
+                ended_at: Utc.with_ymd_and_hms(2026, 7, 27, 16, 30, 0).unwrap(),
+                quality: LeadershipEvidenceQuality::Fact,
+            }],
+        };
+
+        let local_snapshot =
+            build_leadership_snapshot_with_timezone(std::slice::from_ref(&session), now, local_tz);
+        let utc_snapshot =
+            build_leadership_snapshot_with_timezone(std::slice::from_ref(&session), now, utc_tz);
+
+        let local_report = local_snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+        let utc_report = utc_snapshot
+            .reports
+            .iter()
+            .find(|r| r.period == "today")
+            .unwrap();
+
+        assert_eq!(local_report.active_day_count, 1);
+        assert_eq!(utc_report.active_day_count, 0);
     }
 }

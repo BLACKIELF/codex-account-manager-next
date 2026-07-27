@@ -280,6 +280,7 @@ fn combine_session_metadata(
                 tool_calls: s.tool_calls,
                 title: meta.and_then(|m| m.title.clone()),
                 archived: meta.map(|m| m.archived).unwrap_or(false),
+                created_at: meta.and_then(|m| m.created_at),
                 thread_source: meta.and_then(|m| m.thread_source.clone()),
                 parent_thread_id: meta.and_then(|m| m.parent_thread_id.clone()),
                 task_intervals: s.task_intervals,
@@ -402,26 +403,20 @@ async fn parse_transcript(
         if let Some(event_type) = codex_string_value(payload.get("type")) {
             if event_type == "task_started" {
                 let turn_id = codex_string_value(payload.get("turn_id"));
-                let started_at = codex_timestamp_value(payload.get("started_at"))
-                    .or_else(|| {
-                        if let Some(turn_id) = &turn_id {
-                            codex_timestamp_value(payload.get("timestamp"))
-                                .or_else(|| Some(timestamp))
-                                .filter(|_| !turn_id.is_empty())
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_else(Utc::now);
+                let started_at = codex_task_timestamp_value(payload.get("started_at"));
                 if let Some(turn_id) = turn_id {
-                    started_tasks.insert(turn_id, started_at);
+                    if let Some(started_at) = started_at {
+                        started_tasks.insert(turn_id, started_at);
+                    }
                 }
                 continue;
             }
             if event_type == "task_complete" {
                 let turn_id = codex_string_value(payload.get("turn_id"));
-                let completed_at = codex_timestamp_value(payload.get("completed_at"))
-                    .unwrap_or(timestamp);
+                let completed_at = match codex_task_timestamp_value(payload.get("completed_at")) {
+                    Some(t) => t,
+                    None => continue,
+                };
                 if let Some(ref turn) = turn_id {
                     if let Some(started_at) = started_tasks.remove(turn) {
                         summary.task_intervals.push(CodexTaskInterval {
@@ -575,19 +570,19 @@ fn codex_date_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> 
     })
 }
 
-fn codex_timestamp_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
+fn codex_task_timestamp_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
     value.and_then(|v| match v {
         serde_json::Value::String(s) => s.parse::<DateTime<Utc>>().ok(),
         serde_json::Value::Number(n) => n
             .as_i64()
             .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok()))
-            .map(|n| {
+            .and_then(|n| {
                 let secs = if n.abs() > 10_000_000_000 {
                     n / 1000
                 } else {
                     n
                 };
-                DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now)
+                DateTime::from_timestamp(secs, 0)
             }),
         _ => None,
     })
@@ -734,6 +729,57 @@ mod tests {
         let started = completed - Duration::seconds(5);
         assert_eq!(interval.started_at, started);
         assert_eq!(interval.ended_at, completed);
+    }
+
+    #[tokio::test]
+    async fn parse_task_events_require_completed_timestamp() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-task-missing-complete.jsonl");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:00:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-03-26T12:00:00.000Z"}}"#,
+            r#"{"timestamp":"2026-03-26T12:01:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1"}}"#,
+            r#"{"timestamp":"2026-03-26T12:02:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","duration_ms":1000}}"#,
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn parse_task_started_missing_timestamp_is_ignored() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-task-missing-start.jsonl");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:00:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}"#,
+            r#"{"timestamp":"2026-03-26T12:01:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-03-26T12:01:00.000Z"}}"#,
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 0);
     }
 
     #[tokio::test]
