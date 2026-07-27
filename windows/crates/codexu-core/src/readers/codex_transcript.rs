@@ -38,7 +38,9 @@ use super::common::*;
 use crate::models::*;
 
 const CODEX_CACHE_VERSION: i32 = 2;
-const MAX_DERIVED_TASK_DURATION_MS: i64 = 24 * 60 * 60 * 1000;
+/// Keep derived tasks at most as long as the longest leadership report window (28 days)
+/// so explicit long-running tasks are not silently dropped.
+const MAX_DERIVED_TASK_DURATION_MS: i64 = 28 * 24 * 60 * 60 * 1000;
 
 /// On-disk cache for Codex transcript summaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -598,7 +600,8 @@ fn codex_task_timestamp_value(value: Option<&serde_json::Value>) -> Option<DateT
             .as_i64()
             .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok()))
             .and_then(|n| {
-                let secs = if n.abs() > 10_000_000_000 {
+                let abs_secs = n.unsigned_abs();
+                let secs = if abs_secs > 10_000_000_000 {
                     n / 1000
                 } else {
                     n
@@ -780,13 +783,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_task_complete_with_excessive_duration_is_ignored() {
+    async fn parse_task_complete_with_duration_just_above_24h_is_accepted() {
         let temp = tempfile::tempdir().unwrap();
         let archived = temp.path().join("archived_sessions");
         tokio::fs::create_dir_all(&archived).await.unwrap();
         let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
 
-        let session = archived.join("rollout-task-derived-excessive.jsonl");
+        let session = archived.join("rollout-task-derived-just-above-24h.jsonl");
         let lines = vec![format!(
             r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":86401001}}}}"#,
             completed.to_rfc3339(),
@@ -803,7 +806,49 @@ mod tests {
             .expect("should parse summaries");
 
         assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 1);
+        assert_eq!(summaries[0].task_intervals[0].quality, LeadershipEvidenceQuality::Derived);
+        assert_eq!(summaries[0].task_intervals[0].started_at, completed - Duration::milliseconds(86401001));
+    }
+
+    #[tokio::test]
+    async fn parse_task_complete_with_excessive_duration_is_ignored() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+        let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
+
+        let session = archived.join("rollout-task-derived-excessive.jsonl");
+        let too_long_ms: i64 = 28 * 24 * 60 * 60 * 1000 + 1;
+        let line = serde_json::json!({
+            "timestamp": completed.to_rfc3339(),
+            "type": "event_msg",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn-1",
+                "completed_at": completed.to_rfc3339(),
+                "duration_ms": too_long_ms,
+            }
+        });
+        let lines = vec![line.to_string()];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].task_intervals.len(), 0);
+    }
+
+    #[test]
+    fn parse_task_timestamp_min_i64_does_not_overflow() {
+        let value = serde_json::json!(-9223372036854775808_i64);
+        assert_eq!(codex_task_timestamp_value(Some(&value)), None);
     }
 
     #[test]
