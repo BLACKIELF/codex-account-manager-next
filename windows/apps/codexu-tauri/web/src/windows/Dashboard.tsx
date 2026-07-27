@@ -1,21 +1,13 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import {
-  Activity,
-  Calendar,
-  ChevronRight,
-  CircleDashed,
-  Coins,
-  Layers,
-} from 'lucide-react';
+import { Activity, ChevronRight, CircleDashed } from 'lucide-react';
 import { Header } from '../components/Header';
-import { LeadershipPanel } from '../components/LeadershipPanel';
 import { DashboardHome } from '../components/DashboardHome';
 import { ProjectBoard } from '../components/ProjectBoard';
-import { StatCard } from '../components/StatCard';
+import { LeadershipPanel } from '../components/LeadershipPanel';
 import { ThreadList } from '../components/ThreadList';
-import { TokenBarChart } from '../components/TokenBarChart';
+import { UsagePanel } from '../components/UsagePanel';
+import { ProjectsPanel } from '../components/ProjectsPanel';
 import { ToolUsageList } from '../components/ToolUsageList';
-import { TrendChart } from '../components/TrendChart';
 import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
 import { applyAppTheme } from '../utils/appTheme';
@@ -88,7 +80,6 @@ export function Dashboard() {
     );
   }
 
-  const detailed = usage?.detailed_usage;
   const isLeadershipAvailable = usage?.leadership && usage.leadership.reports.length > 0;
 
   return (
@@ -183,47 +174,12 @@ export function Dashboard() {
               aria-labelledby="dashboard-tab-overview"
               className="space-y-6"
             >
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                  label="Today"
-                  value={formatNumber(usage?.today_tokens ?? 0)}
-                  subValue={detailed ? `$${detailed.today.estimated_cost_usd.toFixed(2)} est.` : undefined}
-                  icon={<Activity size={18} />}
-                  accent="primary"
-                />
-                <StatCard
-                  label="7-Day"
-                  value={formatNumber(usage?.seven_day_tokens ?? 0)}
-                  subValue={detailed ? `$${detailed.seven_day.estimated_cost_usd.toFixed(2)} est.` : undefined}
-                  icon={<Calendar size={18} />}
-                  accent="secondary"
-                />
-                <StatCard
-                  label="Lifetime"
-                  value={formatNumber(usage?.lifetime_tokens ?? 0)}
-                  subValue={detailed ? `$${detailed.lifetime.estimated_cost_usd.toFixed(2)} est.` : undefined}
-                  icon={<Layers size={18} />}
-                  accent="tertiary"
-                />
-                <StatCard
-                  label="Est. Cost"
-                  value={`$${(detailed?.lifetime.estimated_cost_usd ?? 0).toFixed(2)}`}
-                  subValue="Lifetime"
-                  icon={<Coins size={18} />}
-                  accent="primary"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <TokenBarChart data={usage?.daily_buckets ?? []} />
-                <TrendChart trend={usage?.usage_trend ?? null} />
-              </div>
+              <UsagePanel usage={usage} />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ThreadList threads={usage?.recent_threads ?? []} />
                 <ProjectBoard projects={usage?.project_board?.recent_projects ?? []} />
               </div>
-
               <ToolUsageList tools={usage?.tool_usages ?? []} />
             </section>
           )}
@@ -272,10 +228,10 @@ export function Dashboard() {
                   </button>
                 </div>
               </header>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ProjectBoard projects={usage?.project_board?.recent_projects ?? []} />
-                <ToolUsageList tools={usage?.tool_usages ?? []} />
-              </div>
+              <ProjectsPanel
+                projects={usage?.project_board?.recent_projects ?? []}
+                tools={usage?.tool_usages ?? []}
+              />
             </section>
           )}
 
@@ -290,8 +246,7 @@ export function Dashboard() {
               ) : (
                 <div className="glass-panel p-6">
                   <p className="text-sm text-secondary">
-                    No leadership snapshot yet. Move usage to continue collecting automation traces and
-                    refresh.
+                    No leadership snapshot yet. Move usage to continue collecting automation traces and refresh.
                   </p>
                 </div>
               )}
@@ -301,8 +256,4 @@ export function Dashboard() {
       </main>
     </div>
   );
-}
-
-function formatNumber(n: number): string {
-  return n.toLocaleString();
 }

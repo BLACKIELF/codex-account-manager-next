@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>macOS / Windows Dashboard 功能对照（非像素复刻）</title>
+  <title>macOS / Windows Dashboard Feature Comparison</title>
   <style>
     :root {
       --bg: #f7fafc;
@@ -13,7 +13,6 @@
       --muted: #41516b;
       --head: #1e293b;
     }
-
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -22,20 +21,20 @@
       color: var(--text);
       background: linear-gradient(160deg, #f8fbff 0%, var(--bg) 40%, #eff4ff 100%);
     }
-
     main {
       max-width: 1080px;
       margin: 0 auto;
       display: grid;
       gap: 14px;
     }
-
-    h1, h2, h3 { margin: 0; color: var(--head); }
+    h1, h2, h3 {
+      margin: 0;
+      color: var(--head);
+    }
     h1 { font-size: 28px; line-height: 1.3; }
     h2 { margin: 8px 0 8px; font-size: 20px; }
     h3 { margin: 14px 0 8px; }
     p, li { margin: 0 0 8px; color: var(--muted); }
-
     section {
       background: var(--card);
       border: 1px solid var(--line);
@@ -43,29 +42,27 @@
       padding: 14px;
       box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
     }
-
     .summary {
       border-left: 4px solid #2563eb;
       background: #ecf3ff;
     }
-
-    .notes {
-      margin: 8px 0 0;
-      padding-left: 18px;
+    .tags {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
-
     .tag {
       display: inline-block;
       border-radius: 999px;
       padding: 2px 10px;
       font-size: 12px;
       font-weight: 600;
-      margin-bottom: 8px;
     }
     .fixed { background: #dbeafe; color: #1e3a8a; }
     .variable { background: #dcfce7; color: #14532d; }
     .partial { background: #fff7ed; color: #7c2d12; }
-    .not-impl { background: #fee2e2; color: #7f1d1d; }
+    .notimpl { background: #fee2e2; color: #7f1d1d; }
     .outside { background: #e0f2fe; color: #075985; }
 
     .compare-grid {
@@ -73,7 +70,6 @@
       gap: 12px;
       grid-template-columns: 1fr 1fr;
     }
-
     figure {
       margin: 0;
       border: 1px solid var(--line);
@@ -81,7 +77,6 @@
       overflow: hidden;
       background: #fff;
     }
-
     img {
       width: 100%;
       display: block;
@@ -89,39 +84,15 @@
       object-fit: cover;
       background: #f1f5f9;
     }
-
     figcaption {
       padding: 8px 10px;
       font-size: 12px;
       color: var(--muted);
       border-top: 1px solid var(--line);
     }
-
-    .flow {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin: 8px 0 0;
-      font-size: 14px;
-      color: var(--text);
-      padding-left: 0;
-      list-style: none;
-    }
-
-    .box {
-      border: 1px dashed #94a3b8;
-      border-radius: 10px;
-      padding: 10px;
-      background: #f8fafc;
-    }
-
-    .arrow {
-      text-align: center;
-      color: #64748b;
-      font-weight: 600;
-    }
-
-    @media (max-width: 920px) {
+    ul.notes { margin: 0; padding-left: 20px; color: var(--muted); }
+    ul.notes li { margin-bottom: 6px; }
+    @media (max-width: 900px) {
       .compare-grid { grid-template-columns: 1fr; }
     }
   </style>
@@ -129,33 +100,20 @@
 <body>
   <main>
     <section class="summary">
-      <h1>macOS / Windows Dashboard 功能对照（非像素复刻）</h1>
-      <p>该文档按 macOS README 截图顺序组织：AI Leadership、Today、Usage、Projects、Skills。</p>
-      <p>结论标签：
-        <span class="tag fixed">fixed overview</span>、
-        <span class="tag variable">variable panel</span>、
-        <span class="tag partial">partial</span>、
-        <span class="tag not-impl">not implemented</span>、
-        <span class="tag outside">outside Dashboard + partial</span>。
-      </p>
+      <h1>macOS / Windows Dashboard Feature Comparison</h1>
+      <p>This page aligns the macOS README screenshot sequence with Windows native evidence in one-to-one pairs.</p>
+      <p>Legend: fixed overview, variable panel, partial, not implemented, outside Dashboard + partial.</p>
     </section>
 
     <section>
-      <h2>1. 信息结构（非 Mermaid）</h2>
-      <ul class="flow">
-        <li class="box">固定总览区：macOS（Leadership + 配额/用量卡片 + 月度 Wool 进度）</li>
-        <li class="arrow">⇩ 结构上可对照 ⇩</li>
-        <li class="box">固定总览区：Windows（DashboardHome，Leadership + Token mix + Today/7-Day/Lifetime + rail）</li>
-      </ul>
-      <ul class="flow">
-        <li class="arrow">⇩</li>
-        <li class="box">下层可变内容槽：Tasks | Usage | Projects | Skills（macOS）</li>
-        <li class="box">Windows：Leadership 为详情化独立页面，不并入四个下层可变项</li>
-      </ul>
+      <h2>1. Information structure alignment</h2>
+      <p><strong>macOS README order:</strong> AI Leadership, Today, Usage, Projects, Skills.</p>
+      <p><strong>Windows mapping:</strong> Dashboard Home (Leadership + Token mix + Today/7-Day/Lifetime), then native equivalents by hierarchy.</p>
+      <p>Windows currently does not expose all README areas as independent pages; rows use the highest-fidelity same-level evidence.</p>
     </section>
 
     <section>
-      <h2>2. 固定总览映射（fixed overview）</h2>
+      <h2>2. Fixed overview</h2>
       <h3>2.1 AI Leadership / Dashboard Overview</h3>
       <div class="compare-grid">
         <figure>
@@ -167,36 +125,41 @@
           <figcaption>Windows Dashboard Home</figcaption>
         </figure>
       </div>
-      <p><span class="tag fixed">fixed overview</span></p>
+      <div class="tags">
+        <span class="tag fixed">fixed overview</span>
+      </div>
       <ul class="notes">
-        <li>Windows 采用 DashboardHome 总览，包含 Leadership、Token mix 与多类用量指标。</li>
-        <li>Monthly Wool 在 Windows 当前无直接对应；Token mix 不能替代该指标。</li>
+        <li>Windows shows Leadership + local 7-day Token mix + usage summary cluster and progression rail in home scope.</li>
       </ul>
     </section>
 
     <section>
-      <h2>3. 下层可变内容槽（按 README 顺序）</h2>
+      <h2>3. Variable panels (aligned to README order)</h2>
 
-      <h3>3.1 Tasks（variable panel + not implemented）</h3>
+      <h3>3.1 Today / Tasks</h3>
+      <div class="tags">
+        <span class="tag variable">variable panel</span>
+        <span class="tag notimpl">not implemented</span>
+      </div>
       <div class="compare-grid">
         <figure>
           <img src="../../screenshot-v0.3.0-today.png" alt="macOS Today">
           <figcaption>macOS Today</figcaption>
         </figure>
         <figure>
-          <img src="../reports/assets/dashboard-home-native.png" alt="Windows Dashboard Home Today metric">
-          <figcaption>Windows Dashboard Home（Today 用量度量）</figcaption>
+          <img src="../reports/assets/dashboard-home-native.png" alt="Windows Dashboard Home">
+          <figcaption>Windows Dashboard Home (Today metric in top cluster)</figcaption>
         </figure>
       </div>
-      <p>
-        <span class="tag variable">variable panel</span>
-        <span class="tag not-impl">not implemented</span>
-      </p>
       <ul class="notes">
-        <li>Windows 仅有 Today 用量度量，未提供独立任务面板。</li>
+        <li>No standalone Tasks/Today page in the current Windows release; mapped to equivalent top-cluster metrics in Dashboard Home.</li>
       </ul>
 
-      <h3>3.2 Usage（variable panel + partial）</h3>
+      <h3>3.2 Usage</h3>
+      <div class="tags">
+        <span class="tag variable">variable panel</span>
+        <span class="tag partial">partial</span>
+      </div>
       <div class="compare-grid">
         <figure>
           <img src="../../screenshot-v0.3.0-usage.png" alt="macOS Usage">
@@ -207,15 +170,15 @@
           <figcaption>Windows Usage</figcaption>
         </figure>
       </div>
-      <p>
-        <span class="tag variable">variable panel</span>
-        <span class="tag partial">partial</span>
-      </p>
       <ul class="notes">
-        <li>用量信息有对应语义，但布局与口径不完全同构。</li>
+        <li>Windows mapping is local-token scope and equivalent hierarchy, with naming differences from official macOS quota phrasing.</li>
       </ul>
 
-      <h3>3.3 Projects（variable panel + partial）</h3>
+      <h3>3.3 Projects</h3>
+      <div class="tags">
+        <span class="tag variable">variable panel</span>
+        <span class="tag partial">partial</span>
+      </div>
       <div class="compare-grid">
         <figure>
           <img src="../../screenshot-v0.3.0-projects.png" alt="macOS Projects">
@@ -226,15 +189,15 @@
           <figcaption>Windows Projects</figcaption>
         </figure>
       </div>
-      <p>
-        <span class="tag variable">variable panel</span>
-        <span class="tag partial">partial</span>
-      </p>
       <ul class="notes">
-        <li>Windows 更像项目排行/邻近映射，不是同一页面结构。</li>
+        <li>Windows shows project ranking as native equivalent at the same hierarchy layer.</li>
       </ul>
 
-      <h3>3.4 Skills（variable panel + not implemented）</h3>
+      <h3>3.4 Skills</h3>
+      <div class="tags">
+        <span class="tag variable">variable panel</span>
+        <span class="tag notimpl">not implemented</span>
+      </div>
       <div class="compare-grid">
         <figure>
           <img src="../../screenshot-v0.3.0-skills.png" alt="macOS Skills">
@@ -242,21 +205,19 @@
         </figure>
         <figure>
           <img src="assets/dashboard-tools-nearest-skills.png" alt="Windows Tool usage">
-          <figcaption>Windows Tool usage</figcaption>
+          <figcaption>Windows Tool usage (nearest equivalent)</figcaption>
         </figure>
       </div>
-      <p>
-        <span class="tag variable">variable panel</span>
-        <span class="tag not-impl">not implemented</span>
-      </p>
       <ul class="notes">
-        <li>Windows 目前仅见 Tool usage 的近似证据，独立 Skills 页面缺失。</li>
+        <li>Windows currently exposes tool usage evidence; a dedicated Skills page is not yet implemented as a separate native page.</li>
       </ul>
     </section>
 
     <section>
-      <h2>4. 设置/配置（Dashboard 外层）</h2>
-      <h3>Settings / Palette（outside Dashboard + partial）</h3>
+      <h2>4. Settings / Palette</h2>
+      <div class="tags">
+        <span class="tag outside">outside Dashboard + partial</span>
+      </div>
       <div class="compare-grid">
         <figure>
           <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="macOS Palette gallery">
@@ -267,19 +228,18 @@
           <figcaption>Windows Settings</figcaption>
         </figure>
       </div>
-      <p><span class="tag outside">outside Dashboard + partial</span></p>
       <ul class="notes">
-        <li>两端都存在配置入口，但并非 Dashboard 内同构层级；Windows 的 Light/Dark/System 与 macOS palette gallery 语义不同。</li>
+        <li>Both sides provide a configuration entry; container and control vocabulary differ by OS host conventions.</li>
       </ul>
     </section>
 
     <section class="summary">
-      <h2>5. 结论</h2>
+      <h2>5. Alignment summary</h2>
       <ul class="notes">
-        <li>AI Leadership 为固定总览层级对应；差异在于 Windows 月度 Wool 缺口与 Token mix 口径不同。</li>
-        <li>Tasks 与 Skills 属于 `variable panel + not implemented`（仅最近似上下文/近似证据）。</li>
-        <li>Usage 与 Projects 属于 `variable panel + partial`。</li>
-        <li>Settings / Palette 为 Dashboard 外层 `outside Dashboard + partial`。</li>
+        <li>AI Leadership: fixed overview mapping.</li>
+        <li>Today / Tasks and Skills: <strong>variable panel + not implemented</strong> (no dedicated page in this Windows version).</li>
+        <li>Usage and Projects: <strong>variable panel + partial</strong>.</li>
+        <li>Settings / Palette: <strong>outside Dashboard + partial</strong>.</li>
       </ul>
     </section>
   </main>

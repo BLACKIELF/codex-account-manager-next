@@ -1,16 +1,31 @@
-import { Activity, Calendar, Cpu, Database, TrendingUp } from 'lucide-react';
-import type { ReactElement } from 'react';
+import { Activity, Calendar, ClipboardList, Cpu, Database, TrendingUp, Wrench } from 'lucide-react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 import type { LocalUsage, LeadershipReport } from '../types/models';
-import { LeadershipCommandRail, LeadershipOrbit } from './LeadershipPanel';
-import { StatCard } from './StatCard';
-import { TokenBarChart } from './TokenBarChart';
-import { TrendChart } from './TrendChart';
 import { LEADERSHIP_BANDS, resolveLeadershipBand } from '../utils/leadershipTitles';
+import { LeadershipCommandRail, LeadershipOrbit } from './LeadershipPanel';
+import { MonthlyValueProgress } from './MonthlyValueProgress';
+import { ProjectsPanel } from './ProjectsPanel';
+import { UsagePanel } from './UsagePanel';
+import { StatCard } from './StatCard';
 
 interface DashboardHomeProps {
   usage: LocalUsage | null | undefined;
   onOpenLeadership: () => void;
 }
+
+type LowerTab = 'tasks' | 'usage' | 'projects' | 'skills';
+
+const LOWER_TABS: Array<{ id: LowerTab; title: string }> = [
+  { id: 'tasks', title: 'Tasks' },
+  { id: 'usage', title: 'Usage' },
+  { id: 'projects', title: 'Projects' },
+  { id: 'skills', title: 'Skills' },
+];
+
+const formatUSD = (value: unknown): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '--';
+  return value.toFixed(2);
+};
 
 export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
   const hasUsage = usage !== null && usage !== undefined;
@@ -26,6 +41,41 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
   const hasSignal = activeBand !== null;
   const scoreForVisual = hasSignal && score !== null ? Math.max(0, Math.min(100, Math.round(score))) : 0;
 
+  const [activeLowerTab, setActiveLowerTab] = useState<LowerTab>('tasks');
+  const lowerTabRefs = useRef<Record<LowerTab, HTMLButtonElement | null>>({
+    tasks: null,
+    usage: null,
+    projects: null,
+    skills: null,
+  });
+
+  const focusLowerTabButton = (tabId: LowerTab) => {
+    lowerTabRefs.current[tabId]?.focus();
+  };
+
+  const handleLowerTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+      return;
+    }
+
+    const currentIndex = LOWER_TABS.findIndex((item) => item.id === activeLowerTab);
+    if (currentIndex < 0) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const nextIndex =
+      event.key === 'ArrowRight'
+        ? (currentIndex + 1) % LOWER_TABS.length
+        : (currentIndex - 1 + LOWER_TABS.length) % LOWER_TABS.length;
+    const nextTab = LOWER_TABS[nextIndex].id;
+    setActiveLowerTab(nextTab);
+
+    requestAnimationFrame(() => {
+      focusLowerTabButton(nextTab);
+    });
+  };
+
   return (
     <div className="space-y-6 dashboard-home">
       <div className="grid dashboard-home-top-grid gap-4">
@@ -40,11 +90,9 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
           </h2>
           <p className="text-sm text-secondary mt-1">
             {hasSignal
-              ? `Period ${report?.period} | ${report?.active_day_count ?? 0} active days | Evidence ${Math.round(
-                  evidenceRatio * 100,
-                )}%`
+              ? `Period ${report?.period} | ${report?.active_day_count ?? 0} active days | Evidence ${Math.round(evidenceRatio * 100)}%`
               : hasUsage
-                ? `Record insufficient for authoritative title`
+                ? 'Record insufficient for authoritative title'
                 : 'Data not ready. Refresh to load local snapshots.'}
           </p>
 
@@ -123,29 +171,27 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
         </section>
 
         <section className="dashboard-home-metrics" aria-label="local metrics">
-          <div className="grid grid-cols-1 gap-2">
             <StatCard
               label="Today"
-              value={hasUsage ? formatNumber(usage?.today_tokens ?? 0) : '--'}
-              subValue={detailed ? `$${detailed.today.estimated_cost_usd.toFixed(2)} est.` : 'Record insufficient'}
+              value={formatNumber(hasUsage ? usage?.today_tokens ?? null : null)}
+              subValue={detailed ? `$${formatUSD(detailed.today.estimated_cost_usd)} est.` : 'Record insufficient'}
               icon={<Activity size={16} />}
               accent="primary"
             />
             <StatCard
               label="7-Day"
-              value={hasUsage ? formatNumber(usage?.seven_day_tokens ?? 0) : '--'}
-              subValue={detailed ? `$${detailed.seven_day.estimated_cost_usd.toFixed(2)} est.` : 'Record insufficient'}
+              value={formatNumber(hasUsage ? usage?.seven_day_tokens ?? null : null)}
+              subValue={detailed ? `$${formatUSD(detailed.seven_day.estimated_cost_usd)} est.` : 'Record insufficient'}
               icon={<Calendar size={16} />}
               accent="secondary"
             />
-            <StatCard
-              label="Lifetime"
-              value={hasUsage ? formatNumber(usage?.lifetime_tokens ?? 0) : '--'}
-              subValue={detailed ? `$${detailed.lifetime.estimated_cost_usd.toFixed(2)} est.` : 'Record insufficient'}
-              icon={<TrendingUp size={16} />}
-              accent="tertiary"
-            />
-          </div>
+          <StatCard
+            label="Lifetime"
+            value={formatNumber(hasUsage ? usage?.lifetime_tokens ?? null : null)}
+            subValue={detailed ? `$${formatUSD(detailed.lifetime.estimated_cost_usd)} est.` : 'Record insufficient'}
+            icon={<TrendingUp size={16} />}
+            accent="tertiary"
+          />
           <p className="mt-2 text-xs text-tertiary px-1 text-right">7-day & lifetime from local cache only</p>
         </section>
       </div>
@@ -161,18 +207,98 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
         />
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <TokenBarChart data={usage?.daily_buckets ?? []} />
-        <TrendChart trend={usage?.usage_trend ?? null} />
+      <MonthlyValueProgress usage={usage} />
+
+      <div
+        onKeyDown={handleLowerTabKeyDown}
+        role="tablist"
+        aria-label="Dashboard lower tabs"
+        className="flex items-center gap-1.5 flex-wrap rounded-2xl p-1 glass-toolbar"
+      >
+        {LOWER_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            id={`dashboard-home-tab-${tab.id}`}
+            role="tab"
+            aria-selected={activeLowerTab === tab.id}
+            aria-controls={`dashboard-home-panel-${tab.id}`}
+            tabIndex={activeLowerTab === tab.id ? 0 : -1}
+            ref={(element) => {
+              lowerTabRefs.current[tab.id] = element;
+            }}
+            onClick={() => setActiveLowerTab(tab.id)}
+            className={`px-3 py-2 rounded-xl text-sm transition-all min-w-[90px] ${
+              activeLowerTab === tab.id ? 'glass-button-solid' : 'text-secondary glass-button'
+            }`}
+          >
+            {tab.title}
+          </button>
+        ))}
       </div>
 
-      {!hasUsage ? (
-        <div className="glass-panel p-4 sm:p-5">
-          <h3 className="text-sm font-semibold text-primary">Record status</h3>
-          <p className="text-sm text-secondary mt-1">Record insufficient. Keep using Codex, then click Refresh.</p>
-          <p className="text-xs text-tertiary mt-1">No local usage data available yet.</p>
-        </div>
-      ) : null}
+      {activeLowerTab === 'tasks' && (
+        <section
+          role="tabpanel"
+          id="dashboard-home-panel-tasks"
+          aria-labelledby="dashboard-home-tab-tasks"
+          className="glass-panel p-4 sm:p-5"
+        >
+          <div className="flex items-center gap-2">
+            <ClipboardList size={16} />
+            <h3 className="text-sm font-semibold text-primary">Tasks</h3>
+          </div>
+          <p className="text-sm text-secondary mt-2">
+            Task status is not available in the current local snapshot.
+          </p>
+          <p className="text-sm text-secondary mt-2">
+            Threads are separate local records and are not inferred as tasks here.
+          </p>
+          <p className="text-xs text-tertiary mt-3">Task details will appear when the local snapshot provides task status.</p>
+        </section>
+      )}
+
+      {activeLowerTab === 'usage' && (
+        <section
+          role="tabpanel"
+          id="dashboard-home-panel-usage"
+          aria-labelledby="dashboard-home-tab-usage"
+        >
+          <UsagePanel usage={usage} />
+        </section>
+      )}
+
+      {activeLowerTab === 'projects' && (
+        <section
+          role="tabpanel"
+          id="dashboard-home-panel-projects"
+          aria-labelledby="dashboard-home-tab-projects"
+        >
+          <ProjectsPanel
+            projects={usage?.project_board?.recent_projects ?? []}
+            tools={usage?.tool_usages ?? []}
+          />
+        </section>
+      )}
+
+      {activeLowerTab === 'skills' && (
+        <section
+          role="tabpanel"
+          id="dashboard-home-panel-skills"
+          aria-labelledby="dashboard-home-tab-skills"
+          className="glass-panel p-4 sm:p-5"
+        >
+          <div className="flex items-center gap-2">
+            <Wrench size={16} />
+            <h3 className="text-sm font-semibold text-primary">Skills</h3>
+          </div>
+          <p className="text-sm text-secondary mt-2">
+            Skill usage is not available in the current local snapshot.
+          </p>
+          <p className="text-xs text-tertiary mt-1">
+            This area will show skill usage when that record becomes available.
+          </p>
+        </section>
+      )}
     </div>
   );
 }
@@ -231,8 +357,8 @@ function buildTokenMix(detailed: LocalUsage['detailed_usage']) {
   return { input, cached, output, total: visibleTotal, segmentTotal, hasData: true };
 }
 
-function formatNumber(value: number): string {
-  if (!Number.isFinite(value)) return '--';
+function formatNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '--';
   return Math.round(value).toLocaleString();
 }
 
@@ -272,7 +398,7 @@ function Pill({
   label,
   value,
 }: {
-  icon: ReactElement;
+  icon: JSX.Element;
   label: string;
   value: string;
 }) {
