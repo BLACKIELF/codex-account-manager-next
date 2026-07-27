@@ -17,9 +17,7 @@ type DashboardTab = 'home' | 'overview' | 'leadership' | 'threads' | 'projects';
 const TABS: Array<{ id: DashboardTab; title: string }> = [
   { id: 'home', title: 'Dashboard' },
   { id: 'leadership', title: 'AI Leadership' },
-  { id: 'overview', title: 'Usage' },
   { id: 'threads', title: 'Threads' },
-  { id: 'projects', title: 'Projects' },
 ];
 
 export function Dashboard() {

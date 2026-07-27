@@ -30,11 +30,11 @@
         <tbody>
           <tr><td>fixed overview</td><td>A fixed hierarchy block shown before lower-panel selection.</td></tr>
           <tr><td>variable panel</td><td>A lower Dashboard panel selected from the four-tab area.</td></tr>
-          <tr><td>complete shell / data blocked</td><td>The native UI exists, but the current Windows contract intentionally does not expose the data needed to populate it.</td></tr>
+          <tr><td>variable panel + not implemented</td><td>No strict macOS/Windows one-to-one equivalent is evidenced; a Windows UI shell or retained image may be nearest context only.</td></tr>
           <tr><td>partial real panel</td><td>A live local-data panel with related, not identical, macOS semantics.</td></tr>
         </tbody>
       </table>
-      <p><strong>Evidence boundary:</strong> a blocked data field is not proof that the feature area is absent. It means the current Windows reader/model/IPC contract does not provide truthful source data for that content. No value in this page asks the UI to infer it.</p>
+      <p><strong>Evidence boundary:</strong> <code>not implemented</code> in this comparison labels only strict cross-platform equivalence evidence. It is not a global conclusion about the Windows product area, source code, data contract, Reader, IPC, or roadmap. Separately, a blocked data field means the active Windows contract does not provide truthful source data; no value in this page asks the UI to infer it.</p>
     </section>
 
     <section>
@@ -42,8 +42,8 @@
       <table>
         <thead><tr><th>macOS README structure</th><th>Windows Dashboard structure</th></tr></thead>
         <tbody>
-          <tr><td>Fixed dashboard overview, then variable areas for Tasks, Usage, Projects, and Skills.</td><td>Fixed Dashboard: Leadership identity, local 7-day Token mix, Today/7-Day/Lifetime, L1-L7 rail, and local Month value progress. Then lower Tasks / Usage / Projects / Skills panels.</td></tr>
-          <tr><td>AI Leadership detail.</td><td>Dedicated <code>AI Leadership</code> detail, not a fifth lower panel.</td></tr>
+          <tr><td>Fixed dashboard overview, then variable areas for Tasks, Usage, Projects, and Skills.</td><td>Fixed Dashboard: Leadership identity, local 7-day Token mix, Today/7-Day/Lifetime, L1-L7 rail, and local Month value progress. Visible global navigation is Dashboard / AI Leadership / Threads; Tasks / Usage / Projects / Skills are the sole visible Dashboard-level entry for those four areas.</td></tr>
+          <tr><td>AI Leadership detail.</td><td>Dedicated <code>AI Leadership</code> drill-down from the fixed overview, not a fifth lower panel.</td></tr>
         </tbody>
       </table>
       <p>Windows uses native light/system Liquid Glass rather than dark macOS pixels. Runtime values may differ; no numeric equality is asserted.</p>
@@ -60,15 +60,16 @@
         <li>Windows fixed Dashboard contains Leadership identity, local <strong>7-day Token mix</strong> (Input, Cached input, Output), Today / 7-day / Lifetime summaries, full L1-L7 rail, and local Month value progress.</li>
         <li>At about <code>960x758</code> CSS pixels, three top groups remain horizontal and the rail title, badges, bar, and labels are all visible.</li>
         <li>Token mix is local telemetry, not quota, remaining allowance, rate-limit data, or a bill. It has no duplicated count and the fixed top contains no raw thread, project, or tool content.</li>
+        <li>This is a <strong>fixed overview</strong> hierarchy correspondence. Windows has a local Month value estimate surface, but it is not strict one-to-one evidence for macOS monthly Wool; Token mix semantics also differ.</li>
       </ul>
     </section>
 
     <section>
       <h2>3. Variable panels in README order</h2>
       <h3>3.1 Today / Tasks</h3>
-      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">complete shell / data blocked</span></div>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">not implemented (strict comparison)</span></div>
       <div class="pair"><figure><a href="../../screenshot-v0.3.0-today.png"><img src="../../screenshot-v0.3.0-today.png" alt="macOS Today" /></a><figcaption>macOS Today</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-tasks-native.png"><img src="../reports/assets/dashboard-lower-panels-tasks-native.png" alt="Windows Tasks" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-tasks-native.png">Windows Tasks</a> — no Threads-as-Tasks inference.</figcaption></figure></div>
-      <p>The Windows Tasks panel is implemented and truthfully explains that task state is not exposed by the current contract.</p>
+      <p>The Windows Tasks shell is retained as nearest-context evidence only. It truthfully says task state is not exposed and does not infer Tasks from Threads, but it is not asserted to be a strict macOS Today/Tasks equivalent.</p>
 
       <h3>3.2 Usage</h3>
       <div class="tags"><span class="tag variable">variable panel</span><span class="tag partial">partial real panel</span></div>
@@ -81,18 +82,19 @@
       <p>Windows shows a real local project surface at the same lower-panel level; its presentation differs by host and contract.</p>
 
       <h3>3.4 Skills</h3>
-      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">complete shell / data blocked</span></div>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">not implemented (strict comparison)</span></div>
       <div class="pair"><figure><a href="../../screenshot-v0.3.0-skills.png"><img src="../../screenshot-v0.3.0-skills.png" alt="macOS Skills" /></a><figcaption>macOS Skills</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-skills-native.png"><img src="../reports/assets/dashboard-lower-panels-skills-native.png" alt="Windows Skills" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-skills-native.png">Windows Skills</a> — typed Skills boundary, not tools.</figcaption></figure></div>
-      <p>The Windows Skills panel is implemented and truthfully states that typed Skills usage is not exposed. <strong>Tool usage is not mapped or relabelled as Skills.</strong></p>
+      <p>The Windows Skills shell is retained as nearest-context evidence only. It truthfully says typed Skills usage is not exposed, but it is not asserted to be a strict macOS Skills equivalent. <strong>Tool usage is not mapped or relabelled as Skills.</strong></p>
     </section>
 
     <section>
       <h2>4. Month value progress interpretation</h2>
-      <p>The fixed Windows Dashboard uses existing detailed-month <code>estimated_cost_usd</code> as a <strong>local API-equivalent estimate</strong>, not as an official monthly quota, allowance, remaining balance, or bill. Markers are Plus $20, Pro 100 $100, Pro 200 $200, and a $46.5K reference cap; the first $0–200 maps to 28%, then a <code>log1p</code> tail is used. macOS pricing differs, so no strict dollar parity is claimed.</p>
+      <p>The fixed Windows Dashboard uses existing detailed-month <code>estimated_cost_usd</code> as a <strong>local API-equivalent estimate</strong>, not as an official monthly quota, allowance, remaining balance, or bill. Markers are Plus $20, Pro 100 $100, Pro 200 $200, and a $46.5K reference cap; the first $0–200 maps to 28%, then a <code>log1p</code> tail is used. Windows therefore has a Month-value surface, but the strict macOS monthly-Wool comparison remains a gap: pricing and source semantics differ, so the estimate is not a complete Wool replacement or strict dollar parity.</p>
     </section>
 
     <section>
       <h2>5. Evidence files and conclusion</h2>
+      <p>The default Dashboard and AI Leadership images are updated native HWND <code>PrintWindow</code> captures after visible-navigation de-duplication. The four lower-panel images are retained nearest-context images, not recaptured evidence for the new global navigation.</p>
       <ul>
         <li><a href="../reports/assets/dashboard-lower-panels-default-native.png">Fixed Dashboard</a></li>
         <li><a href="../reports/assets/dashboard-lower-panels-leadership-native.png">AI Leadership</a></li>
@@ -101,7 +103,7 @@
         <li><a href="../reports/assets/dashboard-lower-panels-projects-native.png">Projects</a></li>
         <li><a href="../reports/assets/dashboard-lower-panels-skills-native.png">Skills</a></li>
       </ul>
-      <p>The four lower-panel shots were captured after scrolling to the lower tablist: they prove variable panels, not a first-screen claim. See <a href="WINDOWS_DASHBOARD_SHOWCASE.html">the Windows showcase</a> and <a href="../reports/WINDOWS_UI_PARITY_REPORT.html">the parity report</a> for capture dimensions, validation, and known limits.</p>
+      <p>The retained lower-panel shots show lower-panel context only. During the current re-capture the real window collapsed to the tray/minimized state, so they must not be used to prove the current three-item global navigation or strict feature equivalence. See <a href="WINDOWS_DASHBOARD_SHOWCASE.html">the Windows showcase</a> and <a href="../reports/WINDOWS_UI_PARITY_REPORT.html">the parity report</a> for capture dimensions, validation, and known limits.</p>
     </section>
   </main>
 </body>

@@ -26,17 +26,17 @@
     <section>
       <h2>Acceptance conclusion</h2>
       <ul>
-        <li>The final native default Dashboard shows three horizontal top groups: Leadership, local 7-day Token mix, and Today / 7-day / Lifetime summaries.</li>
+        <li>The updated native default Dashboard shows exactly three global navigation items — Dashboard, AI Leadership, and Threads — plus three horizontal top groups: Leadership, local 7-day Token mix, and Today / 7-day / Lifetime summaries. Usage and Projects no longer duplicate the lower Dashboard tabs in visible global navigation.</li>
         <li>Input, Cached input, and Output are shown once each in the fixed top's 7-day Token mix; visual inspection found no duplicated count. The fixed top contains no raw thread, project, or tool content.</li>
         <li>At the target compact viewport, the complete L1-L7 rail is visible: title, badges, bar, and labels are not clipped.</li>
         <li>AI Leadership detail preserves the information hierarchy of <a href="../../screenshot-v1.2.0-ai-leadership.png">the macOS reference</a>: identity, score/facts, and command rail. Windows keeps light/system Liquid Glass styling rather than copying macOS pixels.</li>
-        <li>The lower area exposes Tasks, Usage, Projects, and Skills. Tasks and Skills are complete honest empty shells with data contracts still blocked; Usage and Projects are real local-data panels with partial semantic parity.</li>
+        <li>The lower area exposes the single visible Tasks / Usage / Projects / Skills entry set. Its Windows Tasks and Skills shells remain honest about missing source data; Usage and Projects are real local-data panels with partial semantic parity.</li>
       </ul>
     </section>
 
     <section>
       <h2>Native evidence</h2>
-      <p>All six images come from final <code>windows/target/release/codexu-tauri.exe</code>. Capture used <code>PrintWindow</code> against the target HWND, not Computer Use. Default DWM bounds were <code>1439x1136</code> physical pixels and the remaining batch was <code>1440x1137</code>; DPI 144 yields approximately <code>960x758</code> CSS pixels. Both are within one physical pixel of the compact target. The exact target release process was cleaned up after capture (zero matching processes remained).</p>
+      <p>The updated default Dashboard and AI Leadership images come from final <code>windows/target/release/codexu-tauri.exe</code>. Capture used <code>PrintWindow</code> against the target HWND, not Computer Use. Updated default DWM bounds were <code>1439x1136</code> physical pixels; DPI 144 yields approximately <code>960x758</code> CSS pixels. The exact target release process was cleaned up after capture (zero matching processes remained). The lower four images are retained nearest-context images because the real window collapsed to the tray/minimized state during current re-capture.</p>
       <div class="gallery">
         <figure><a href="assets/dashboard-lower-panels-default-native.png"><img src="assets/dashboard-lower-panels-default-native.png" alt="Default fixed Dashboard" /></a><figcaption><a href="assets/dashboard-lower-panels-default-native.png">Fixed Dashboard</a></figcaption></figure>
         <figure><a href="assets/dashboard-lower-panels-leadership-native.png"><img src="assets/dashboard-lower-panels-leadership-native.png" alt="AI Leadership detail" /></a><figcaption><a href="assets/dashboard-lower-panels-leadership-native.png">AI Leadership detail</a></figcaption></figure>
@@ -45,7 +45,7 @@
         <figure><a href="assets/dashboard-lower-panels-projects-native.png"><img src="assets/dashboard-lower-panels-projects-native.png" alt="Projects lower panel" /></a><figcaption><a href="assets/dashboard-lower-panels-projects-native.png">Projects lower panel</a></figcaption></figure>
         <figure><a href="assets/dashboard-lower-panels-skills-native.png"><img src="assets/dashboard-lower-panels-skills-native.png" alt="Skills lower panel" /></a><figcaption><a href="assets/dashboard-lower-panels-skills-native.png">Skills lower panel</a></figcaption></figure>
       </div>
-      <p>The Tasks, Usage, Projects, and Skills captures were taken after scrolling to the lower tablist. They evidence those tab panels, not a claim that the lower panels are in the first screen.</p>
+      <p>The lower Tasks, Usage, Projects, and Skills captures were originally taken after scrolling to the lower tablist. They are retained lower-panel context, not evidence of current three-item global navigation, first screen, or strict cross-platform equivalence.</p>
     </section>
 
     <section>
@@ -53,24 +53,23 @@
       <table>
         <thead><tr><th>Area</th><th>Windows conclusion</th><th>Boundary</th></tr></thead>
         <tbody>
-          <tr><td>Fixed overview</td><td>Accepted hierarchy alignment</td><td>Local Token telemetry and native-light styling; not official quota or a macOS pixel clone.</td></tr>
-          <tr><td>Leadership detail</td><td>Accepted semantic hierarchy alignment</td><td>Compared by information order only, not a pixel diff.</td></tr>
-          <tr><td>Tasks</td><td>Complete UI shell / data blocked</td><td>No exposed task-state model; Threads are not inferred as tasks.</td></tr>
+          <tr><td>Fixed overview / AI Leadership</td><td>Accepted hierarchy alignment</td><td>Leadership is fixed overview correspondence; detail is a drill-down. Local Token telemetry differs from macOS Token mix, and Month value estimate is not strict macOS Wool evidence.</td></tr>
+          <tr><td>Tasks</td><td><code>variable panel + not implemented</code> for strict comparison</td><td>Windows shell is retained nearest context; no exposed task-state model and Threads are not inferred as tasks.</td></tr>
           <tr><td>Usage</td><td>Partial real panel</td><td>Real local-token facts, not macOS official-quota semantics.</td></tr>
           <tr><td>Projects</td><td>Partial real panel</td><td>Real local project surface; host and data presentation differ.</td></tr>
-          <tr><td>Skills</td><td>Complete UI shell / data blocked</td><td>No typed Skills-usage field; Tool usage is not relabelled as Skills.</td></tr>
+          <tr><td>Skills</td><td><code>variable panel + not implemented</code> for strict comparison</td><td>Windows shell is retained nearest context; no typed Skills-usage field; Tool usage is not relabelled as Skills.</td></tr>
         </tbody>
       </table>
-      <p>Blocked data fields describe the active Windows contract. They are evidence boundaries, not findings of product-feature absence.</p>
+      <p>The strict-comparison <code>not implemented</code> label describes only one-to-one macOS/Windows evidence; it is not a finding about global product scope, source code, Reader, IPC, or roadmap. Separately, blocked data fields describe the active Windows contract and are not findings of product-feature absence.</p>
     </section>
 
     <section>
       <h2>Month value progress decision</h2>
-      <p>The fixed Dashboard uses existing detailed-month <code>estimated_cost_usd</code> as a clearly labelled <strong>local API-equivalent estimate</strong>, not an official quota, allowance, remaining balance, or bill.</p>
+      <p>The fixed Dashboard uses existing detailed-month <code>estimated_cost_usd</code> as a clearly labelled <strong>local API-equivalent estimate</strong>, not an official quota, allowance, remaining balance, or bill, and not a complete or strict one-to-one macOS monthly-Wool replacement.</p>
       <ul>
         <li>Markers: Plus $20, Pro 100 $100, Pro 200 $200, and $46.5K reference cap.</li>
         <li>The first $0–200 maps to 28%; the remaining span uses a <code>log1p</code> tail.</li>
-        <li>macOS pricing differs. This is feature-level hierarchy parity, not strict cross-platform dollar parity.</li>
+        <li>macOS pricing and source semantics differ. The Windows Month-value surface leaves a strict macOS-Wool comparison gap; it is feature-level hierarchy parity, not strict cross-platform dollar parity.</li>
       </ul>
     </section>
 
@@ -84,11 +83,11 @@
       <table>
         <thead><tr><th>Command / check</th><th>cwd</th><th>Result</th><th>Note</th></tr></thead>
         <tbody>
-          <tr><td><code>npm run build</code></td><td><code>windows/apps/codexu-tauri/web</code></td><td>pass</td><td>Final rerun succeeded.</td></tr>
-          <tr><td><code>cargo test --workspace</code></td><td><code>windows</code></td><td>pass</td><td>Final rerun: <code>codexu_core</code> 9/9; other targets and doc tests 0.</td></tr>
-          <tr><td><code>cargo tauri build --no-bundle</code></td><td><code>windows/apps/codexu-tauri/src-tauri</code></td><td>pass at 01:55:04</td><td>Final rerun created <code>windows/target/release/codexu-tauri.exe</code>.</td></tr>
-          <tr><td>Native visual inspection</td><td>final release HWND</td><td>pass</td><td>Compact default, Leadership detail, and four lower panels inspected from the six captures.</td></tr>
-          <tr><td><code>git diff --check</code></td><td>repository root</td><td>pass</td><td>Final diff has no whitespace errors.</td></tr>
+          <tr><td><code>npm run build</code></td><td><code>windows/apps/codexu-tauri/web</code></td><td>pass</td><td>Completed in the final validation run.</td></tr>
+          <tr><td><code>cargo test --workspace</code></td><td><code>windows</code></td><td>pass</td><td>9 passed / 0 failed; three zero-test targets.</td></tr>
+          <tr><td><code>cargo tauri build --no-bundle</code></td><td><code>windows/apps/codexu-tauri/src-tauri</code></td><td>pass at 02:59:09 Asia/Shanghai</td><td>Produced <code>windows/target/release/codexu-tauri.exe</code>.</td></tr>
+          <tr><td>Native visual inspection</td><td>final release HWND</td><td>pass with evidence split</td><td>Updated compact default and Leadership detail were inspected after global-nav de-duplication; lower four remain retained nearest-context images, not current-nav proof.</td></tr>
+          <tr><td><code>git diff --check</code></td><td>repository root</td><td>pass</td><td>No whitespace errors in the final validation run.</td></tr>
         </tbody>
       </table>
       <p>Computer Use was not available for this acceptance: its Node runtime failed to initialize with <code>os error 3</code>. This is HWND-specific <code>PrintWindow</code> capture and visual review, not a Computer Use pass.</p>
