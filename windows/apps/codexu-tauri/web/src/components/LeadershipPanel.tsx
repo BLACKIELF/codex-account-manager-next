@@ -421,7 +421,7 @@ export function LeadershipCommandRail({
     return (
       <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
         {railContent}
-        <span className="sr-only">Leadership details unavailable</span>
+        <span className="sr-only">AI Leadership details currently shown</span>
       </div>
     );
   }
