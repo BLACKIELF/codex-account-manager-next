@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>macOS 与 Windows 功能对照 / 信息层级对齐</title>
+  <style>
+    :root {
+      --bg: #f7fafc;
+      --card: #ffffff;
+      --line: #d0d7e2;
+      --text: #0f172a;
+      --muted: #41516b;
+      --ok: #0f766e;
+      --warn: #b45309;
+      --head: #1e293b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font: 15px/1.65 -apple-system, "Segoe UI", PingFang SC, "Microsoft YaHei", sans-serif;
+      color: var(--text);
+      background: linear-gradient(160deg, #f8fbff 0%, var(--bg) 40%, #eff4ff 100%);
+    }
+    main {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+    h1, h2, h3 { color: var(--head); margin: 0; }
+    h1 { font-size: 28px; line-height: 1.3; }
+    h2 { margin-top: 14px; margin-bottom: 8px; font-size: 20px; }
+    h3 { font-size: 17px; margin-top: 8px; margin-bottom: 8px; }
+    p, li { margin: 0 0 8px; }
+    p { color: var(--muted); }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+    }
+    .summary {
+      border-left: 4px solid #2563eb;
+      background: #ecf3ff;
+    }
+    .scope {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr 1fr;
+      padding: 6px 0 0;
+      list-style: none;
+    }
+    .scope li {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fff;
+    }
+    .compare-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: 1fr 1fr;
+    }
+    .compare-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .compare-item img {
+      width: 100%;
+      display: block;
+      max-height: 520px;
+      object-fit: cover;
+      background: #f1f5f9;
+    }
+    .compare-item figcaption {
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--line);
+    }
+    .notes { margin-top: 10px; padding-left: 0; }
+    .notes li { margin-bottom: 6px; }
+    .tag { color: var(--ok); font-weight: 600; }
+    .diff { color: var(--warn); font-weight: 600; }
+    a { color: #1d4ed8; }
+    @media (max-width: 820px) {
+      .scope, .compare-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="summary">
+      <h1>macOS 与 Windows 功能对照 / 信息层级对齐</h1>
+      <p>本页为纯文档任务，不改源码、不改截图资产、不改 data path，仅对齐“功能语义与信息层级”。不是像素级复刻。</p>
+      <ul class="scope">
+        <li>对比范围：AI Leadership、Dashboard/Token mix、Settings（3 项功能）。</li>
+        <li>证据范围：已存在截图与报告文件，仅引用，不新增验证结果。</li>
+        <li>现有边界：不执行字段级配额映射，不主张 raw 字段一致。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>1) 参考资料与现有验收边界</h2>
+      <ul class="notes">
+        <li>截图来源：<span class="tag">docs/screenshot-v1.2.0-ai-leadership.png</span>、<span class="tag">docs/screenshot-v1.1.0-palette-gallery.png</span>、<span class="tag">docs/windows-port/reports/assets/*</span></li>
+        <li>证据文件：<a href="WINDOWS_DASHBOARD_SHOWCASE.md">WINDOWS_DASHBOARD_SHOWCASE.md</a>、<a href="WINDOWS_DASHBOARD_SHOWCASE.html">WINDOWS_DASHBOARD_SHOWCASE.html</a>、<a href="../reports/WINDOWS_UI_PARITY_REPORT.md">WINDOWS_UI_PARITY_REPORT.md</a>、<a href="../reports/WINDOWS_UI_PARITY_REPORT.html">WINDOWS_UI_PARITY_REPORT.html</a></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2) AI Leadership：identity/score → L1-L7 → 2x2 metrics</h2>
+      <div class="compare-grid">
+        <figure class="compare-item">
+          <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="macOS AI Leadership">
+          <figcaption>macOS：AI Leadership（语义参考）</figcaption>
+        </figure>
+        <figure class="compare-item">
+          <img src="../reports/assets/dashboard-home-leadership-detail.png" alt="Windows AI Leadership">
+          <figcaption>Windows：AI Leadership 细节（Native）</figcaption>
+        </figure>
+      </div>
+      <h3>对齐点</h3>
+      <ul class="notes">
+        <li>identity / score 与 L1-L7 横向进度语义保持一致。</li>
+        <li>AI Leadership 细节保留 2×2 指标区块。</li>
+        <li>可引用 canonical 阈值：<span class="tag">0/20/35/50/65/80/93</span>，示例 score 84 落在 <span class="tag">L6</span>。</li>
+      </ul>
+      <h3>明确保留的差异</h3>
+      <ul class="notes">
+        <li><span class="diff">Windows 使用 native light/system Liquid Glass</span>，不做暗色 macOS 像素镜像。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3) Dashboard / Token mix：领导力优先、中心用量焦点、紧随进度/趋势</h2>
+      <div class="compare-grid">
+        <figure class="compare-item">
+          <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="macOS Dashboard hierarchy">
+          <figcaption>macOS：语义参考（同时包含 Usage hierarchy 信息）</figcaption>
+        </figure>
+        <figure class="compare-item">
+          <img src="../reports/assets/dashboard-home-native.png" alt="Windows Dashboard Home">
+          <figcaption>Windows：Dashboard Home（Native）</figcaption>
+        </figure>
+      </div>
+      <p>说明：复用同一 macOS 参考图是有意为之，不是功能重复；该图同时覆盖 Leadership 与 Dashboard 顶层层级语义。</p>
+      <h3>对齐点</h3>
+      <ul class="notes">
+        <li>首页显示顺序与信息取向均指向“领导力 → 用量核心 → 进度/趋势衔接”。</li>
+        <li>Windows 用量展示是本地 <span class="tag">7-day Token mix</span>（Input / Cached input / Output）。</li>
+      </ul>
+      <h3>明确保留的差异 / 已知范围</h3>
+      <ul class="notes">
+        <li><span class="diff">不能把 Windows token mix 字段与官方配额/remaining allowance 逐项宣称一致</span>，本页不作该项映射。</li>
+        <li>未执行手工像素 diff，边界仅到语义/层级对齐。</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>4) Settings：配色与设置入口可比性</h2>
+      <div class="compare-grid">
+        <figure class="compare-item">
+          <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="macOS settings">
+          <figcaption>macOS：palette/settings 语义参考</figcaption>
+        </figure>
+        <figure class="compare-item">
+          <img src="../reports/assets/final-settings.png" alt="Windows settings">
+          <figcaption>Windows：final settings</figcaption>
+        </figure>
+      </div>
+      <h3>对齐点</h3>
+      <ul class="notes">
+        <li>两端均可见设置相关入口与配色层级。</li>
+        <li>可读性层级（标题、分组、选择区域）可用于对照。</li>
+      </ul>
+      <h3>明确保留的差异</h3>
+      <ul class="notes">
+        <li>不主张设置面板逐控件完全一致，当前仅对比信息组织与可读性层级。</li>
+      </ul>
+    </section>
+
+    <section class="summary">
+      <h2>为什么不含 README 的 Today / Projects / Skills 历史截图</h2>
+      <ul class="notes">
+        <li>本轮未制作同轮同视角的 Windows 历史截图证据，因此不纳入该部分对比。</li>
+        <li>这表示“证据边界”而非“功能缺失判断”。</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

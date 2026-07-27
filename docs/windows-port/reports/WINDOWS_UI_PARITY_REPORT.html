@@ -3,18 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Windows UI Parity Report: Dashboard Leadership and Theme Parity</title>
+  <title>Windows UI Parity Report: Dashboard Home Alignment (Phase-4 UI)</title>
   <style>
     body {
       margin: 20px;
-      font: 14px/1.5 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 14px/1.5 ui-sans-serif, -apple-system, Segoe UI, sans-serif;
       color: #0f172a;
       background: #ffffff;
     }
-    h1, h2, h3 {
-      color: #0b1220;
-      margin: 0 0 10px;
-    }
+    h1, h2, h3 { color: #0b1220; margin: 0 0 10px; }
     h1 { font-size: 26px; }
     h2 { font-size: 18px; margin-top: 20px; }
     h3 { font-size: 16px; }
@@ -25,26 +22,20 @@
       margin: 10px 0 16px;
       table-layout: fixed;
     }
-    th,
-    td {
+    th, td {
       border: 1px solid #d1d5db;
       padding: 7px 8px;
       text-align: left;
       vertical-align: top;
       word-break: break-word;
     }
-    th {
-      background: #f8fafc;
-      font-weight: 600;
-    }
+    th { background: #f8fafc; font-weight: 600; }
     ul { margin: 6px 0 0 20px; padding: 0; }
     li { margin: 4px 0; }
-    .mono {
+    code, .mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 12px;
     }
-    .status-ok { color: #047857; font-weight: 600; }
-    .status-warn { color: #b45309; font-weight: 600; }
     .verdict {
       padding: 10px;
       background: #f1f5f9;
@@ -52,7 +43,7 @@
     }
     .gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 12px;
       margin: 8px 0 16px;
     }
@@ -76,199 +67,130 @@
       color: #334155;
       font-size: 12px;
     }
+    .status-ok { color: #047857; font-weight: 600; }
+    .status-warn { color: #b45309; font-weight: 600; }
   </style>
 </head>
 <body>
-  <h1>Windows UI Parity Report: Dashboard Leadership and Theme Parity</h1>
-  <p><strong>Report date:</strong> 2026-07-26</p>
-  <p><strong>Scope:</strong> Windows Tauri UI parity for AI Leadership default hero, leadership level mapping, metric layout semantics, settings panel integrity, theme centralization, and dark-mode regression fix.</p>
-  <p><strong>Files modified:</strong></p>
-  <ul>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/index.css</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/utils/leadershipTitles.ts</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/components/LeadershipPanel.tsx</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/main.tsx</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/windows/Dashboard.tsx</span></li>
-    <li><span class="mono">windows/apps/codexu-tauri/web/src/windows/Settings.tsx</span></li>
-    <li><span class="mono">docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.md</span></li>
-    <li><span class="mono">docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.html</span></li>
-  </ul>
+  <h1>Windows UI Parity Report: Dashboard Home Alignment (Phase-4 UI)</h1>
+  <p><strong>Report date:</strong> 2026-07-27</p>
+  <p><strong>Scope:</strong> Windows dashboard-home visual hierarchy parity (dashboard-home layout, token mix labeling, native evidence, and leadership detail retention) using only the release executable.</p>
 
-  <h2>Mac authoritative mapping (Leadership levels)</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Band</th>
-        <th>Canonical id</th>
-        <th>Score range</th>
-        <th>中文</th>
-        <th>English</th>
-        <th>Badge file</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td>L1</td><td><span class="mono">l1</span></td><td>0–19</td><td>碳基牛马</td><td>Carbon Laborer</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l1.png</span></td></tr>
-      <tr><td>L2</td><td><span class="mono">l2</span></td><td>20–34</td><td>赛博监工</td><td>Cyber Overseer</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l2.png</span></td></tr>
-      <tr><td>L3</td><td><span class="mono">l3</span></td><td>35–49</td><td>分身队长</td><td>Clone Captain</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l3.png</span></td></tr>
-      <tr><td>L4</td><td><span class="mono">l4</span></td><td>50–64</td><td>硅基领主</td><td>Silicon Lord</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l4.png</span></td></tr>
-      <tr><td>L5</td><td><span class="mono">l5</span></td><td>65–79</td><td>硅基统帅</td><td>Silicon Marshal</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l5.png</span></td></tr>
-      <tr><td>L6</td><td><span class="mono">l6</span></td><td>80–92</td><td>超级个体</td><td>Super Individual</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l6.png</span></td></tr>
-      <tr><td>L7</td><td><span class="mono">l7</span></td><td>93–100</td><td>人类最强者</td><td>Humanity&apos;s Apex</td><td><span class="mono">Resources/LeadershipBadges/leadership-badge-l7.png</span></td></tr>
-    </tbody>
-  </table>
-  <p class="mono" style="color:#475569;">Source references: Sources/CodexUsageWidget/Domain/LeadershipModel.swift and Sources/CodexUsageWidget/UI/LeadershipViews.swift.</p>
-
-  <h2>Resource/token ownership table</h2>
-  <table>
-    <thead>
-      <tr><th>Token class</th><th>Owned by</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Palette-owned accent</td><td><span class="mono">Resources/Palettes/codexu.default</span> (accent.primary, accent.primaryStrong, accent.secondary, accent.secondaryStrong, accent.highlight)</td></tr>
-      <tr><td>Palette-owned quota</td><td><span class="mono">Resources/Palettes/codexu.default</span> (quota.primary, quota.secondary)</td></tr>
-      <tr><td>Palette-owned data</td><td><span class="mono">Resources/Palettes/codexu.default</span> (data.*)</td></tr>
-      <tr><td>Palette-owned selection</td><td><span class="mono">Resources/Palettes/codexu.default</span> (selection.*)</td></tr>
-      <tr><td>Palette-owned ornament</td><td><span class="mono">Resources/Palettes/codexu.default</span> (ornament.*)</td></tr>
-      <tr><td>App theme-owned surface</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--surface*)</td></tr>
-      <tr><td>App theme-owned text</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--text-*)</td></tr>
-      <tr><td>App theme-owned status</td><td><span class="mono">windows/apps/codexu-tauri/web/src/utils/appTheme.ts</span> (--status-*)</td></tr>
-      <tr><td>Palette color facts</td><td><span class="mono">accent.primary #2866F7; accent.primaryStrong #1F59ED; accent.secondary #8B6DFF; data.tokenInput #0A84FF; data.tokenCached #8B6DFF; data.tokenOutput #FF9F0A</span></td></tr>
-    </tbody>
-  </table>
-
-  <h2>Screenshot evidence gallery</h2>
-  <p>Windows acceptance assets in <span class="mono">docs/windows-port/reports/assets</span> and mac promo references:</p>
-  <div class="gallery">
-    <figure>
-      <img src="assets/baseline-dashboard.png" alt="baseline-dashboard.png" />
-      <figcaption>baseline-dashboard.png — Legacy Overview/Usage baseline before this UI iteration.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/baseline-leadership.png" alt="baseline-leadership.png" />
-      <figcaption>baseline-leadership.png — Baseline Leadership before canonical L1–L7 and real badges.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/baseline-settings.png" alt="baseline-settings.png" />
-      <figcaption>baseline-settings.png — Baseline Settings before the UI iteration.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/final-leadership-command-rail.png" alt="final-leadership-command-rail.png" />
-      <figcaption>final-leadership-command-rail.png — Final native release capture (963×791), showing continuous command rail, visible L1–L7 badge art, and score/title/metric context.</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/final-usage.png" alt="final-usage.png" />
-      <figcaption>final-usage.png — Final Usage dashboard with Usage/Threads/Projects retained and Usage section label (renamed from Overview).</figcaption>
-    </figure>
-    <figure>
-      <img src="assets/final-settings.png" alt="final-settings.png" />
-      <figcaption>final-settings.png — Final Settings panel with no clipping and complete controls.</figcaption>
-    </figure>
-  </div>
-  <div class="gallery">
-    <figure>
-      <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="screenshot-v1.2.0-ai-leadership.png" />
-      <figcaption>screenshot-v1.2.0-ai-leadership.png — mac reference visual baseline used for hierarchy/reference.</figcaption>
-    </figure>
-    <figure>
-      <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="screenshot-v1.1.0-palette-gallery.png" />
-      <figcaption>screenshot-v1.1.0-palette-gallery.png — mac reference for palette and branding context.</figcaption>
-    </figure>
+  <h2>Conclusion</h2>
+  <div class="verdict">
+    <p>The latest native release confirms page-level dashboard-home alignment for this phase.</p>
+    <p>Default Dashboard uses a native Windows light/system presentation, keeps explicit local data contract text for 7-day token mix, and excludes raw thread/project/tool payload content.</p>
+    <p>Leadership detail continues to show identity + score context + full-domain L1-L7 progression, and 2x2 metrics.</p>
   </div>
 
-  <h2>Comparison matrix</h2>
-  <table>
-    <thead>
-      <tr><th>Axis</th><th>Baseline</th><th>Final</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Architecture</td><td>Leadership rendering used a rank row and orbit flow, but not all band thresholds and badge linkage were represented as a native continuous rail.</td><td>Final architecture uses a continuous command rail with real <span class="mono">l1</span>–<span class="mono">l7</span> resources at canonical thresholds <span class="mono">0/20/35/50/65/80/93</span>, score/title row, and compact <span class="mono">83/100</span> marker context.</td></tr>
-      <tr><td>Rank/gradient behavior</td><td>Gradient and current-score mapping were not fully validated in native final evidence.</td><td>Full 0–100 semantic gradient is shown and clipped to current score boundary in final native capture.</td></tr>
-      <tr><td>Primary color</td><td>Palette and app tokens were shared without explicit full separation.</td><td>Palette ownership preserved for accent/quota/data/selection/ornament; app owns surface/text/status for stable light and dark behavior.</td></tr>
-      <tr><td>Layout density</td><td>2×2 key metric density was not explicitly linked to final command-rail state.</td><td>Leadership continues to show score/title plus compact 2×2 metric matrix in accepted layout.</td></tr>
-      <tr><td>Navigation/intent</td><td>Navigation existed, but mac promo and Windows intent were mixed in comparison framing.</td><td>Windows keeps white tool surface and native navigation; mac references are retained as hierarchy references only, not a pixel-copy mandate.</td></tr>
-      <tr><td>Validation</td><td>Native no-signal/no-diff proof was missing.</td><td>No pixel-diff was run; one native release screenshot (963×791) is now captured as final acceptance evidence.</td></tr>
-      <tr><td>Readability</td><td>Dark-mode readability was unstable in earlier pass.</td><td>Light/Dark/System readability is stable after theme-token fix and release smoke launch.</td></tr>
-    </tbody>
-  </table>
+  <h2>Evidence images</h2>
+  <div class="gallery">
+    <figure>
+      <img src="assets/dashboard-home-native.png" alt="dashboard-home-native.png" />
+      <figcaption>dashboard-home-native.png - default Dashboard (Home tab) at 1446x1350, from <code>windows/target/release/codexu-tauri.exe</code> window state capture.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/dashboard-home-leadership-detail.png" alt="dashboard-home-leadership-detail.png" />
+      <figcaption>dashboard-home-leadership-detail.png - AI Leadership tab at 1446x1350, from the same release window after selecting <code>AI Leadership</code>.</figcaption>
+    </figure>
+  </div>
+  <p>The Leadership image predates the final score-pin coordinate correction. It remains evidence for hierarchy, L1-L7 mapping, and metrics; the corrected 84-point geometry was manually reviewed in the rebuilt release, but no replacement PNG was captured in this batch.</p>
 
-  <h2>Aligned</h2>
+  <h2>Resource reuse and canonical mapping</h2>
   <ul>
-    <li>AI Leadership now renders a continuous command rail using canonical L1–L7 mapping with threshold anchors at 0/20/35/50/65/80/93.</li>
-    <li>Semantic score presentation now includes score/title context with compact marker and clip-bound 0–100 fill.</li>
-    <li>Native final screenshot confirms real leadership badge art is visible at each mapped threshold.</li>
-    <li>2×2 Leadership metric matrix is preserved.</li>
-    <li>Navigation remains <span class="mono">Usage</span> / <span class="mono">Threads</span> / <span class="mono">Projects</span>, with Overview renamed to Usage.</li>
-    <li>Theme token split is consistent and dark-mode regression is resolved.</li>
-    <li>Settings clipping issue removed.</li>
+    <li>Existing <code>LeadershipCommandRail</code> and L1-L7 badge assets are reused.</li>
+    <li>Canonical threshold bands are <strong>0/20/35/50/65/80/93</strong>.</li>
+    <li>Observed score <strong>84</strong> maps to <strong>L6</strong> (80-92).</li>
   </ul>
 
-  <h2>Known Windows differences</h2>
+  <h2>Screenshot comparison</h2>
   <ul>
-    <li>Windows keeps a white tool surface and native navigation treatment intentionally; these are not pixel-copied from mac screenshots.</li>
-    <li>No manual pixel-diff run was completed in this pass.</li>
-    <li>No-signal/no-data native capture remains uncollected.</li>
+    <li>Relative reference: <code>docs/screenshot-v1.2.0-ai-leadership.png</code> (macOS semantic reference).</li>
+    <li>Evidence scope is split by image: Home capture proves top cards and progression-block start, while AI Leadership detail capture proves full <strong>L1-L7 rail</strong> and <strong>2x2 metrics</strong>, but is not the post-fix geometry artifact. Native short-scroll check confirms progression area follows top cards in the home flow.</li>
+    <li>Platform difference is expected and explicit: Windows native-light/system Liquid Glass rendering, not dark macOS pixel cloning.</li>
   </ul>
 
-  <h2>Known gaps and next steps</h2>
+  <h2>Aligned items</h2>
   <ul>
-    <li>No no-signal/live-state native screenshot was collected in this run.</li>
-    <li>No manual pixel-diff versus mac captures was performed.</li>
-    <li>Next step: collect native no-signal/no-data artifacts for Leadership and Settings in a fresh acceptance run.</li>
+    <li>Top card structure and leadership detail content are present and consistent with the same release-window evidence.</li>
+    <li>Home and leadership captures share the same retry-built release executable source.</li>
+    <li>Home captures confirm top-card progression ordering; 2x2 metric block and full L1-L7 command rail are confirmed in AI Leadership detail capture.</li>
+  </ul>
+
+  <h2>Platform differences and known gaps</h2>
+  <ul>
+    <li>Mac screenshots are references only (<code>screenshot-v1.2.0-ai-leadership.png</code>, <code>screenshot-v1.1.0-palette-gallery.png</code>).</li>
+    <li>Official quota/rate-limit remains out of scope because this UI path is not backed by a quota API contract.</li>
+    <li>No-signal/no-data native empty-state artifact is still missing.</li>
+    <li>No manual pixel-diff run was executed in this task.</li>
+    <li>A replacement AI Leadership screenshot after the score-pin coordinate correction was not captured in this batch.</li>
   </ul>
 
   <h2>Validation</h2>
   <table>
     <thead>
-      <tr><th>Command</th><th>cwd</th><th>Exit</th><th>Raw output tail</th></tr>
+      <tr>
+        <th>Command</th>
+        <th>cwd</th>
+        <th>Exit</th>
+        <th>Result</th>
+      </tr>
     </thead>
     <tbody>
       <tr>
         <td class="mono">npm run build</td>
         <td class="mono">windows/apps/codexu-tauri/web</td>
         <td class="status-ok">0</td>
-        <td class="mono">✓ built in 3.15s</td>
+        <td class="mono">tsc + vite build success</td>
       </tr>
       <tr>
         <td class="mono">cargo test --workspace</td>
         <td class="mono">windows</td>
         <td class="status-ok">0</td>
-        <td class="mono">running 9 tests, test result: ok. 9 passed</td>
+        <td class="mono">running 9 tests, all passed</td>
       </tr>
       <tr>
-        <td class="mono">cargo tauri build --no-bundle (attempt 1)</td>
+        <td class="mono">cargo tauri build --no-bundle</td>
         <td class="mono">windows/apps/codexu-tauri/src-tauri</td>
-        <td class="status-warn">1</td>
-        <td class="mono">error: failed to remove file ... codexu-tauri.exe (os error 5)</td>
+        <td class="status-warn">1 (attempt 1)</td>
+        <td class="mono">failed to remove release exe (os error 5)</td>
       </tr>
       <tr>
-        <td class="mono">cargo tauri build --no-bundle (retry)</td>
+        <td class="mono">cargo tauri build --no-bundle</td>
         <td class="mono">windows/apps/codexu-tauri/src-tauri</td>
         <td class="status-ok">0</td>
-        <td class="mono">Finished `release` profile ... Built application at: E:\\project\\codexU\\windows\\target\\release\\codexu-tauri.exe</td>
+        <td class="mono">built release at <code>windows\target\release\codexu-tauri.exe</code> after closing exact-release lock and retry</td>
+      </tr>
+      <tr>
+        <td class="mono">node --test tests\leadership-rail-layout.test.mjs</td>
+        <td class="mono">windows/apps/codexu-tauri/web</td>
+        <td class="status-ok">0</td>
+        <td class="mono">score pin and threshold dots share the exact rail coordinate frame</td>
+      </tr>
+      <tr>
+        <td class="mono">cargo tauri build --no-bundle (final)</td>
+        <td class="mono">windows</td>
+        <td class="status-ok">0</td>
+        <td class="mono">rebuilt the release executable after the score-pin coordinate correction</td>
       </tr>
       <tr>
         <td class="mono">git diff --check</td>
         <td class="mono">repo root</td>
         <td class="status-ok">0</td>
-        <td class="mono">No whitespace errors detected (warning: LF→CRLF conversion note only).</td>
-      </tr>
-      <tr>
-        <td class="mono">windows/target/release/codexu-tauri.exe release smoke launch</td>
-        <td class="mono">repo root</td>
-        <td class="status-ok">0</td>
-        <td class="mono">process_count=1, window_count=1; native final screenshot captured as final-leadership-command-rail.png at 963×791.</td>
+        <td class="mono">no whitespace errors (LF/CRLF notices possible on future git touches)</td>
       </tr>
     </tbody>
   </table>
 
-  <h2>Conclusion / Alignment</h2>
-  <div class="verdict">
-    <p>Leadership command rail architecture, band semantics, and theme ownership are functionally aligned in this release stage with mac semantic intent and native confirmation.</p>
-    <p>Outstanding gaps are process scope only: no pixel-diff run and no no-signal native artifact in this cycle.</p>
-  </div>
+  <h2>Files updated</h2>
+  <ul>
+    <li><code>docs/windows-port/showcase/WINDOWS_DASHBOARD_SHOWCASE.md</code></li>
+    <li><code>docs/windows-port/showcase/WINDOWS_DASHBOARD_SHOWCASE.html</code></li>
+    <li><code>docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.md</code></li>
+    <li><code>docs/windows-port/reports/WINDOWS_UI_PARITY_REPORT.html</code></li>
+  </ul>
 
   <h2>Suggested commit message</h2>
-  <p class="mono">feat(windows-ui): add Leadership command rail</p>
+  <p><span class="mono">feat(windows-ui): compose dashboard home</span></p>
 </body>
 </html>

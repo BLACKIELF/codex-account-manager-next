@@ -313,8 +313,8 @@ body {
 
   .leadership-threshold-points {
     position: absolute;
-    left: 0.5rem;
-    right: 0.5rem;
+    left: 0.6rem;
+    right: 0.6rem;
     top: 0;
     height: 112px;
     pointer-events: none;
@@ -484,6 +484,10 @@ body {
     min-height: 0;
   }
 
+  .dashboard-home-top-grid {
+    grid-template-columns: 1fr;
+  }
+
   .dashboard-leadership-orbit-wrap {
     display: inline-flex;
     flex-direction: column;
@@ -497,6 +501,63 @@ body {
 
   .dashboard-home .glass-panel {
     min-height: 0;
+  }
+
+  .dashboard-home-metrics {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .dashboard-home-leadership-metrics {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .dashboard-command-rail-label {
+    margin: 0;
+  }
+
+  .leadership-command-rail-button {
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    cursor: default;
+  }
+
+  .leadership-command-rail-clickable {
+    cursor: pointer;
+  }
+
+  .leadership-command-rail-clickable:hover .leadership-rail-track,
+  .leadership-command-rail-clickable:focus-visible .leadership-rail-track {
+    border-color: color-mix(in oklab, var(--text-secondary) 45%, var(--border));
+  }
+
+  .leadership-command-rail-clickable:focus-visible .leadership-rail-score-text,
+  .leadership-command-rail-clickable:focus-visible .leadership-rail-track,
+  .leadership-command-rail-clickable:focus-visible .leadership-rail-fill,
+  .leadership-command-rail-clickable:focus-visible .leadership-rail-node-label {
+    outline: 0;
+    filter: brightness(1.04);
+  }
+
+  .leadership-command-rail-clickable:focus-visible {
+    outline: 2px solid var(--selection-stroke);
+    outline-offset: 2px;
+  }
+}
+
+@media (min-width: 930px) {
+  .dashboard-home-top-grid {
+    grid-template-columns: minmax(240px, 1.1fr) minmax(250px, 0.95fr) minmax(240px, 1fr);
+  }
+
+  .dashboard-home-leadership-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

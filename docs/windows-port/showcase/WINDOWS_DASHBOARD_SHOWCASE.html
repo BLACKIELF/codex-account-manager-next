@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Windows Dashboard Home Showcase</title>
+  <style>
+    body {
+      margin: 20px;
+      font: 14px/1.5 ui-sans-serif, -apple-system, Segoe UI, sans-serif;
+      color: #0f172a;
+      background: #ffffff;
+    }
+    h1, h2 { color: #0b1220; margin: 0 0 10px; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 18px; margin-top: 20px; }
+    p { margin: 6px 0; }
+    ul { margin: 0 0 0 20px; }
+    li { margin: 4px 0; }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      margin: 10px 0 16px;
+      gap: 12px;
+    }
+    figure {
+      margin: 0;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+    figure img {
+      width: 100%;
+      display: block;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+    }
+    figcaption { margin-top: 6px; color: #334155; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Windows Dashboard Home Showcase</h1>
+  <p>This showcase documents native evidence for the final Windows Dashboard Home and Leadership detail views for Phase-4 UI work. The retained Leadership image is pre-fix structural evidence.</p>
+
+  <h2>What this release validates</h2>
+  <ul>
+    <li>Native dashboard-home hierarchy appears in final release binary output.</li>
+    <li>Resource reuse is unchanged: native LeadershipCommandRail and existing L1-L7 badge assets continue to power identity score rail rendering.</li>
+    <li>Canonical thresholds are enforced at 0 / 20 / 35 / 50 / 65 / 80 / 93 (score 84 maps to L6).</li>
+    <li>Dashboard uses local 7-day token mix as a named composition (Input / Cached input / Output).</li>
+    <li>No raw thread / project / tool content is shown on default home.</li>
+    <li>Leadership detail retains full L1-L7 rail plus identity and metrics context; the retained image predates the final score-pin coordinate correction.</li>
+  </ul>
+
+  <h2>Screenshot comparison</h2>
+    <p>Reference image: <code>docs/screenshot-v1.2.0-ai-leadership.png</code> (macOS semantic reference). This update validates parity by evidence scope: Home capture verifies top cards and progression block start, while full <strong>L1-L7 rail</strong> and <strong>2x2 metrics</strong> are verified in the AI Leadership detail capture. That image predates the final score-pin coordinate correction; the corrected 84-point geometry was manually reviewed in the rebuilt release, but no replacement PNG was captured in this batch. Native short-scroll check confirms the progression area follows the top cards in the same home flow.</p>
+  <p>Platform difference is intentionally preserved as Windows-native light/system Liquid Glass rendering rather than dark macOS pixel cloning.</p>
+
+  <h2>Native evidence</h2>
+  <div class="gallery">
+    <figure>
+      <img src="../reports/assets/dashboard-home-native.png" alt="dashboard-home-native.png" />
+      <figcaption>Default Dashboard Home (1446x1350), captured from final release-window state (Home tab).</figcaption>
+    </figure>
+    <figure>
+      <img src="../reports/assets/dashboard-home-leadership-detail.png" alt="dashboard-home-leadership-detail.png" />
+      <figcaption>AI Leadership tab detail (1446x1350), captured before the final score-pin coordinate correction; retained for hierarchy, mapping, and metrics evidence.</figcaption>
+    </figure>
+  </div>
+
+  <h2>Platform interpretation</h2>
+  <ul>
+    <li>Windows surface and styling are intentionally native-light and Liquid Glass, not macOS pixel-replication.</li>
+    <li>macOS assets are references only, not targets for pixel matching.</li>
+  </ul>
+
+  <h2>Aligned items</h2>
+  <ul>
+    <li>Identity/score context is present on leadership detail.</li>
+    <li>L1-L7 command rail is present with threshold semantics, and score 84 is within L6 band (80-92). The retained PNG is not evidence for post-fix point-to-fill alignment.</li>
+    <li>Home capture confirms top-card structure and progression block appearance; full <strong>L1-L7</strong> rail plus <strong>2x2 metrics</strong> are confirmed in AI Leadership detail capture.</li>
+  </ul>
+
+  <h2>Raw verification</h2>
+  <ul>
+    <li><code>npm run build</code> in <code>windows/apps/codexu-tauri/web</code> -> <strong>0</strong>.</li>
+    <li><code>cargo test --workspace</code> in <code>windows</code> -> <strong>0</strong>, 9 tests passed.</li>
+    <li><code>cargo tauri build --no-bundle</code> in <code>windows/apps/codexu-tauri/src-tauri</code> -> attempt 1 <strong>1</strong> (os error 5), retry <strong>0</strong> after closing exact-release process.</li>
+    <li>Screenshot capture source: retry-built <code>windows/target/release/codexu-tauri.exe</code>.</li>
+    <li><code>node --test tests\leadership-rail-layout.test.mjs</code> in <code>windows/apps/codexu-tauri/web</code> -> <strong>0</strong>; score pin and threshold dots share the exact rail coordinate frame.</li>
+    <li><code>cargo tauri build --no-bundle</code> in <code>windows</code> -> final <strong>0</strong> after the score-pin coordinate correction.</li>
+    <li><code>git diff --check</code> -> <strong>0</strong> (only LF/CRLF notice if file touched by git tooling).</li>
+  </ul>
+
+  <h2>Known gaps</h2>
+  <ul>
+    <li>Official quota / rate-limit contract is not displayed by this scope.</li>
+    <li>No no-data / no-signal native empty-state artifact was captured yet.</li>
+    <li>No manual pixel-diff was completed in this pass.</li>
+    <li>A replacement AI Leadership screenshot after the score-pin coordinate correction was not captured in this batch.</li>
+  </ul>
+</body>
+</html>

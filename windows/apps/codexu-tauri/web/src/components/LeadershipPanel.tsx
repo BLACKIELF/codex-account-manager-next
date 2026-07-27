@@ -334,15 +334,21 @@ export function LeadershipCommandRail({
   bands,
   hasSignal,
   score,
+  onOpenLeadership,
 }: {
   bands: readonly LeadershipBand[];
   hasSignal: boolean;
   score: number;
+  onOpenLeadership?: () => void;
 }) {
   const safeScore = clampPercent(score);
-
-  return (
-    <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
+  const currentBand = bands.find((band) => safeScore >= band.scoreMin && safeScore <= band.scoreMax) ?? null;
+  const hasInteractive = typeof onOpenLeadership === 'function';
+  const signalLabel = currentBand
+    ? `Open AI Leadership detail for score ${safeScore}, L${currentBand.level} ${currentBand.zhName} / ${currentBand.enName}`
+    : 'Open AI Leadership detail';
+  const railContent = (
+    <>
       <div className="leadership-rail-track" />
       {hasSignal ? (
         <div
@@ -392,18 +398,36 @@ export function LeadershipCommandRail({
               </Fragment>
             );
           })}
+          <div className="leadership-rail-score-marker" style={{ left: `${safeScore}%` }}>
+            <span className="leadership-rail-score-text">{`${safeScore} / 100`}</span>
+            <span className="leadership-rail-score-stem" aria-hidden="true" />
+            <span className="leadership-rail-score-pin" aria-hidden="true" />
+          </div>
         </div>
       ) : null}
-
-      {hasSignal ? (
-        <div className="leadership-rail-score-marker" style={{ left: `${safeScore}%` }}>
-          <span className="leadership-rail-score-text">{`${safeScore} / 100`}</span>
-          <span className="leadership-rail-score-stem" aria-hidden="true" />
-          <span className="leadership-rail-score-pin" aria-hidden="true" />
-        </div>
-      ) : null}
-    </div>
+    </>
   );
+
+  if (!hasInteractive) {
+    return (
+      <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
+        {railContent}
+        <span className="sr-only">Leadership details unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpenLeadership}
+      className="leadership-command-rail leadership-command-rail-button leadership-command-rail-clickable"
+      aria-label={hasSignal ? signalLabel : 'Open AI Leadership detail'}
+    >
+      {railContent}
+    </button>
+  );
+
 }
 
 function Pill({
