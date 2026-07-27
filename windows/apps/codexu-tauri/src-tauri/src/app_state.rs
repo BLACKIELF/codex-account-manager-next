@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -7,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
-use codexu_core::models::LocalUsage;
-use codexu_core::readers::{CodexStateReader, CodexThreadMetadata, CodexTranscriptReader};
+use codexu_core::models::CodexDashboardSnapshot;
+use codexu_core::readers::CodexDashboardProvider;
 
 /// User-configurable app settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,7 +91,7 @@ impl AppConfig {
 /// Cached usage snapshot plus metadata.
 #[derive(Debug, Clone)]
 pub struct CachedSnapshot {
-    pub usage: LocalUsage,
+    pub usage: CodexDashboardSnapshot,
     pub refreshed_at: DateTime<Utc>,
 }
 
@@ -119,7 +118,7 @@ impl AppState {
     pub async fn get_usage(
         self: &Arc<Self>,
         max_age_secs: u64,
-    ) -> anyhow::Result<Option<LocalUsage>> {
+    ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         {
             let snapshot = self.snapshot.read().await;
             if let Some(ref s) = *snapshot {
@@ -133,51 +132,32 @@ impl AppState {
     }
 
     /// Force a refresh of the usage snapshot.
-    pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<LocalUsage>> {
+    pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         let _guard = self.refresh_lock.lock().await;
         info!("Refreshing usage snapshot");
 
         let config = self.config.read().await.clone();
-        let state_db_path = config.codex_root.join("state_5.sqlite");
+        let provider = CodexDashboardProvider::new(&config.codex_root, &config.cache_dir);
+        let now = Utc::now();
+        let snapshot = provider.load_dashboard_snapshot(now).await?;
 
-        let metadata: HashMap<String, CodexThreadMetadata> =
-            if tokio::fs::try_exists(&state_db_path).await.unwrap_or(false) {
-                match CodexStateReader::new(&state_db_path).load_metadata().await {
-                    Ok(m) => {
-                        info!("Loaded metadata for {} threads from state DB", m.len());
-                        m
-                    }
-                    Err(e) => {
-                        warn!("Failed to load Codex state metadata: {}", e);
-                        HashMap::new()
-                    }
-                }
-            } else {
-                info!("Codex state DB not found; continuing without metadata enrichment");
-                HashMap::new()
-            };
-
-        let reader = CodexTranscriptReader::new(&config.cache_dir);
-        let usage = reader
-            .load_local_usage_with_metadata(&config.codex_root, metadata, Utc::now())
-            .await?;
-
-        let snapshot = usage.clone().map(|u| CachedSnapshot {
-            usage: u,
-            refreshed_at: Utc::now(),
+        let snapshot = snapshot.map(|snapshot| CachedSnapshot {
+            usage: snapshot,
+            refreshed_at: now,
         });
+        let cached_usage = snapshot.as_ref().map(|snapshot| snapshot.usage.clone());
 
         {
             let mut guard = self.snapshot.write().await;
             *guard = snapshot;
         }
 
-        if usage.is_some() {
+        if cached_usage.is_some() {
             info!("Usage snapshot refreshed");
         } else {
             warn!("No Codex usage data found");
         }
-        Ok(usage)
+        Ok(cached_usage)
     }
 
     /// Update config and persist to disk.
@@ -214,4 +194,103 @@ pub async fn clear_cache(state: &Arc<AppState>) {
         *guard = None;
     }
     info!("Cleared codexU cache");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use chrono::Duration;
+    use codexu_core::models::{
+        AccountInfo, CodexDashboardSnapshot, CodexLeadershipSignal, LeadershipDashboardSnapshot,
+        RuntimeMenuStatus, RuntimeScope, RuntimeUsageSnapshot, UsageSnapshot,
+    };
+
+    fn unique_temp_path(prefix: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!("{}-{}", prefix, stamp))
+    }
+
+    fn create_snapshot(now: DateTime<Utc>) -> CodexDashboardSnapshot {
+        CodexDashboardSnapshot {
+            codex: RuntimeUsageSnapshot {
+                scope: RuntimeScope::Codex,
+                snapshot: UsageSnapshot {
+                    refreshed_at: now,
+                    account: AccountInfo {
+                        r#type: "codex-local".to_string(),
+                        plan_type: None,
+                        email_present: false,
+                    },
+                    limit_id: "codex-local".to_string(),
+                    limit_name: "Codex local".to_string(),
+                    quota_read_succeeded: false,
+                    five_hour_quota: None,
+                    seven_day_quota: None,
+                    monthly_quota: None,
+                    local: None,
+                    task_board: None,
+                    messages: vec![],
+                },
+                status: RuntimeMenuStatus::LocalOnly,
+                quota_source_label: "Official quota unavailable on Windows".to_string(),
+                usage_source_label: "Local Codex transcript data".to_string(),
+            },
+            leadership: CodexLeadershipSignal {
+                score: None,
+                evidence_coverage: 0.0,
+                active_day_count: 0,
+                period: "twentyEightDays".to_string(),
+                model_version: "1.3-codex-interval".to_string(),
+                report: Some(LeadershipDashboardSnapshot {
+                    model_version: "1.3-codex-interval".to_string(),
+                    refreshed_at: now,
+                    reports: vec![],
+                }),
+            },
+            refreshed_at: now,
+            messages: vec!["Cached dashboard snapshot".to_string()],
+        }
+    }
+
+    #[tokio::test]
+    async fn get_usage_uses_cached_snapshot_before_ttl() {
+        let app_data_dir = unique_temp_path("codexu-tauri-cache-test");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let now = Utc::now();
+
+        {
+            let mut snapshot = state.snapshot.write().await;
+            *snapshot = Some(CachedSnapshot {
+                usage: create_snapshot(now - Duration::seconds(5)),
+                refreshed_at: now,
+            });
+        }
+
+        let value = state.get_usage(60).await.unwrap().unwrap();
+        assert_eq!(value.messages, vec!["Cached dashboard snapshot".to_string()]);
+        assert_eq!(value.refreshed_at, now - Duration::seconds(5));
+    }
+
+    #[tokio::test]
+    async fn refresh_usage_caches_none_when_no_local_data() {
+        let app_data_dir = unique_temp_path("codexu-tauri-refresh-none");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let codex_root = unique_temp_path("codexu-tauri-codex-root-none");
+        let cache_dir = unique_temp_path("codexu-tauri-cache-root-none");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = codex_root;
+            config.cache_dir = cache_dir;
+        }
+
+        let snapshot = state.refresh_usage().await.unwrap();
+        assert!(snapshot.is_none());
+        assert!(state.snapshot.read().await.is_none());
+    }
 }
