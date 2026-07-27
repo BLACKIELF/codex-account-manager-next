@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -88,11 +90,27 @@ impl AppConfig {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct DashboardSourceKey {
+    codex_root: PathBuf,
+    cache_dir: PathBuf,
+}
+
+impl DashboardSourceKey {
+    fn from_config(config: &AppConfig) -> Self {
+        Self {
+            codex_root: config.codex_root.clone(),
+            cache_dir: config.cache_dir.clone(),
+        }
+    }
+}
+
 /// Cached usage snapshot plus metadata.
 #[derive(Debug, Clone)]
 pub struct CachedSnapshot {
-    pub usage: CodexDashboardSnapshot,
+    pub usage: Option<CodexDashboardSnapshot>,
     pub refreshed_at: DateTime<Utc>,
+    pub source_key: DashboardSourceKey,
 }
 
 /// Shared application state.
@@ -101,6 +119,8 @@ pub struct AppState {
     pub snapshot: RwLock<Option<CachedSnapshot>>,
     pub refresh_lock: Mutex<()>,
     pub app_data_dir: PathBuf,
+    #[cfg(test)]
+    pub(crate) refresh_call_count: Arc<AtomicUsize>,
 }
 
 impl AppState {
@@ -111,7 +131,19 @@ impl AppState {
             snapshot: RwLock::new(None),
             refresh_lock: Mutex::new(()),
             app_data_dir,
+            #[cfg(test)]
+            refresh_call_count: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    async fn current_source_key(&self) -> DashboardSourceKey {
+        let config = self.config.read().await;
+        DashboardSourceKey::from_config(&config)
+    }
+
+    fn is_fresh(snapshot: &CachedSnapshot, max_age_secs: u64) -> bool {
+        let age_secs = (Utc::now() - snapshot.refreshed_at).num_seconds().max(0) as u64;
+        age_secs < max_age_secs
     }
 
     /// Get the cached usage, refreshing if the cache is missing or older than `max_age_secs`.
@@ -119,45 +151,87 @@ impl AppState {
         self: &Arc<Self>,
         max_age_secs: u64,
     ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
+        let current_source = self.current_source_key().await;
+
         {
             let snapshot = self.snapshot.read().await;
-            if let Some(ref s) = *snapshot {
-                let age_secs = (Utc::now() - s.refreshed_at).num_seconds().max(0) as u64;
-                if age_secs < max_age_secs {
-                    return Ok(Some(s.usage.clone()));
+            if let Some(ref cached) = *snapshot {
+                if cached.source_key == current_source && Self::is_fresh(cached, max_age_secs) {
+                    return Ok(cached.usage.clone());
                 }
             }
         }
-        self.refresh_usage().await
+
+        let _guard = self.refresh_lock.lock().await;
+        let current_source = self.current_source_key().await;
+
+        {
+            let snapshot = self.snapshot.read().await;
+            if let Some(ref cached) = *snapshot {
+                if cached.source_key == current_source && Self::is_fresh(cached, max_age_secs) {
+                    return Ok(cached.usage.clone());
+                }
+            }
+        }
+
+        self.refresh_usage_from_source(current_source).await
     }
 
     /// Force a refresh of the usage snapshot.
     pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         let _guard = self.refresh_lock.lock().await;
-        info!("Refreshing usage snapshot");
+        let source = self.current_source_key().await;
+        self.refresh_usage_from_source(source).await
+    }
 
-        let config = self.config.read().await.clone();
-        let provider = CodexDashboardProvider::new(&config.codex_root, &config.cache_dir);
-        let now = Utc::now();
-        let snapshot = provider.load_dashboard_snapshot(now).await?;
+    async fn refresh_usage_from_source(
+        self: &Arc<Self>,
+        source: DashboardSourceKey,
+    ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
+        let mut source = source;
+        let mut latest_snapshot: Option<CodexDashboardSnapshot> = None;
 
-        let snapshot = snapshot.map(|snapshot| CachedSnapshot {
-            usage: snapshot,
-            refreshed_at: now,
-        });
-        let cached_usage = snapshot.as_ref().map(|snapshot| snapshot.usage.clone());
+        for _ in 0..2 {
+            let provider = CodexDashboardProvider::new(&source.codex_root, &source.cache_dir);
+            let now = Utc::now();
+            let snapshot = provider.load_dashboard_snapshot(now).await?;
+            latest_snapshot = snapshot.clone();
 
-        {
-            let mut guard = self.snapshot.write().await;
-            *guard = snapshot;
+            #[cfg(test)]
+            self.refresh_call_count.fetch_add(1, Ordering::SeqCst);
+
+            let cache = Some(CachedSnapshot {
+                usage: snapshot.clone(),
+                refreshed_at: now,
+                source_key: source.clone(),
+            });
+            {
+                let mut guard = self.snapshot.write().await;
+                let config = self.config.read().await;
+                if DashboardSourceKey::from_config(&config) == source {
+                    *guard = cache;
+                    if snapshot.is_some() {
+                        info!("Usage snapshot refreshed");
+                    } else {
+                        warn!("No Codex usage data found");
+                    }
+                    return Ok(snapshot);
+                }
+            }
+
+            warn!(
+                "Config source changed while refreshing dashboard snapshot; retrying with latest config"
+            );
+
+            let latest_source = {
+                let config = self.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            source = latest_source;
         }
 
-        if cached_usage.is_some() {
-            info!("Usage snapshot refreshed");
-        } else {
-            warn!("No Codex usage data found");
-        }
-        Ok(cached_usage)
+        warn!("Could not refresh usage snapshot with stable source config");
+        Ok(latest_snapshot)
     }
 
     /// Update config and persist to disk.
@@ -265,9 +339,14 @@ mod tests {
 
         {
             let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
             *snapshot = Some(CachedSnapshot {
-                usage: create_snapshot(now - Duration::seconds(5)),
+                usage: Some(create_snapshot(now - Duration::seconds(5))),
                 refreshed_at: now,
+                source_key: source,
             });
         }
 
@@ -277,7 +356,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_usage_caches_none_when_no_local_data() {
+    async fn get_usage_uses_cached_none_and_respects_ttl() {
+        let app_data_dir = unique_temp_path("codexu-tauri-cache-none-ttl");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let now = Utc::now();
+        {
+            let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            *snapshot = Some(CachedSnapshot {
+                usage: None,
+                refreshed_at: now,
+                source_key: source,
+            });
+        }
+
+        let value = state.get_usage(120).await.unwrap();
+        assert!(value.is_none());
+        assert_eq!(0, state.refresh_call_count.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn refresh_usage_stores_none_snapshot_and_keeps_ttl_entry() {
         let app_data_dir = unique_temp_path("codexu-tauri-refresh-none");
         let state = Arc::new(AppState::new(app_data_dir));
         let codex_root = unique_temp_path("codexu-tauri-codex-root-none");
@@ -291,6 +393,92 @@ mod tests {
 
         let snapshot = state.refresh_usage().await.unwrap();
         assert!(snapshot.is_none());
-        assert!(state.snapshot.read().await.is_none());
+
+        let cached = state.snapshot.read().await.clone();
+        assert!(cached.is_some());
+        assert!(cached.unwrap().usage.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_usage_uses_latest_source_when_cached_source_is_stale() {
+        let app_data_dir = unique_temp_path("codexu-tauri-source-change");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let old_root = unique_temp_path("codexu-tauri-old-root");
+        let new_root = unique_temp_path("codexu-tauri-new-root");
+        let cache_dir = unique_temp_path("codexu-tauri-source-cache");
+        std::fs::create_dir_all(&old_root).unwrap();
+        std::fs::create_dir_all(&new_root).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::create_dir_all(old_root.join("archived_sessions")).unwrap();
+        std::fs::create_dir_all(new_root.join("archived_sessions")).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = old_root.clone();
+            config.cache_dir = cache_dir.clone();
+        }
+        {
+            let mut snapshot = state.snapshot.write().await;
+            *snapshot = Some(CachedSnapshot {
+                usage: None,
+                refreshed_at: Utc::now() - Duration::seconds(120),
+                source_key: DashboardSourceKey::from_config(&AppConfig {
+                    codex_root: old_root.clone(),
+                    cache_dir: cache_dir.clone(),
+                    theme: ThemeMode::System,
+                    refresh_interval_secs: 60,
+                    tray_density: TrayDensity::Classic,
+                }),
+            });
+        }
+
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = new_root.clone();
+        }
+
+        let _ = state.get_usage(0).await.unwrap();
+
+        let cached = state.snapshot.read().await.clone().expect("cache exists");
+        assert_eq!(cached.source_key.codex_root, new_root);
+    }
+
+    #[tokio::test]
+    async fn get_usage_only_refreshes_once_for_concurrent_readers() {
+        let app_data_dir = unique_temp_path("codexu-tauri-single-flight");
+        let state = Arc::new(AppState::new(app_data_dir));
+        {
+            let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            *snapshot = Some(CachedSnapshot {
+                usage: None,
+                refreshed_at: Utc::now() - Duration::seconds(120),
+                source_key: source,
+            });
+        }
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = unique_temp_path("codexu-tauri-single-flight-root");
+            let cache_dir = unique_temp_path("codexu-tauri-single-flight-cache");
+            std::fs::create_dir_all(&config.codex_root.join("archived_sessions")).unwrap();
+            std::fs::create_dir_all(&cache_dir).unwrap();
+            config.cache_dir = cache_dir;
+        }
+
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let state = state.clone();
+            handles.push(tokio::spawn(async move { state.get_usage(60).await }));
+        }
+
+        for handle in handles {
+            handle.await.unwrap().unwrap();
+        }
+
+        let value = state.get_usage(60).await.unwrap();
+        assert!(value.is_none());
+        assert_eq!(1, state.refresh_call_count.load(Ordering::SeqCst));
     }
 }
