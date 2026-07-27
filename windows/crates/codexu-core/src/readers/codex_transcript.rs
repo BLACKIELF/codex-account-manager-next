@@ -72,6 +72,8 @@ pub struct CodexTranscriptSummary {
     pub last_active_at: Option<DateTime<Utc>>,
     pub deltas: Vec<CodexUsageDelta>,
     pub tool_calls: HashMap<String, i64>,
+    #[serde(default)]
+    pub task_intervals: Vec<CodexTaskInterval>,
 }
 
 /// A single usage delta extracted from a Codex transcript.
@@ -98,6 +100,24 @@ impl CodexTranscriptReader {
         }
     }
 
+    /// Loads parsed transcript summaries without resolving them into `LocalUsage`.
+    pub async fn load_local_summaries(
+        &self,
+        data_root: impl AsRef<Path>,
+    ) -> anyhow::Result<Option<Vec<CodexTranscriptSummary>>> {
+        self.load_local_summaries_internal(data_root).await
+    }
+
+    /// Loads parsed session summaries including optional thread metadata.
+    pub async fn load_local_session_summaries(
+        &self,
+        data_root: impl AsRef<Path>,
+        metadata: HashMap<String, CodexThreadMetadata>,
+    ) -> anyhow::Result<Option<Vec<SessionSummary>>> {
+        let summaries = self.load_local_summaries_internal(data_root).await?;
+        Ok(summaries.map(|summaries| combine_session_metadata(summaries, metadata)))
+    }
+
     pub async fn load_local_usage(
         &self,
         data_root: impl AsRef<Path>,
@@ -114,6 +134,16 @@ impl CodexTranscriptReader {
         metadata: HashMap<String, CodexThreadMetadata>,
         now: DateTime<Utc>,
     ) -> anyhow::Result<Option<LocalUsage>> {
+        let summaries = self
+            .load_local_session_summaries(data_root, metadata)
+            .await?;
+        Ok(summaries.and_then(|sessions| make_local_usage(sessions, now)))
+    }
+
+    async fn load_local_summaries_internal(
+        &self,
+        data_root: impl AsRef<Path>,
+    ) -> anyhow::Result<Option<Vec<CodexTranscriptSummary>>> {
         let data_root = data_root.as_ref();
         if !tokio::fs::try_exists(data_root).await.unwrap_or(false) {
             return Ok(None);
@@ -172,8 +202,8 @@ impl CodexTranscriptReader {
             summaries.push(summary);
         }
 
-        self.write_cache(&cache).await;
-        Ok(make_local_usage_from_codex(summaries, metadata, now))
+            write_cache(&self.cache_dir, &cache).await;
+        Ok(Some(summaries))
     }
 
     async fn read_cache(&self) -> CodexSessionDiskCache {
@@ -201,14 +231,71 @@ impl CodexTranscriptReader {
             },
         }
     }
+}
 
-    async fn write_cache(&self, cache: &CodexSessionDiskCache) {
-        let path = self.cache_dir.join("codex").join("session-usage-v1.json");
-        if let Ok(data) = serde_json::to_vec(cache) {
-            if data.len() as u64 <= MAX_CACHE_BYTES {
-                let _ = tokio::fs::create_dir_all(path.parent().unwrap()).await;
-                let _ = tokio::fs::write(&path, data).await;
+fn combine_session_metadata(
+    summaries: Vec<CodexTranscriptSummary>,
+    metadata: HashMap<String, CodexThreadMetadata>,
+) -> Vec<SessionSummary> {
+    summaries
+        .into_iter()
+        .map(|s| {
+            let key = Path::new(&s.file_path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| s.session_id.clone());
+            let meta = metadata.get(&key);
+
+            let project_path = meta
+                .and_then(|m| m.cwd.as_ref())
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or(s.project_path);
+            let model = s.model.or_else(|| meta.and_then(|m| m.model.clone()));
+            let last_active_at = match (s.last_active_at, meta.and_then(|m| m.updated_at)) {
+                (Some(a), Some(b)) => Some(a.max(b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            };
+
+            SessionSummary {
+                file_path: s.file_path,
+                session_id: s.session_id,
+                project_path: project_path.clone(),
+                model,
+                last_active_at,
+                deltas: s
+                    .deltas
+                    .into_iter()
+                    .map(|d| UsageDelta {
+                        message_id: d.turn_id,
+                        date: d.date,
+                        tokens: d.tokens,
+                        model: d.model,
+                        project_path: project_path.clone(),
+                        session_id: d.session_id,
+                    })
+                    .collect(),
+                tool_calls: s.tool_calls,
+                title: meta.and_then(|m| m.title.clone()),
+                archived: meta.map(|m| m.archived).unwrap_or(false),
+                thread_source: meta.and_then(|m| m.thread_source.clone()),
+                parent_thread_id: meta.and_then(|m| m.parent_thread_id.clone()),
+                task_intervals: s.task_intervals,
+                git_branch: meta.and_then(|m| m.git_branch.clone()),
+                git_origin_url: meta.and_then(|m| m.git_origin_url.clone()),
             }
+        })
+        .collect()
+}
+
+async fn write_cache(cache_dir: &Path, cache: &CodexSessionDiskCache) {
+    let path = cache_dir.join("codex").join("session-usage-v1.json");
+    if let Ok(data) = serde_json::to_vec(cache) {
+        if data.len() as u64 <= MAX_CACHE_BYTES {
+            let _ = tokio::fs::create_dir_all(path.parent().unwrap()).await;
+            let _ = tokio::fs::write(&path, data).await;
         }
     }
 }
@@ -232,6 +319,7 @@ async fn parse_transcript(
         last_active_at: modification_date,
         deltas: Vec::new(),
         tool_calls: HashMap::new(),
+        task_intervals: Vec::new(),
     };
 
     let data = match tokio::fs::read(file).await {
@@ -240,6 +328,7 @@ async fn parse_transcript(
     };
 
     let mut seen_turn_ids = HashSet::new();
+    let mut started_tasks: HashMap<String, DateTime<Utc>> = HashMap::new();
     // Track the most recently observed model per turn so token_count events can
     // inherit it even if the turn_context appeared earlier in the file.
     let mut turn_models: HashMap<String, String> = HashMap::new();
@@ -307,10 +396,61 @@ async fn parse_transcript(
             continue;
         }
 
-        // Usage events are event_msg with payload.type == "token_count".
         if envelope_type != Some("event_msg") {
             continue;
         }
+        if let Some(event_type) = codex_string_value(payload.get("type")) {
+            if event_type == "task_started" {
+                let turn_id = codex_string_value(payload.get("turn_id"));
+                let started_at = codex_timestamp_value(payload.get("started_at"))
+                    .or_else(|| {
+                        if let Some(turn_id) = &turn_id {
+                            codex_timestamp_value(payload.get("timestamp"))
+                                .or_else(|| Some(timestamp))
+                                .filter(|_| !turn_id.is_empty())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(Utc::now);
+                if let Some(turn_id) = turn_id {
+                    started_tasks.insert(turn_id, started_at);
+                }
+                continue;
+            }
+            if event_type == "task_complete" {
+                let turn_id = codex_string_value(payload.get("turn_id"));
+                let completed_at = codex_timestamp_value(payload.get("completed_at"))
+                    .unwrap_or(timestamp);
+                if let Some(ref turn) = turn_id {
+                    if let Some(started_at) = started_tasks.remove(turn) {
+                        summary.task_intervals.push(CodexTaskInterval {
+                            turn_id: Some(turn.clone()),
+                            started_at,
+                            ended_at: completed_at,
+                            quality: LeadershipEvidenceQuality::Fact,
+                        });
+                        continue;
+                    }
+                }
+
+                let duration_ms = codex_f64_value(payload.get("duration_ms"));
+                let duration_seconds = duration_ms
+                    .and_then(|d| if d > 0.0 { Some(d / 1_000.0) } else { None });
+                if let Some(started_at) = duration_seconds.map(|duration| completed_at - chrono::Duration::milliseconds((duration * 1000.0) as i64)) {
+                    if started_at < completed_at {
+                        summary.task_intervals.push(CodexTaskInterval {
+                            turn_id,
+                            started_at,
+                            ended_at: completed_at,
+                            quality: LeadershipEvidenceQuality::Derived,
+                        });
+                    }
+                }
+                continue;
+            }
+        }
+
         if codex_string_value(payload.get("type")).as_deref() != Some("token_count") {
             continue;
         }
@@ -406,6 +546,22 @@ fn codex_i64_value(value: Option<&serde_json::Value>) -> Option<i64> {
     })
 }
 
+fn codex_f64_value(value: Option<&serde_json::Value>) -> Option<f64> {
+    value.and_then(|v| {
+        if let Some(n) = v.as_f64() {
+            Some(n)
+        } else if let Some(s) = v.as_str() {
+            s.parse().ok()
+        } else if let Some(n) = v.as_i64() {
+            Some(n as f64)
+        } else if let Some(n) = v.as_u64() {
+            Some(n as f64)
+        } else {
+            None
+        }
+    })
+}
+
 fn codex_date_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
     value.and_then(|v| {
         if let Some(s) = v.as_str() {
@@ -419,64 +575,28 @@ fn codex_date_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> 
     })
 }
 
-fn make_local_usage_from_codex(
-    summaries: Vec<CodexTranscriptSummary>,
-    metadata: HashMap<String, CodexThreadMetadata>,
-    now: DateTime<Utc>,
-) -> Option<LocalUsage> {
-    let common_summaries: Vec<SessionSummary> = summaries
-        .into_iter()
-        .map(|s| {
-            let key = Path::new(&s.file_path)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| s.session_id.clone());
-            let meta = metadata.get(&key);
-
-            let project_path = meta
-                .and_then(|m| m.cwd.as_ref())
-                .filter(|p| !p.is_empty())
-                .cloned()
-                .unwrap_or(s.project_path);
-            let model = s.model.or_else(|| meta.and_then(|m| m.model.clone()));
-            let last_active_at = match (s.last_active_at, meta.and_then(|m| m.updated_at)) {
-                (Some(a), Some(b)) => Some(a.max(b)),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            };
-
-            SessionSummary {
-                file_path: s.file_path,
-                session_id: s.session_id,
-                project_path: project_path.clone(),
-                model,
-                last_active_at,
-                deltas: s
-                    .deltas
-                    .into_iter()
-                    .map(|d| UsageDelta {
-                        message_id: d.turn_id,
-                        date: d.date,
-                        tokens: d.tokens,
-                        model: d.model,
-                        project_path: project_path.clone(),
-                        session_id: d.session_id,
-                    })
-                    .collect(),
-                tool_calls: s.tool_calls,
-                title: meta.and_then(|m| m.title.clone()),
-                archived: meta.map(|m| m.archived).unwrap_or(false),
-                git_branch: meta.and_then(|m| m.git_branch.clone()),
-                git_origin_url: meta.and_then(|m| m.git_origin_url.clone()),
-            }
-        })
-        .collect();
-    make_local_usage(common_summaries, now)
+fn codex_timestamp_value(value: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
+    value.and_then(|v| match v {
+        serde_json::Value::String(s) => s.parse::<DateTime<Utc>>().ok(),
+        serde_json::Value::Number(n) => n
+            .as_i64()
+            .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok()))
+            .map(|n| {
+                let secs = if n.abs() > 10_000_000_000 {
+                    n / 1000
+                } else {
+                    n
+                };
+                DateTime::from_timestamp(secs, 0).unwrap_or_else(Utc::now)
+            }),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    use chrono::Duration;
+
     use super::*;
     use crate::readers::CodexStateReader;
 
@@ -540,6 +660,82 @@ mod tests {
         // Should sum last_token_usage deltas (150 + 75 = 225), not total_token_usage totals.
         assert_eq!(usage.lifetime_tokens, 225);
     }
+
+    #[tokio::test]
+    async fn parse_task_started_and_task_complete_as_fact_interval() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+        let started = Utc.with_ymd_and_hms(2026, 3, 26, 12, 0, 0).unwrap();
+        let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 30, 0).unwrap();
+
+        let session = archived.join("rollout-task.jsonl");
+        let lines = vec![
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_started","turn_id":"turn-1","started_at":"{}"}}}}"#,
+                started.to_rfc3339(),
+                started.to_rfc3339()
+            ),
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}"}}}}"#,
+                completed.to_rfc3339(),
+                completed.to_rfc3339()
+            ),
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 1);
+        let interval = &summaries[0].task_intervals[0];
+        assert_eq!(interval.turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(interval.quality, LeadershipEvidenceQuality::Fact);
+        assert_eq!(interval.started_at, started);
+        assert_eq!(interval.ended_at, completed);
+    }
+
+    #[tokio::test]
+    async fn parse_task_complete_with_duration_as_derived_interval() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+        let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
+
+        let session = archived.join("rollout-task-derived.jsonl");
+        let lines = vec![
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":5000}}}}"#,
+                completed.to_rfc3339(),
+                completed.to_rfc3339()
+            ),
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 1);
+        let interval = &summaries[0].task_intervals[0];
+        assert_eq!(interval.turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(interval.quality, LeadershipEvidenceQuality::Derived);
+        let started = completed - Duration::seconds(5);
+        assert_eq!(interval.started_at, started);
+        assert_eq!(interval.ended_at, completed);
+    }
+
 
     #[tokio::test]
     async fn enriches_session_with_state_metadata() {
