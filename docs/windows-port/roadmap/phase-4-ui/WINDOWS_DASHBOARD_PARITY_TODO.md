@@ -1,7 +1,7 @@
 # Windows Dashboard Parity TODO（阶段分支前置）
 
-> 目标：为下一分支 `codex/windows-dashboard-lower-panels` 形成可执行待办，不作功能交付承诺。
-> 不改产品代码、数据模型、IPC、截图资产，且不新增 README 变更。
+> 本文前半保留 2026-07-27 的分支前置记录；其中的 `ready frontend` / `blocked data contract` / `decision needed` 是当时的基线，不应被误读为当前完成状态。
+> 2026-07-28 的实施决议、原生证据和分支记录见文末。Dashboard 工作仍遵守既有数据契约边界。
 
 ## 任务定位与证据边界
 
@@ -135,3 +135,70 @@
 - `windows/apps/codexu-tauri/web/src/components/DashboardHome.tsx`（现有 Windows 固定 top）
 - `windows/apps/codexu-tauri/web/src/types/models.ts`（类型边界）
 - `docs/windows-port/showcase/MACOS_WINDOWS_FEATURE_COMPARISON.md/html`
+
+---
+
+## 2026-07-28 resolution（不改写上方历史阻塞记录）
+
+### 当前状态总览
+
+| TODO | 2026-07-28 状态 | 已完成的范围 | 仍然的边界 |
+| --- | --- | --- | --- |
+| TODO-01 | `complete` | 前端已实现固定上方 Dashboard + 下方 Tasks / Usage / Projects / Skills 四格切换；Leadership 保持独立明细。原生证据已完成。 | 不改 `useUsage()` 返回体或数据源。 |
+| TODO-02 | `complete` | Usage/Projects 复用为下方真实面板，可切换；紧凑原生窗口证据已完成。 | 不新增计算字段，不替换统计/图表口径。 |
+| TODO-03 | `UI shell complete; data contract blocked` | Tasks 空态面板已实现，并明确 task state 未暴露。 | 不从 Threads 推断 Tasks；不改 thread parser。 |
+| TODO-04 | `UI shell complete; data contract blocked` | Skills 空态面板已实现，并明确 typed Skills usage 未暴露。 | 不改 Reader/cache/IPC；不将 Tool usage 重命名为 Skills。 |
+| TODO-05 | `decision resolved` | 使用既有 detailed-month `estimated_cost_usd` 驱动本地 API-equivalent Month estimate。 | 不是 official quota / allowance / remaining / bill；macOS 定价不同，不主张严格美元对齐。 |
+| TODO-06 | `evidence complete` | 六张最终原生截图、showcase 和 parity report 已按同一结论更新。 | 下方面板截图是滚动至 tablist 后的证据，不作为首屏宣称。 |
+| TODO-07 | `recorded` | 初始文档分支提交与后续实现分支状态已记录。 | 未 push、未 merge。 |
+
+### TODO-01 / TODO-02：固定区与下方真实面板
+
+- 固定区顺序：Leadership identity、local 7-day Token mix、Today / 7-Day / Lifetime、完整 L1-L7 rail、local Month value progress。
+- 下方顺序：Tasks / Usage / Projects / Skills；Leadership 是 `AI Leadership` 独立明细，不是第五个下方面板。
+- 最终原生紧凑窗口约为 `960x758 CSS px`：default DWM `1439x1136` physical，其他面板批次 `1440x1137` physical，DPI 144。三个顶部组为水平布局，L1-L7 标题、徽章、bar 与 labels 完整可见。
+- 固定 top 的 Token mix 只显示 `Input`、`Cached input`、`Output` 各一次；不含重复计数，也不含 raw thread/project/tool 内容。
+
+### TODO-03 / TODO-04：诚实空态是完成的 UI，不是功能缺失断言
+
+- Tasks：当前 Windows 契约没有 task-status model。UI shell 已完成，明确说 task state 未暴露；严禁把 Threads 推断为 Tasks。
+- Skills：当前 Windows 契约没有 typed Skills-usage field。UI shell 已完成，明确说缺少该字段；Tool usage 不是 Skills 的近似映射。
+- 以上是**证据边界**：说明当前 Reader/model/IPC 没有可真实呈现的数据，不是“产品区域不存在”的证明。
+
+### TODO-05：Month value progress 决议
+
+- 数据：既有 detailed-month `estimated_cost_usd`。
+- 名称：**Local API-equivalent estimate**，必须以本地估值解释。
+- 标记：Plus `$20`、Pro 100 `$100`、Pro 200 `$200`、reference cap `$46.5K`。
+- 映射：第一个 `$0–200` 为 28%；余段使用 `log1p` tail。
+- 禁止口径：不得表述成官方 rate-limit、quota、allowance、remaining balance 或 bill。macOS 定价不同，因此不做严格 dollar parity 宣称。
+
+### TODO-06：最终截图与验证
+
+所有截图都来自最终 `windows/target/release/codexu-tauri.exe` 的目标 HWND `PrintWindow` capture，不是 Computer Use。Computer Use Node runtime 初始化失败，错误为 `os error 3`，因此不得称为 Computer Use 验收通过。目标 release process 已在 capture 后清理，匹配进程为 0。
+
+| Surface | 最终证据 |
+| --- | --- |
+| Default Dashboard | [dashboard-lower-panels-default-native.png](../../reports/assets/dashboard-lower-panels-default-native.png) |
+| AI Leadership | [dashboard-lower-panels-leadership-native.png](../../reports/assets/dashboard-lower-panels-leadership-native.png) |
+| Tasks | [dashboard-lower-panels-tasks-native.png](../../reports/assets/dashboard-lower-panels-tasks-native.png) |
+| Usage | [dashboard-lower-panels-usage-native.png](../../reports/assets/dashboard-lower-panels-usage-native.png) |
+| Projects | [dashboard-lower-panels-projects-native.png](../../reports/assets/dashboard-lower-panels-projects-native.png) |
+| Skills | [dashboard-lower-panels-skills-native.png](../../reports/assets/dashboard-lower-panels-skills-native.png) |
+
+验证事实：
+
+- `npm run build`（`windows/apps/codexu-tauri/web`）最终复跑成功。
+- `cargo test --workspace`（`windows`）最终复跑成功：`codexu_core` 9/9；其他 targets 与 doc tests 为 0。
+- `cargo tauri build --no-bundle`（`windows/apps/codexu-tauri/src-tauri`）在 01:55:04 最终复跑成功，产出 release executable。
+- `git diff --check` 成功。
+
+### TODO-07：分支与提交记录
+
+1. 初始“证据边界 + 对齐 TODO”文档提交：`cafaf42`，分支 `codex/windows-dashboard-lower-panels`。
+2. 当前实现提交：`20b4adf`，当前实现所在分支为 `codex/windows-dashboard-lower-panels-todo`。
+3. 此记录不表示分支已合并：截至本 resolution，未 push、未 merge，也不应 reset 或 amend 这些提交。
+
+### 范围确认
+
+本 Dashboard 工作范围没有引入 Dashboard Reader、cache behavior、IPC field、积分变更、thread parsing 变更或 score calculation 变更；它只在现有前端契约上恢复 UI，并将缺失字段显式呈现为边界。该句只描述本 Dashboard 范围，不对仓库其他改动做全局否定。

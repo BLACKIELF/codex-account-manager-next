@@ -506,6 +506,7 @@ body {
   .dashboard-home-metrics {
     display: grid;
     gap: 0.5rem;
+    align-content: start;
   }
 
   .dashboard-home-leadership-metrics {
@@ -554,10 +555,118 @@ body {
 @media (min-width: 930px) {
   .dashboard-home-top-grid {
     grid-template-columns: minmax(240px, 1.1fr) minmax(250px, 0.95fr) minmax(240px, 1fr);
+    align-items: start;
+  }
+
+  .dashboard-home.space-y-4 {
+    row-gap: 0.625rem;
+  }
+
+  .dashboard-home.space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0.625rem;
+  }
+
+  .dashboard-home-top-grid {
+    gap: 0.6rem;
   }
 
   .dashboard-home-leadership-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-home-leadership {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: start;
+    gap: 0.5rem;
+  }
+
+  .dashboard-home-leadership .dashboard-leadership-orbit-wrap {
+    margin-top: 0;
+  }
+
+  .dashboard-home .dashboard-home-leadership .leadership-orbit {
+    width: 118px;
+    height: 118px;
+  }
+
+  .dashboard-home .dashboard-home-leadership .leadership-orbit-ring {
+    width: 118px;
+    height: 118px;
+  }
+
+  .dashboard-home .dashboard-home-leadership .leadership-orbit-badge {
+    width: 70px;
+    height: 70px;
+  }
+
+  .dashboard-home .dashboard-home-leadership .leadership-orbit-neutral-icon {
+    width: 34px;
+    height: 34px;
+    padding: 2px;
+  }
+
+  .dashboard-home .dashboard-home-rail {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .dashboard-home .dashboard-home-rail > .text-xs {
+    margin-bottom: 0.125rem;
+  }
+
+  .dashboard-home .dashboard-home-rail h3 {
+    margin-top: 0.125rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-command-rail {
+    --rail-track-top: 46px;
+    min-height: 94px;
+    padding-top: 0.15rem;
+    padding-bottom: 0.15rem;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-threshold-points {
+    height: 88px;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-node {
+    height: 98px;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-badge {
+    width: 34px;
+    height: 34px;
+    top: calc(var(--rail-track-top) - 68px);
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-badge-large {
+    width: 37px;
+    height: 37px;
+    top: calc(var(--rail-track-top) - 76px);
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-node-label {
+    top: calc(var(--rail-track-center) + 14px);
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-score-text {
+    top: calc(var(--rail-track-top) - 34px);
+    font-size: 10px;
+    padding: 0.12rem 0.4rem;
+    line-height: 1;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-score-stem {
+    top: calc(var(--rail-track-top) - 12px);
+    height: 12px;
+  }
+
+  .dashboard-home .dashboard-home-rail .leadership-rail-score-pin {
+    top: calc(var(--rail-track-center) + 0px);
   }
 }
 

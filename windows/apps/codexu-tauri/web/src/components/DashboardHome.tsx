@@ -77,48 +77,44 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
   };
 
   return (
-    <div className="space-y-6 dashboard-home">
+    <div className="space-y-4 dashboard-home">
       <div className="grid dashboard-home-top-grid gap-4">
-        <section className="glass-panel p-5 dashboard-home-leadership" aria-label="Leadership summary">
-          <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
-          <h2 className="text-2xl font-semibold text-primary leading-tight mt-1">
-            {hasSignal
-              ? `${activeBand.zhName} / ${activeBand.enName}`
-              : hasUsage
-                ? 'Leadership score pending'
-                : 'No usage snapshot yet'}
-          </h2>
-          <p className="text-sm text-secondary mt-1">
-            {hasSignal
-              ? `Period ${report?.period} | ${report?.active_day_count ?? 0} active days | Evidence ${Math.round(evidenceRatio * 100)}%`
-              : hasUsage
-                ? 'Record insufficient for authoritative title'
-                : 'Data not ready. Refresh to load local snapshots.'}
-          </p>
+        <section className="glass-panel p-4 dashboard-home-leadership" aria-label="Leadership summary">
+          <div className="dashboard-home-leadership-summary">
+            <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
+            <h2 className="text-2xl font-semibold text-primary leading-tight mt-1">
+              {hasSignal
+                ? activeBand.enName
+                : hasUsage
+                  ? 'Leadership score pending'
+                  : 'No usage snapshot yet'}
+            </h2>
+            <p className="text-sm text-secondary mt-1">
+              {hasSignal
+                ? `${report?.period ?? '28d'} · ${report?.active_day_count ?? 0} active days · Evidence ${Math.round(evidenceRatio * 100)}%`
+                : hasUsage
+                  ? 'Record insufficient for authoritative title'
+                  : 'Data not ready. Refresh to load local snapshots.'}
+            </p>
 
-          <div className="mt-3 flex items-center gap-2 flex-wrap">
-            {hasSignal ? (
-              <>
-                <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                  L{activeBand.level}
-                </span>
-                <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
-              </>
-            ) : (
-              <>
-                <span className="px-2 py-1 rounded-full border border-status-warn/45 bg-status-warn/12 text-status-warn text-xs font-medium">
-                  Record insufficient
-                </span>
-                <span className="text-tertiary text-xs">Record insufficient</span>
-              </>
-            )}
-          </div>
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              {hasSignal ? (
+                <>
+                  <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
+                    L{activeBand.level}
+                  </span>
+                  <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
+                </>
+              ) : (
+                <>
+                  <span className="px-2 py-1 rounded-full border border-status-warn/45 bg-status-warn/12 text-status-warn text-xs font-medium">
+                    Record insufficient
+                  </span>
+                  <span className="text-tertiary text-xs">Record insufficient</span>
+                </>
+              )}
+            </div>
 
-          <div className="mt-3 grid dashboard-home-leadership-metrics">
-            <Pill icon={<Cpu size={14} />} label="28-day Agents" value={formatNumberish(report?.agent_count)} />
-            <Pill icon={<TrendingUp size={14} />} label="AI Hours" value={formatHours(report?.ai_hours)} />
-            <Pill icon={<Database size={14} />} label="Autonomous Hours" value={formatHours(report?.autonomous_hours)} />
-            <Pill icon={<Activity size={14} />} label="Peak/Avg Concurrency" value={formatConcurrency(report)} />
           </div>
 
           <div className="mt-4 dashboard-leadership-orbit-wrap">
@@ -134,7 +130,7 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
           </div>
         </section>
 
-        <section className="glass-panel p-5 dashboard-home-mix" aria-label="7-day token mix">
+        <section className="glass-panel p-4 dashboard-home-mix" aria-label="7-day token mix">
           <h3 className="text-sm font-semibold text-primary mb-3">7-day Token mix</h3>
           <p className="text-xs text-tertiary mb-3">
             Source: 7-day usage signal from local detailed snapshot.
@@ -171,11 +167,12 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
         </section>
 
         <section className="dashboard-home-metrics" aria-label="local metrics">
-            <StatCard
+          <StatCard
               label="Today"
               value={formatNumber(hasUsage ? usage?.today_tokens ?? null : null)}
               subValue={detailed ? `$${formatUSD(detailed.today.estimated_cost_usd)} est.` : 'Record insufficient'}
               icon={<Activity size={16} />}
+              compact
               accent="primary"
             />
             <StatCard
@@ -183,6 +180,7 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
               value={formatNumber(hasUsage ? usage?.seven_day_tokens ?? null : null)}
               subValue={detailed ? `$${formatUSD(detailed.seven_day.estimated_cost_usd)} est.` : 'Record insufficient'}
               icon={<Calendar size={16} />}
+              compact
               accent="secondary"
             />
           <StatCard
@@ -190,6 +188,7 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
             value={formatNumber(hasUsage ? usage?.lifetime_tokens ?? null : null)}
             subValue={detailed ? `$${formatUSD(detailed.lifetime.estimated_cost_usd)} est.` : 'Record insufficient'}
             icon={<TrendingUp size={16} />}
+            compact
             accent="tertiary"
           />
           <p className="mt-2 text-xs text-tertiary px-1 text-right">7-day & lifetime from local cache only</p>
@@ -205,6 +204,16 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
           score={scoreForVisual}
           onOpenLeadership={onOpenLeadership}
         />
+      </section>
+
+      <section className="glass-panel p-4" aria-label="Leadership facts">
+        <div className="text-xs text-tertiary uppercase tracking-wide">Leadership facts</div>
+        <div className="mt-3 grid dashboard-home-leadership-metrics">
+          <Pill icon={<Cpu size={14} />} label="28d Agents" value={formatNumberish(report?.agent_count)} />
+          <Pill icon={<TrendingUp size={14} />} label="AI Hours" value={formatHours(report?.ai_hours)} />
+          <Pill icon={<Database size={14} />} label="Autonomous" value={formatHours(report?.autonomous_hours)} />
+          <Pill icon={<Activity size={14} />} label="Peak / Avg" value={formatConcurrency(report)} />
+        </div>
       </section>
 
       <MonthlyValueProgress usage={usage} />
@@ -403,14 +412,14 @@ function Pill({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-theme bg-surface-inset px-3 py-2">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-theme bg-surface-inset px-3 py-2">
       <p className="inline-flex items-center gap-1 text-xs text-tertiary">
-        <span className="text-secondary inline-flex" aria-hidden="true">
+        <span className="text-secondary inline-flex min-w-4" aria-hidden="true">
           {icon}
         </span>
         <span>{label}</span>
       </p>
-      <p className="text-sm font-medium text-primary mt-1">{value}</p>
+      <p className="text-sm font-medium text-primary text-right">{value}</p>
     </div>
   );
 }

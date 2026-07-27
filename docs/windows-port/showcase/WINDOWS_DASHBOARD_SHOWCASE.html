@@ -3,102 +3,92 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Windows Dashboard Home Showcase</title>
+  <title>Windows Dashboard Showcase (Phase-4 UI)</title>
   <style>
-    body {
-      margin: 20px;
-      font: 14px/1.5 ui-sans-serif, -apple-system, Segoe UI, sans-serif;
-      color: #0f172a;
-      background: #ffffff;
-    }
-    h1, h2 { color: #0b1220; margin: 0 0 10px; }
-    h1 { font-size: 28px; }
-    h2 { font-size: 18px; margin-top: 20px; }
-    p { margin: 6px 0; }
-    ul { margin: 0 0 0 20px; }
-    li { margin: 4px 0; }
-    .gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      margin: 10px 0 16px;
-      gap: 12px;
-    }
-    figure {
-      margin: 0;
-      padding: 8px;
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      background: #f8fafc;
-    }
-    figure img {
-      width: 100%;
-      display: block;
-      border: 1px solid #cbd5e1;
-      border-radius: 6px;
-    }
-    figcaption { margin-top: 6px; color: #334155; font-size: 12px; }
+    :root { --ink:#102038; --muted:#475569; --line:#d8e1eb; --card:#fff; --bg:#f4f8fc; --blue:#2563eb; --soft:#eaf2ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px; background:var(--bg); color:var(--ink); font:15px/1.58 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1180px; margin:auto; display:grid; gap:16px; }
+    section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 8px 28px rgba(15,23,42,.06); }
+    .verdict { border-left:4px solid var(--blue); background:var(--soft); }
+    h1,h2 { margin:0 0 9px; line-height:1.25; } h1 { font-size:29px; } h2 { font-size:19px; }
+    p,li { color:var(--muted); } p { margin:7px 0; } ul { margin:8px 0 0 20px; padding:0; } li { margin:5px 0; }
+    a { color:#1d4ed8; } code { font:12px ui-monospace,SFMono-Regular,Consolas,monospace; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; } th,td { border:1px solid var(--line); padding:8px 9px; text-align:left; vertical-align:top; } th { background:#f8fafc; }
+    .gallery { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    figure { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:#fff; }
+    figure img { display:block; width:100%; max-height:360px; object-fit:cover; object-position:top; background:#eef2f7; }
+    figcaption { padding:8px 10px; color:var(--muted); font-size:12px; }
+    .hint { font-size:13px; color:var(--muted); }
+    @media (max-width:780px) { body { padding:12px; } .gallery { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
-  <h1>Windows Dashboard Home Showcase</h1>
-  <p>This showcase documents native evidence for the final Windows Dashboard Home and Leadership detail views for Phase-4 UI work. The retained Leadership image is pre-fix structural evidence.</p>
+  <main>
+    <section class="verdict">
+      <h1>Windows Dashboard Showcase (Phase-4 UI)</h1>
+      <p><strong>Evidence date:</strong> 2026-07-28. <strong>Verdict:</strong> accepted for page-level Windows Dashboard hierarchy at the compact desktop target.</p>
+      <p>Evidence source: final native <code>windows/target/release/codexu-tauri.exe</code>.</p>
+    </section>
 
-  <h2>What this release validates</h2>
-  <ul>
-    <li>Native dashboard-home hierarchy appears in final release binary output.</li>
-    <li>Resource reuse is unchanged: native LeadershipCommandRail and existing L1-L7 badge assets continue to power identity score rail rendering.</li>
-    <li>Canonical thresholds are enforced at 0 / 20 / 35 / 50 / 65 / 80 / 93 (score 84 maps to L6).</li>
-    <li>Dashboard uses local 7-day token mix as a named composition (Input / Cached input / Output).</li>
-    <li>No raw thread / project / tool content is shown on default home.</li>
-    <li>Leadership detail retains full L1-L7 rail plus identity and metrics context; the retained image predates the final score-pin coordinate correction.</li>
-  </ul>
+    <section>
+      <h2>What is aligned</h2>
+      <ol>
+        <li><strong>Fixed Dashboard:</strong> Leadership identity, local <strong>7-day Token mix</strong>, Today / 7-day / Lifetime summaries, the full L1-L7 rail, and local Month value progress remain in the fixed Dashboard flow.</li>
+        <li><strong>Four variable lower panels:</strong> Tasks, Usage, Projects, and Skills are reachable from the lower tablist. Leadership remains the dedicated <code>AI Leadership</code> detail surface rather than a fifth lower panel.</li>
+        <li><strong>Leadership detail:</strong> identity, score, compact facts, and L1-L7 rail retain the semantic hierarchy of <a href="../../screenshot-v1.2.0-ai-leadership.png">the macOS reference</a>. Windows keeps light/system Liquid Glass presentation; it is not a dark macOS pixel replica.</li>
+      </ol>
+      <p>At the compact native capture target, the three fixed top groups are horizontal and the entire L1-L7 rail (title, badges, bar, and labels) is visible. The fixed top has no raw thread, project, or tool content. Its 7-day Token mix labels Input, Cached input, and Output without a duplicated count.</p>
+    </section>
 
-  <h2>Screenshot comparison</h2>
-    <p>Reference image: <code>docs/screenshot-v1.2.0-ai-leadership.png</code> (macOS semantic reference). This update validates parity by evidence scope: Home capture verifies top cards and progression block start, while full <strong>L1-L7 rail</strong> and <strong>2x2 metrics</strong> are verified in the AI Leadership detail capture. That image predates the final score-pin coordinate correction; the corrected 84-point geometry was manually reviewed in the rebuilt release, but no replacement PNG was captured in this batch. Native short-scroll check confirms the progression area follows the top cards in the same home flow.</p>
-  <p>Platform difference is intentionally preserved as Windows-native light/system Liquid Glass rendering rather than dark macOS pixel cloning.</p>
+    <section>
+      <h2>Native evidence</h2>
+      <p>The capture batch used a target HWND with <code>PrintWindow</code>, not Computer Use. DWM bounds were <code>1439x1136</code> for the default Dashboard and <code>1440x1137</code> for the remaining five panels at DPI 144: approximately <code>960x758</code> CSS pixels, within one physical pixel of the batch target. The target release process was closed after capture (zero matching target processes remained).</p>
+      <div class="gallery">
+        <figure><a href="../reports/assets/dashboard-lower-panels-default-native.png"><img src="../reports/assets/dashboard-lower-panels-default-native.png" alt="Windows fixed Dashboard native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-default-native.png">dashboard-lower-panels-default-native.png</a> — three horizontal top groups, local token mix, full rail, and Month progress.</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-leadership-native.png"><img src="../reports/assets/dashboard-lower-panels-leadership-native.png" alt="Windows AI Leadership native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-leadership-native.png">dashboard-lower-panels-leadership-native.png</a> — identity, score/facts, and L1-L7 hierarchy.</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-tasks-native.png"><img src="../reports/assets/dashboard-lower-panels-tasks-native.png" alt="Windows Tasks lower panel native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-tasks-native.png">dashboard-lower-panels-tasks-native.png</a> — Tasks shell with an honest task-data boundary.</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-usage-native.png"><img src="../reports/assets/dashboard-lower-panels-usage-native.png" alt="Windows Usage lower panel native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-usage-native.png">dashboard-lower-panels-usage-native.png</a> — real local-token Usage panel, partial versus quota semantics.</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-projects-native.png"><img src="../reports/assets/dashboard-lower-panels-projects-native.png" alt="Windows Projects lower panel native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-projects-native.png">dashboard-lower-panels-projects-native.png</a> — real Projects panel, intentionally partial.</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-skills-native.png"><img src="../reports/assets/dashboard-lower-panels-skills-native.png" alt="Windows Skills lower panel native screenshot" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-skills-native.png">dashboard-lower-panels-skills-native.png</a> — Skills shell with an honest typed-Skills data boundary; tools are not relabelled as Skills.</figcaption></figure>
+      </div>
+      <p class="hint">Tasks, Usage, Projects, and Skills were captured after scrolling to the lower tablist. They prove those tab panels; they are not evidence that lower panels belong in the first viewport.</p>
+    </section>
 
-  <h2>Native evidence</h2>
-  <div class="gallery">
-    <figure>
-      <img src="../reports/assets/dashboard-home-native.png" alt="dashboard-home-native.png" />
-      <figcaption>Default Dashboard Home (1446x1350), captured from final release-window state (Home tab).</figcaption>
-    </figure>
-    <figure>
-      <img src="../reports/assets/dashboard-home-leadership-detail.png" alt="dashboard-home-leadership-detail.png" />
-      <figcaption>AI Leadership tab detail (1446x1350), captured before the final score-pin coordinate correction; retained for hierarchy, mapping, and metrics evidence.</figcaption>
-    </figure>
-  </div>
+    <section>
+      <h2>Data interpretation and retained differences</h2>
+      <ul>
+        <li><strong>7-day Token mix:</strong> local telemetry only, not official quota, remaining allowance, rate-limit data, or an account bill.</li>
+        <li><strong>Month value progress:</strong> existing detailed-month <code>estimated_cost_usd</code> drives a labelled local API-equivalent estimate. Milestones are Plus $20, Pro 100 $100, Pro 200 $200, with a $46.5K reference cap. The first $0–200 accounts for 28%; the remaining span uses a <code>log1p</code> tail. It is not an official allowance, quota, or bill; macOS pricing differs, so no strict dollar parity is claimed.</li>
+        <li><strong>Tasks and Skills:</strong> UI shells are complete, while their data contracts remain blocked (no task-status model and no typed Skills-usage field). This is an evidence boundary, not a product-area absence claim.</li>
+        <li><strong>Usage and Projects:</strong> real local-data panels, but partial semantic matches because their data contracts and host UI differ from macOS.</li>
+        <li><strong>Privacy:</strong> the fixed top does not expose prompt text, response bodies, raw thread/project/tool records, paths, or tool arguments.</li>
+      </ul>
+    </section>
 
-  <h2>Platform interpretation</h2>
-  <ul>
-    <li>Windows surface and styling are intentionally native-light and Liquid Glass, not macOS pixel-replication.</li>
-    <li>macOS assets are references only, not targets for pixel matching.</li>
-  </ul>
+    <section>
+      <h2>Validation record</h2>
+      <table>
+        <thead><tr><th>Check</th><th>Result</th><th>Scope note</th></tr></thead>
+        <tbody>
+          <tr><td><code>npm run build</code> in <code>windows/apps/codexu-tauri/web</code></td><td>pass</td><td>Final rerun completed successfully.</td></tr>
+          <tr><td><code>cargo test --workspace</code> in <code>windows</code></td><td>pass</td><td>Final rerun: <code>codexu_core</code> 9/9; other targets and doc tests 0.</td></tr>
+          <tr><td><code>cargo tauri build --no-bundle</code> in <code>windows/apps/codexu-tauri/src-tauri</code></td><td>pass at 01:55:04</td><td>Final rerun produced <code>windows/target/release/codexu-tauri.exe</code>.</td></tr>
+          <tr><td><code>git diff --check</code> at repository root</td><td>pass</td><td>Final documentation/implementation diff has no whitespace errors.</td></tr>
+        </tbody>
+      </table>
+      <p>Computer Use is not an acceptance method for this batch: its Node runtime failed to initialize with <code>os error 3</code>. Native evidence is HWND-specific <code>PrintWindow</code> capture and visual review, not a substituted Computer Use pass.</p>
+    </section>
 
-  <h2>Aligned items</h2>
-  <ul>
-    <li>Identity/score context is present on leadership detail.</li>
-    <li>L1-L7 command rail is present with threshold semantics, and score 84 is within L6 band (80-92). The retained PNG is not evidence for post-fix point-to-fill alignment.</li>
-    <li>Home capture confirms top-card structure and progression block appearance; full <strong>L1-L7</strong> rail plus <strong>2x2 metrics</strong> are confirmed in AI Leadership detail capture.</li>
-  </ul>
-
-  <h2>Raw verification</h2>
-  <ul>
-    <li><code>npm run build</code> in <code>windows/apps/codexu-tauri/web</code> -> <strong>0</strong>.</li>
-    <li><code>cargo test --workspace</code> in <code>windows</code> -> <strong>0</strong>, 9 tests passed.</li>
-    <li><code>cargo tauri build --no-bundle</code> in <code>windows/apps/codexu-tauri/src-tauri</code> -> attempt 1 <strong>1</strong> (os error 5), retry <strong>0</strong> after closing exact-release process.</li>
-    <li>Screenshot capture source: retry-built <code>windows/target/release/codexu-tauri.exe</code>.</li>
-    <li><code>node --test tests\leadership-rail-layout.test.mjs</code> in <code>windows/apps/codexu-tauri/web</code> -> <strong>0</strong>; score pin and threshold dots share the exact rail coordinate frame.</li>
-    <li><code>cargo tauri build --no-bundle</code> in <code>windows</code> -> final <strong>0</strong> after the score-pin coordinate correction.</li>
-    <li><code>git diff --check</code> -> <strong>0</strong> (only LF/CRLF notice if file touched by git tooling).</li>
-  </ul>
-
-  <h2>Known gaps</h2>
-  <ul>
-    <li>Official quota / rate-limit contract is not displayed by this scope.</li>
-    <li>No no-data / no-signal native empty-state artifact was captured yet.</li>
-    <li>No manual pixel-diff was completed in this pass.</li>
-    <li>A replacement AI Leadership screenshot after the score-pin coordinate correction was not captured in this batch.</li>
-  </ul>
+    <section>
+      <h2>Known limits</h2>
+      <ul>
+        <li>No official quota/rate-limit reader, cache, IPC field, thread parser, points logic, or score calculation was changed in this work.</li>
+        <li>No no-signal/no-data screenshot was captured for this batch.</li>
+        <li>No pixel-diff was run; acceptance is hierarchy and compact-viewport usability, not pixel replication.</li>
+        <li>Runtime values visible in screenshots are capture-time local values and are not asserted to equal macOS screenshot values.</li>
+      </ul>
+    </section>
+  </main>
 </body>
 </html>

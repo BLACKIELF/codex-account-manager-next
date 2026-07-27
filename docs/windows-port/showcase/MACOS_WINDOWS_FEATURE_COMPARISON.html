@@ -5,242 +5,103 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>macOS / Windows Dashboard Feature Comparison</title>
   <style>
-    :root {
-      --bg: #f7fafc;
-      --card: #ffffff;
-      --line: #d0d7e2;
-      --text: #0f172a;
-      --muted: #41516b;
-      --head: #1e293b;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      padding: 20px;
-      font: 15px/1.65 -apple-system, "Segoe UI", PingFang SC, "Microsoft YaHei", sans-serif;
-      color: var(--text);
-      background: linear-gradient(160deg, #f8fbff 0%, var(--bg) 40%, #eff4ff 100%);
-    }
-    main {
-      max-width: 1080px;
-      margin: 0 auto;
-      display: grid;
-      gap: 14px;
-    }
-    h1, h2, h3 {
-      margin: 0;
-      color: var(--head);
-    }
-    h1 { font-size: 28px; line-height: 1.3; }
-    h2 { margin: 8px 0 8px; font-size: 20px; }
-    h3 { margin: 14px 0 8px; }
-    p, li { margin: 0 0 8px; color: var(--muted); }
-    section {
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 14px;
-      box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
-    }
-    .summary {
-      border-left: 4px solid #2563eb;
-      background: #ecf3ff;
-    }
-    .tags {
-      margin-top: 8px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .tag {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 2px 10px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .fixed { background: #dbeafe; color: #1e3a8a; }
-    .variable { background: #dcfce7; color: #14532d; }
-    .partial { background: #fff7ed; color: #7c2d12; }
-    .notimpl { background: #fee2e2; color: #7f1d1d; }
-    .outside { background: #e0f2fe; color: #075985; }
-
-    .compare-grid {
-      display: grid;
-      gap: 12px;
-      grid-template-columns: 1fr 1fr;
-    }
-    figure {
-      margin: 0;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-      background: #fff;
-    }
-    img {
-      width: 100%;
-      display: block;
-      max-height: 540px;
-      object-fit: cover;
-      background: #f1f5f9;
-    }
-    figcaption {
-      padding: 8px 10px;
-      font-size: 12px;
-      color: var(--muted);
-      border-top: 1px solid var(--line);
-    }
-    ul.notes { margin: 0; padding-left: 20px; color: var(--muted); }
-    ul.notes li { margin-bottom: 6px; }
-    @media (max-width: 900px) {
-      .compare-grid { grid-template-columns: 1fr; }
-    }
+    :root { --ink:#102038; --muted:#475569; --line:#d8e1eb; --card:#fff; --bg:#f4f8fc; --blue:#2563eb; --green:#047857; --amber:#b45309; }
+    * { box-sizing:border-box; } body { margin:0; padding:24px; background:var(--bg); color:var(--ink); font:15px/1.58 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1180px; margin:auto; display:grid; gap:16px; } section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 8px 28px rgba(15,23,42,.06); }
+    .lead { border-left:4px solid var(--blue); background:#eaf2ff; } h1,h2,h3 { margin:0 0 9px; line-height:1.25; } h1 { font-size:29px; } h2 { font-size:20px; } h3 { margin-top:18px; font-size:17px; }
+    p,li { color:var(--muted); } p { margin:7px 0; } ul { margin:8px 0 0 20px; padding:0; } li { margin:5px 0; } a { color:#1d4ed8; }
+    table { width:100%; border-collapse:collapse; margin:10px 0; } th,td { border:1px solid var(--line); padding:8px 9px; text-align:left; vertical-align:top; } th { background:#f8fafc; }
+    .pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:10px 0; } figure { margin:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; background:#fff; } figure img { width:100%; display:block; max-height:440px; object-fit:cover; object-position:top; background:#eef2f7; } figcaption { padding:8px 10px; color:var(--muted); font-size:12px; }
+    .tags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; } .tag { padding:2px 9px; border-radius:999px; font-size:12px; font-weight:650; } .fixed { color:#1e3a8a; background:#dbeafe; } .variable { color:#14532d; background:#dcfce7; } .blocked { color:#7c2d12; background:#fff7ed; } .partial { color:#854d0e; background:#fef3c7; }
+    code { font:12px ui-monospace,SFMono-Regular,Consolas,monospace; } @media (max-width:780px) { body { padding:12px; } .pair { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
   <main>
-    <section class="summary">
+    <section class="lead">
       <h1>macOS / Windows Dashboard Feature Comparison</h1>
-      <p>This page aligns the macOS README screenshot sequence with Windows native evidence in one-to-one pairs.</p>
-      <p>Legend: fixed overview, variable panel, partial, not implemented, outside Dashboard + partial.</p>
+      <p><strong>Evidence date:</strong> 2026-07-28. This is a hierarchy and evidence comparison, not a pixel, pricing, or capture-time-value comparison.</p>
     </section>
 
     <section>
-      <h2>1. Information structure alignment</h2>
-      <p><strong>macOS README order:</strong> AI Leadership, Today, Usage, Projects, Skills.</p>
-      <p><strong>Windows mapping:</strong> Dashboard Home (Leadership + Token mix + Today/7-Day/Lifetime), then native equivalents by hierarchy.</p>
-      <p>Windows currently does not expose all README areas as independent pages; rows use the highest-fidelity same-level evidence.</p>
+      <h2>Reading the comparison</h2>
+      <table>
+        <thead><tr><th>Label</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>fixed overview</td><td>A fixed hierarchy block shown before lower-panel selection.</td></tr>
+          <tr><td>variable panel</td><td>A lower Dashboard panel selected from the four-tab area.</td></tr>
+          <tr><td>complete shell / data blocked</td><td>The native UI exists, but the current Windows contract intentionally does not expose the data needed to populate it.</td></tr>
+          <tr><td>partial real panel</td><td>A live local-data panel with related, not identical, macOS semantics.</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Evidence boundary:</strong> a blocked data field is not proof that the feature area is absent. It means the current Windows reader/model/IPC contract does not provide truthful source data for that content. No value in this page asks the UI to infer it.</p>
+    </section>
+
+    <section>
+      <h2>1. Structure mapping</h2>
+      <table>
+        <thead><tr><th>macOS README structure</th><th>Windows Dashboard structure</th></tr></thead>
+        <tbody>
+          <tr><td>Fixed dashboard overview, then variable areas for Tasks, Usage, Projects, and Skills.</td><td>Fixed Dashboard: Leadership identity, local 7-day Token mix, Today/7-Day/Lifetime, L1-L7 rail, and local Month value progress. Then lower Tasks / Usage / Projects / Skills panels.</td></tr>
+          <tr><td>AI Leadership detail.</td><td>Dedicated <code>AI Leadership</code> detail, not a fifth lower panel.</td></tr>
+        </tbody>
+      </table>
+      <p>Windows uses native light/system Liquid Glass rather than dark macOS pixels. Runtime values may differ; no numeric equality is asserted.</p>
     </section>
 
     <section>
       <h2>2. Fixed overview</h2>
-      <h3>2.1 AI Leadership / Dashboard Overview</h3>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v1.2.0-ai-leadership.png" alt="macOS AI Leadership">
-          <figcaption>macOS AI Leadership</figcaption>
-        </figure>
-        <figure>
-          <img src="../reports/assets/dashboard-home-native.png" alt="Windows Dashboard Home">
-          <figcaption>Windows Dashboard Home</figcaption>
-        </figure>
+      <div class="pair">
+        <figure><a href="../../screenshot-v1.2.0-ai-leadership.png"><img src="../../screenshot-v1.2.0-ai-leadership.png" alt="macOS AI Leadership" /></a><figcaption>macOS fixed overview reference</figcaption></figure>
+        <figure><a href="../reports/assets/dashboard-lower-panels-default-native.png"><img src="../reports/assets/dashboard-lower-panels-default-native.png" alt="Windows fixed Dashboard" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-default-native.png">Windows fixed Dashboard native evidence</a></figcaption></figure>
       </div>
-      <div class="tags">
-        <span class="tag fixed">fixed overview</span>
-      </div>
-      <ul class="notes">
-        <li>Windows shows Leadership + local 7-day Token mix + usage summary cluster and progression rail in home scope.</li>
+      <div class="tags"><span class="tag fixed">fixed overview</span></div>
+      <ul>
+        <li>Windows fixed Dashboard contains Leadership identity, local <strong>7-day Token mix</strong> (Input, Cached input, Output), Today / 7-day / Lifetime summaries, full L1-L7 rail, and local Month value progress.</li>
+        <li>At about <code>960x758</code> CSS pixels, three top groups remain horizontal and the rail title, badges, bar, and labels are all visible.</li>
+        <li>Token mix is local telemetry, not quota, remaining allowance, rate-limit data, or a bill. It has no duplicated count and the fixed top contains no raw thread, project, or tool content.</li>
       </ul>
     </section>
 
     <section>
-      <h2>3. Variable panels (aligned to README order)</h2>
-
+      <h2>3. Variable panels in README order</h2>
       <h3>3.1 Today / Tasks</h3>
-      <div class="tags">
-        <span class="tag variable">variable panel</span>
-        <span class="tag notimpl">not implemented</span>
-      </div>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v0.3.0-today.png" alt="macOS Today">
-          <figcaption>macOS Today</figcaption>
-        </figure>
-        <figure>
-          <img src="../reports/assets/dashboard-home-native.png" alt="Windows Dashboard Home">
-          <figcaption>Windows Dashboard Home (Today metric in top cluster)</figcaption>
-        </figure>
-      </div>
-      <ul class="notes">
-        <li>No standalone Tasks/Today page in the current Windows release; mapped to equivalent top-cluster metrics in Dashboard Home.</li>
-      </ul>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">complete shell / data blocked</span></div>
+      <div class="pair"><figure><a href="../../screenshot-v0.3.0-today.png"><img src="../../screenshot-v0.3.0-today.png" alt="macOS Today" /></a><figcaption>macOS Today</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-tasks-native.png"><img src="../reports/assets/dashboard-lower-panels-tasks-native.png" alt="Windows Tasks" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-tasks-native.png">Windows Tasks</a> — no Threads-as-Tasks inference.</figcaption></figure></div>
+      <p>The Windows Tasks panel is implemented and truthfully explains that task state is not exposed by the current contract.</p>
 
       <h3>3.2 Usage</h3>
-      <div class="tags">
-        <span class="tag variable">variable panel</span>
-        <span class="tag partial">partial</span>
-      </div>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v0.3.0-usage.png" alt="macOS Usage">
-          <figcaption>macOS Usage</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/dashboard-usage-home.png" alt="Windows Usage">
-          <figcaption>Windows Usage</figcaption>
-        </figure>
-      </div>
-      <ul class="notes">
-        <li>Windows mapping is local-token scope and equivalent hierarchy, with naming differences from official macOS quota phrasing.</li>
-      </ul>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag partial">partial real panel</span></div>
+      <div class="pair"><figure><a href="../../screenshot-v0.3.0-usage.png"><img src="../../screenshot-v0.3.0-usage.png" alt="macOS Usage" /></a><figcaption>macOS Usage</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-usage-native.png"><img src="../reports/assets/dashboard-lower-panels-usage-native.png" alt="Windows Usage" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-usage-native.png">Windows Usage</a> — real local-token surface.</figcaption></figure></div>
+      <p>Windows shows a real local-token usage surface and does not claim macOS official-quota semantics.</p>
 
       <h3>3.3 Projects</h3>
-      <div class="tags">
-        <span class="tag variable">variable panel</span>
-        <span class="tag partial">partial</span>
-      </div>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v0.3.0-projects.png" alt="macOS Projects">
-          <figcaption>macOS Projects</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/dashboard-projects-native.png" alt="Windows Projects">
-          <figcaption>Windows Projects</figcaption>
-        </figure>
-      </div>
-      <ul class="notes">
-        <li>Windows shows project ranking as native equivalent at the same hierarchy layer.</li>
-      </ul>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag partial">partial real panel</span></div>
+      <div class="pair"><figure><a href="../../screenshot-v0.3.0-projects.png"><img src="../../screenshot-v0.3.0-projects.png" alt="macOS Projects" /></a><figcaption>macOS Projects</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-projects-native.png"><img src="../reports/assets/dashboard-lower-panels-projects-native.png" alt="Windows Projects" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-projects-native.png">Windows Projects</a> — real local project surface.</figcaption></figure></div>
+      <p>Windows shows a real local project surface at the same lower-panel level; its presentation differs by host and contract.</p>
 
       <h3>3.4 Skills</h3>
-      <div class="tags">
-        <span class="tag variable">variable panel</span>
-        <span class="tag notimpl">not implemented</span>
-      </div>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v0.3.0-skills.png" alt="macOS Skills">
-          <figcaption>macOS Skills</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/dashboard-tools-nearest-skills.png" alt="Windows Tool usage">
-          <figcaption>Windows Tool usage (nearest equivalent)</figcaption>
-        </figure>
-      </div>
-      <ul class="notes">
-        <li>Windows currently exposes tool usage evidence; a dedicated Skills page is not yet implemented as a separate native page.</li>
-      </ul>
+      <div class="tags"><span class="tag variable">variable panel</span><span class="tag blocked">complete shell / data blocked</span></div>
+      <div class="pair"><figure><a href="../../screenshot-v0.3.0-skills.png"><img src="../../screenshot-v0.3.0-skills.png" alt="macOS Skills" /></a><figcaption>macOS Skills</figcaption></figure><figure><a href="../reports/assets/dashboard-lower-panels-skills-native.png"><img src="../reports/assets/dashboard-lower-panels-skills-native.png" alt="Windows Skills" /></a><figcaption><a href="../reports/assets/dashboard-lower-panels-skills-native.png">Windows Skills</a> — typed Skills boundary, not tools.</figcaption></figure></div>
+      <p>The Windows Skills panel is implemented and truthfully states that typed Skills usage is not exposed. <strong>Tool usage is not mapped or relabelled as Skills.</strong></p>
     </section>
 
     <section>
-      <h2>4. Settings / Palette</h2>
-      <div class="tags">
-        <span class="tag outside">outside Dashboard + partial</span>
-      </div>
-      <div class="compare-grid">
-        <figure>
-          <img src="../../screenshot-v1.1.0-palette-gallery.png" alt="macOS Palette gallery">
-          <figcaption>macOS Palette gallery</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/settings-dashboard-native.png" alt="Windows Settings">
-          <figcaption>Windows Settings</figcaption>
-        </figure>
-      </div>
-      <ul class="notes">
-        <li>Both sides provide a configuration entry; container and control vocabulary differ by OS host conventions.</li>
-      </ul>
+      <h2>4. Month value progress interpretation</h2>
+      <p>The fixed Windows Dashboard uses existing detailed-month <code>estimated_cost_usd</code> as a <strong>local API-equivalent estimate</strong>, not as an official monthly quota, allowance, remaining balance, or bill. Markers are Plus $20, Pro 100 $100, Pro 200 $200, and a $46.5K reference cap; the first $0–200 maps to 28%, then a <code>log1p</code> tail is used. macOS pricing differs, so no strict dollar parity is claimed.</p>
     </section>
 
-    <section class="summary">
-      <h2>5. Alignment summary</h2>
-      <ul class="notes">
-        <li>AI Leadership: fixed overview mapping.</li>
-        <li>Today / Tasks and Skills: <strong>variable panel + not implemented</strong> (no dedicated page in this Windows version).</li>
-        <li>Usage and Projects: <strong>variable panel + partial</strong>.</li>
-        <li>Settings / Palette: <strong>outside Dashboard + partial</strong>.</li>
+    <section>
+      <h2>5. Evidence files and conclusion</h2>
+      <ul>
+        <li><a href="../reports/assets/dashboard-lower-panels-default-native.png">Fixed Dashboard</a></li>
+        <li><a href="../reports/assets/dashboard-lower-panels-leadership-native.png">AI Leadership</a></li>
+        <li><a href="../reports/assets/dashboard-lower-panels-tasks-native.png">Tasks</a></li>
+        <li><a href="../reports/assets/dashboard-lower-panels-usage-native.png">Usage</a></li>
+        <li><a href="../reports/assets/dashboard-lower-panels-projects-native.png">Projects</a></li>
+        <li><a href="../reports/assets/dashboard-lower-panels-skills-native.png">Skills</a></li>
       </ul>
+      <p>The four lower-panel shots were captured after scrolling to the lower tablist: they prove variable panels, not a first-screen claim. See <a href="WINDOWS_DASHBOARD_SHOWCASE.html">the Windows showcase</a> and <a href="../reports/WINDOWS_UI_PARITY_REPORT.html">the parity report</a> for capture dimensions, validation, and known limits.</p>
     </section>
   </main>
 </body>
