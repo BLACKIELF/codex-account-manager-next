@@ -1,56 +1,40 @@
-# Windows Dashboard Showcase (Phase-4 UI)
+# Windows Dashboard Showcase — Codex Snapshot
 
 - Evidence date: 2026-07-28
-- Verdict: **accepted for page-level Windows Dashboard hierarchy at the compact desktop target.**
-- Evidence source: the final native release executable, `windows/target/release/codexu-tauri.exe`.
+- Verdict: accepted for the implemented Codex-only snapshot hierarchy and compact native Dashboard surface.
 
-## What is aligned
+## What is implemented
 
-The default Windows Dashboard now follows the macOS reference's information shape without claiming pixel-for-pixel or value-for-value parity.
+The Dashboard consumes one local `CodexDashboardSnapshot`: a nested Codex runtime snapshot plus an independent leadership signal. The visible global tabs are `Dashboard / AI Leadership / Threads`; the Dashboard is not a Claude selector and does not claim an enabled Claude provider.
 
-1. **Fixed Dashboard** — Leadership identity, a local **7-day Token mix**, Today / 7-day / Lifetime summaries, the full L1-L7 rail, and local Month value progress remain in the fixed Dashboard flow.
-2. **Visible navigation and four variable lower panels** — The global navigation is `Dashboard / AI Leadership / Threads`; `Usage` and `Projects` are no longer duplicated there. Tasks, Usage, Projects, and Skills are reachable from the lower tablist as their only visible Dashboard-level entry. Leadership remains the dedicated `AI Leadership` detail surface rather than a fifth lower panel.
-3. **Leadership detail** — identity, score, compact facts, and the L1-L7 command rail retain the semantic hierarchy of [`screenshot-v1.2.0-ai-leadership.png`](../../screenshot-v1.2.0-ai-leadership.png). Windows keeps its light/system Liquid Glass presentation; this is not a dark macOS pixel replica.
+- Local usage stays at `snapshot.codex.snapshot.local` and remains local telemetry.
+- The runtime is local-only; official quota, allowance, remaining-balance, and billing values are not fabricated.
+- Leadership has its own evidence-gated report/score branch. A null score remains insufficient/pending rather than becoming a UI-derived rank.
+- The fixed overview contains the three-part Token mix, Today / 7-day / Lifetime summaries, and the full L1-L7 rail. The Month value is a local estimate, not strict macOS Wool parity.
 
-At the compact native capture target, the three fixed top groups are horizontal and the entire L1-L7 rail (title, badges, bar, and labels) is visible. The fixed top has no raw thread, project, or tool content. Its 7-day Token mix labels `Input`, `Cached input`, and `Output` without a duplicated count.
+## Accepted native evidence
 
-## Native evidence
+Capture used HWND-specific `PrintWindow`, not Computer Use. Both valid final images are `1462x1196` physical pixels at DPI 144, approximately `975x797 CSS px`.
 
-The updated default Dashboard and AI Leadership captures used a target HWND with `PrintWindow`, not Computer Use. The default DWM bounds were `1439x1136` at DPI 144: approximately `960x758` CSS pixels. The target release process was closed after capture (zero matching target processes remained). The lower four images below are retained nearest-context images because the real window collapsed to the tray/minimized state during the current re-capture.
-
-| Surface | Native screenshot | What it proves |
+| Surface | Current evidence | What it proves |
 | --- | --- | --- |
-| Fixed Dashboard | [dashboard-lower-panels-default-native.png](../reports/assets/dashboard-lower-panels-default-native.png) | Updated current evidence: exactly three global navigation items, three horizontal top groups, local 7-day Token mix, full L1-L7 rail, and Month progress. |
-| AI Leadership detail | [dashboard-lower-panels-leadership-native.png](../reports/assets/dashboard-lower-panels-leadership-native.png) | Updated current evidence: Leadership identity, score/facts, and rail hierarchy as a drill-down from fixed overview. |
-| Tasks lower panel | [dashboard-lower-panels-tasks-native.png](../reports/assets/dashboard-lower-panels-tasks-native.png) | Retained nearest-context image of the Tasks shell; not current global-navigation evidence or strict macOS-equivalence evidence. |
-| Usage lower panel | [dashboard-lower-panels-usage-native.png](../reports/assets/dashboard-lower-panels-usage-native.png) | Retained nearest-context image of a real local-token panel; not current global-navigation evidence. |
-| Projects lower panel | [dashboard-lower-panels-projects-native.png](../reports/assets/dashboard-lower-panels-projects-native.png) | Retained nearest-context image of a real project panel; not current global-navigation evidence. |
-| Skills lower panel | [dashboard-lower-panels-skills-native.png](../reports/assets/dashboard-lower-panels-skills-native.png) | Retained nearest-context image of the Skills shell; not current global-navigation evidence or strict macOS-equivalence evidence. |
+| Default Dashboard | [codex-dashboard-snapshot-default-native.png](../reports/assets/codex-dashboard-snapshot-default-native.png) | Exactly three global tabs; full L1-L7 rail; Token mix `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541`; no raw body content. |
+| AI Leadership detail | [codex-dashboard-snapshot-leadership-native.png](../reports/assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics in the drill-down hierarchy. |
 
-The retained Tasks, Usage, Projects, and Skills images were originally captured after scrolling to the lower tablist. They provide lower-panel context only; they are not evidence for the new top navigation, first viewport, or strict cross-platform one-to-one equivalence.
+No fresh final scrolled lower-tabs image was accepted. The absence is recorded as an evidence gap; no earlier lower-panel capture is reused to prove final navigation or snapshot behavior.
 
-## Data interpretation and retained differences
+## Validation
 
-- **7-day Token mix:** local telemetry only. It is not official quota, remaining allowance, rate-limit data, or an account bill.
-- **Month value progress:** the existing detailed-month `estimated_cost_usd` drives a clearly labelled local API-equivalent estimate. Milestones are Plus `$20`, Pro 100 `$100`, Pro 200 `$200`, with a `$46.5K` reference cap. The first `$0–200` accounts for 28%; the remaining span uses a `log1p` tail. This is not an official allowance, quota, or bill. It does not establish a strict one-to-one macOS monthly-Wool equivalent because pricing and source semantics differ.
-- **Tasks and Skills:** their Windows UI shells exist, with no task-status model and no typed Skills-usage field exposed. In the strict macOS/Windows comparison they are labelled `variable panel + not implemented`: their retained images are nearest context, not strict equivalents. That label is only a comparison-evidence boundary, not a conclusion about product scope, source code, Reader, IPC, or roadmap. Tool usage is not relabelled as Skills.
-- **Usage and Projects:** both are real, local-data panels, but are partial semantic matches because their data contracts and host UI differ from macOS.
-- **Privacy:** the fixed top does not expose prompt text, response bodies, raw thread/project/tool records, paths, or tool arguments.
+| Check | Result |
+| --- | --- |
+| `npm run build` | pass |
+| `cargo test --workspace` | pass: 35 core + 7 Tauri tests |
+| `cargo tauri build --no-bundle` | pass; release EXE built 2026-07-28 04:23:36 Asia/Shanghai |
+| `git diff --check` | pass |
 
-## Validation record
+## Retained limits
 
-| Check | Result | Scope note |
-| --- | --- | --- |
-| `npm run build` in `windows/apps/codexu-tauri/web` | pass | Completed in the final validation run. |
-| `cargo test --workspace` in `windows` | pass | 9 passed / 0 failed; three zero-test targets. |
-| `cargo tauri build --no-bundle` in `windows/apps/codexu-tauri/src-tauri` | pass at 02:59:09 Asia/Shanghai | Produced `windows/target/release/codexu-tauri.exe`. |
-| `git diff --check` at repository root | pass | No whitespace errors in the final validation run. |
-
-Computer Use is not an acceptance method for this batch: its Node runtime failed to initialize with `os error 3`. The documented native evidence is therefore HWND-specific `PrintWindow` capture and visual review, not a substituted Computer Use pass.
-
-## Known limits
-
-- No official quota/rate-limit reader, cache, IPC field, thread parser, points logic, or score calculation was changed in this work.
-- No no-signal/no-data screenshot was captured for this batch.
-- No pixel-diff was run; visual acceptance is hierarchy and compact-viewport usability, not pixel replication.
-- Runtime values visible in screenshots are capture-time local values and are not asserted to equal the macOS screenshot values.
+- No active Claude runtime/provider or runtime selector.
+- No official quota reader or fake quota display.
+- No prompt/response body, raw tool arguments, credentials, or paths in the fixed overview.
+- No strict cross-platform dollar/Wool claim for the local Month estimate.

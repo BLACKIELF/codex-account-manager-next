@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CODEX Dashboard Snapshot Refactor Design</title>
+  <style>
+    :root { --ink:#102038; --muted:#475569; --line:#d8e1eb; --card:#fff; --bg:#f4f8fc; --blue:#2563eb; --soft:#eaf2ff; }
+    * { box-sizing:border-box; } body { margin:0; padding:24px; background:var(--bg); color:var(--ink); font:15px/1.58 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1060px; margin:auto; display:grid; gap:16px; } section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 8px 28px rgba(15,23,42,.06); }
+    .lead { border-left:4px solid var(--blue); background:var(--soft); } h1,h2 { margin:0 0 9px; line-height:1.25; } h1 { font-size:29px; } h2 { font-size:20px; } p,li { color:var(--muted); } ul,ol { margin:8px 0 0 20px; padding:0; } li { margin:5px 0; } code,pre { font:12px ui-monospace,SFMono-Regular,Consolas,monospace; } pre { overflow:auto; background:#0f172a; color:#e2e8f0; border-radius:8px; padding:12px; } table { width:100%; border-collapse:collapse; margin-top:10px; } th,td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; } th { background:#f8fafc; } a { color:#1d4ed8; }
+  </style>
+</head>
+<body><main>
+  <section class="lead"><h1>CODEX Dashboard Snapshot Refactor Design</h1><p><strong>Status:</strong> implemented and accepted for the Codex-only Windows Dashboard contract. <strong>Date:</strong> 2026-07-28.</p><p>Scope: one local Codex snapshot pipeline for Tauri; no Claude provider, selector, or synthetic quota surface.</p></section>
+  <section><h2>Design outcome</h2><pre>local Codex state_5.sqlite + local rollout/session JSONL
+  -&gt; CodexDashboardProvider
+  -&gt; CodexDashboardSnapshot
+  -&gt; source-keyed, single-flight AppState cache + Tauri IPC
+  -&gt; web useUsage() + Dashboard consumers</pre><p><code>CodexDashboardProvider</code> is the only enabled provider. It reads local state metadata and cached local session summaries, then creates independent local-usage and leadership branches before assembling one snapshot.</p></section>
+  <section><h2>Contract boundary</h2><pre>CodexDashboardSnapshot {
+  codex: RuntimeUsageSnapshot,
+  leadership: CodexLeadershipSignal,
+  refreshed_at,
+  messages,
+}</pre><ul><li><code>codex</code> is <code>RuntimeScope::Codex</code> / local-only; local metrics remain nested at <code>codex.snapshot.local</code>.</li><li>Official quota is unavailable: quota fields remain absent and the UI must not invent quota, allowance, remaining balance, or billing values.</li><li>AppState refreshes are source-keyed, generation-checked, and single-flight. Provider warnings are source-safe and do not expose state paths or database diagnostics.</li><li>Generic runtime types do not enable Claude: there is no active Claude provider or selector in this Dashboard.</li></ul></section>
+  <section><h2>Leadership integrity</h2><p>Leadership is independent from local token aggregation. Transcript parsing preserves task intervals; the leadership report computes dimensions, coverage, active-day count, maturity, score, and title.</p><ul><li>Score visibility requires four dimensions, positive active days, coverage at least <code>0.70</code>, and a non-stub model.</li><li>Maturity prevents an unwarranted perfect score before 28 active days or weak coverage.</li><li>Without a valid report score, <code>leadership.score</code> is null and UI consumers render an insufficient/pending state. Title comes from the selected-period report, not a UI heuristic.</li></ul></section>
+  <section><h2>Native evidence and validation</h2><p>Accepted final release evidence is non-Computer-Use HWND <code>PrintWindow</code> capture at <code>1462x1196</code> physical pixels / DPI 144, approximately <code>975x797 CSS px</code>.</p><ul><li><a href="../../reports/assets/codex-dashboard-snapshot-default-native.png">Default Dashboard</a>: three global tabs, full L1-L7 rail, and <code>1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541</code> Token mix with no raw body content.</li><li><a href="../../reports/assets/codex-dashboard-snapshot-leadership-native.png">AI Leadership</a>: identity, score, rail, and metrics in the detail hierarchy.</li><li>No fresh final scrolled lower-tabs image was accepted; no older frame is used as final evidence for that state.</li></ul><table><thead><tr><th>Check</th><th>Result</th></tr></thead><tbody><tr><td><code>npm run build</code></td><td>pass</td></tr><tr><td><code>cargo test --workspace</code></td><td>pass: 35 core + 7 Tauri tests</td></tr><tr><td><code>cargo tauri build --no-bundle</code></td><td>pass; release EXE built 2026-07-28 04:23:36 Asia/Shanghai</td></tr><tr><td><code>git diff --check</code></td><td>pass</td></tr></tbody></table></section>
+  <section><h2>Non-goals</h2><ul><li>No Claude runtime implementation or selector.</li><li>No official quota reader, fake quota, points change, or remote service.</li><li>No claim that a local Month estimate is strict macOS Wool equivalence.</li></ul></section>
+</main></body></html>

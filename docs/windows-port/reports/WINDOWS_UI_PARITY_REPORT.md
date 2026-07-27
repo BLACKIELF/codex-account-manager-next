@@ -1,81 +1,43 @@
-# Windows UI Parity Report: Dashboard Home Alignment (Phase-4 UI)
+# Windows UI Parity Report: Codex Dashboard Snapshot
 
 - Report date: 2026-07-28
-- Scope: Windows Dashboard hierarchy, lower-panel restoration, native visual evidence, and retained data-contract boundaries.
-- Verdict: **accepted for page-level Dashboard hierarchy at the compact desktop target.** This is not a pixel-perfect or numeric-parity claim.
+- Verdict: accepted for the Codex-only snapshot architecture and compact Dashboard hierarchy. This is not a macOS pixel, quota, or numeric-parity claim.
 
 ## Acceptance conclusion
 
-- The updated native default Dashboard shows exactly three global navigation items — Dashboard, AI Leadership, and Threads — plus three horizontal top groups: Leadership, local 7-day Token mix, and Today / 7-day / Lifetime summaries. Usage and Projects no longer duplicate the lower Dashboard tabs in visible global navigation.
-- `Input`, `Cached input`, and `Output` are shown once each in the fixed top's 7-day Token mix; visual inspection found no duplicated count. The fixed top contains no raw thread, project, or tool content.
-- At the target compact viewport, the complete L1-L7 rail is visible: title, badges, bar, and labels are not clipped.
-- AI Leadership detail preserves the information hierarchy of [`docs/screenshot-v1.2.0-ai-leadership.png`](../../screenshot-v1.2.0-ai-leadership.png): identity, score/facts, and command rail. Windows intentionally keeps light/system Liquid Glass styling rather than copying macOS pixels.
-- The lower Dashboard area exposes the single visible Tasks / Usage / Projects / Skills entry set. Its Windows Tasks and Skills shells remain honest about missing source data; Usage and Projects are real local-data panels with partial semantic parity.
+- The implemented path is local Codex sources -> `CodexDashboardProvider` -> `CodexDashboardSnapshot` -> source-safe AppState/Tauri IPC -> web Dashboard.
+- The nested runtime remains `Codex` / local-only. `snapshot.codex.snapshot.local` carries local telemetry; official quota fields are not faked.
+- Leadership is independent from usage aggregation. Its report/score is evidence-gated and a missing score stays null/pending.
+- The default Dashboard shows exactly three global tabs, a full L1-L7 rail, and a three-part local Token mix without raw body content.
+- AI Leadership detail shows identity, score, rail, and metrics as a drill-down hierarchy.
 
 ## Native evidence
 
-The updated default Dashboard and AI Leadership images come from the final `windows/target/release/codexu-tauri.exe` window. Capture used `PrintWindow` against the target HWND; it was not Computer Use. The updated default Dashboard DWM bounds were `1439x1136` physical pixels; DPI 144 yields approximately `960x758` CSS pixels. The exact target release process was cleaned up after capture (zero matching processes remained). The lower four images are retained nearest-context images because the real window collapsed to the tray/minimized state during the current re-capture.
+Native acceptance used non-Computer-Use HWND `PrintWindow` capture. Both valid images were captured at `1462x1196` physical pixels / DPI 144, approximately `975x797 CSS px`.
 
-| Surface | Evidence |
-| --- | --- |
-| Default fixed Dashboard | [dashboard-lower-panels-default-native.png](assets/dashboard-lower-panels-default-native.png) |
-| AI Leadership detail | [dashboard-lower-panels-leadership-native.png](assets/dashboard-lower-panels-leadership-native.png) |
-| Tasks lower panel | [dashboard-lower-panels-tasks-native.png](assets/dashboard-lower-panels-tasks-native.png) |
-| Usage lower panel | [dashboard-lower-panels-usage-native.png](assets/dashboard-lower-panels-usage-native.png) |
-| Projects lower panel | [dashboard-lower-panels-projects-native.png](assets/dashboard-lower-panels-projects-native.png) |
-| Skills lower panel | [dashboard-lower-panels-skills-native.png](assets/dashboard-lower-panels-skills-native.png) |
+| Surface | Evidence | Accepted fact |
+| --- | --- | --- |
+| Default Dashboard | [codex-dashboard-snapshot-default-native.png](assets/codex-dashboard-snapshot-default-native.png) | Three global tabs; complete L1-L7; `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541` Token mix; no raw body content. |
+| AI Leadership | [codex-dashboard-snapshot-leadership-native.png](assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics. |
 
-The lower Tasks, Usage, Projects, and Skills captures were originally taken after scrolling to the lower tablist. They are retained lower-panel context, not evidence of the current three-item global navigation, first screen, or strict cross-platform equivalence.
+No fresh final scrolled lower-tabs image was accepted. This report does not use an old lower-panel frame as evidence for current navigation or final snapshot behavior.
 
-## Parity interpretation
+## Cross-platform interpretation
 
 | Area | Windows conclusion | Boundary |
 | --- | --- | --- |
-| Fixed overview / AI Leadership | Accepted hierarchy alignment | Leadership is a fixed overview correspondence; detail is a drill-down. Local Token telemetry differs from macOS Token mix, and Month value estimate is not strict macOS Wool evidence. |
-| Tasks | `variable panel + not implemented` for strict comparison | Windows shell is retained nearest context; no exposed task-state model and Threads are not inferred as tasks. |
-| Usage | Partial real panel | Real local-token facts, not macOS official-quota semantics. |
-| Projects | Partial real panel | Real local project surface; host and data presentation differ. |
-| Skills | `variable panel + not implemented` for strict comparison | Windows shell is retained nearest context; no typed Skills-usage field; Tool usage is not relabelled as Skills. |
+| Fixed overview / AI Leadership | Accepted hierarchy correspondence | Leadership is fixed overview plus drill-down; Token mix semantics differ from macOS. |
+| Month value | Local estimate surface | Not official quota/bill and not strict macOS Wool equivalence. |
+| Tasks / Skills | `variable panel + not implemented` for strict comparison | No fresh final lower-tabs evidence; this label is comparison evidence only, not a global product/IPC/source conclusion. |
+| Usage / Projects | Existing lower-area surfaces | No fresh final scrolled screenshot accepted in this batch. |
 
-The strict-comparison `not implemented` label describes only one-to-one macOS/Windows evidence; it is not a finding about global product scope, source code, Reader, IPC, or roadmap. Separately, blocked data fields describe the active Windows contract and are not findings of product-feature absence.
-
-## Month value progress decision
-
-The fixed Dashboard uses existing detailed-month `estimated_cost_usd` as a clearly labelled **local API-equivalent estimate**. It is not an official quota, allowance, remaining balance, or bill, and it is not a complete or strict one-to-one macOS monthly-Wool replacement.
-
-- Markers: Plus `$20`, Pro 100 `$100`, Pro 200 `$200`, and `$46.5K` reference cap.
-- Mapping: the first `$0–200` maps to 28%; the remaining span uses a `log1p` tail.
-- macOS pricing and source semantics differ. Therefore the Windows Month-value surface leaves a strict macOS-Wool comparison gap; it is feature-level hierarchy parity, not strict cross-platform dollar parity.
-
-## Scope respected
-
-This Dashboard work did not introduce a Dashboard Reader, cache behavior, IPC field, points change, thread parsing change, or score calculation change. It stays inside the existing frontend contracts and makes missing source fields explicit rather than inventing values.
+There is no active Claude provider or selector in this Dashboard. The refactor does not introduce a fake quota, a remote data source, or a UI inference from raw body content.
 
 ## Validation record
 
-| Command / check | cwd | Result | Note |
-| --- | --- | --- | --- |
-| `npm run build` | `windows/apps/codexu-tauri/web` | pass | Completed in the final validation run. |
-| `cargo test --workspace` | `windows` | pass | 9 passed / 0 failed; three zero-test targets. |
-| `cargo tauri build --no-bundle` | `windows/apps/codexu-tauri/src-tauri` | pass at 02:59:09 Asia/Shanghai | Produced `windows/target/release/codexu-tauri.exe`. |
-| Native visual inspection | final release HWND | pass with evidence split | Updated compact default and Leadership detail were inspected after global-nav de-duplication; lower four remain retained nearest-context images, not current-nav proof. |
-| `git diff --check` | repository root | pass | No whitespace errors in the final validation run. |
-
-Computer Use was not available for this acceptance: its Node runtime failed to initialize with `os error 3`. The result must not be read as a Computer Use pass; it is based on HWND-specific `PrintWindow` capture and visual review.
-
-## Known limits
-
-- Official quota/rate-limit data remains outside the current Windows contract.
-- No no-signal/no-data native screenshot was captured in this batch.
-- No pixel-diff was run.
-- Screenshot values are local runtime values at capture time and are not asserted to match macOS screenshot values.
-
-## Next steps
-
-- Keep this accepted visual scope intact; any task-status or typed Skills data must start as a separately authorized contract change rather than a UI inference.
-- When a no-signal/no-data state is intentionally exercised, add a new native capture batch rather than reusing this runtime-data evidence.
-
-## Related paired documents
-
-- [`WINDOWS_DASHBOARD_SHOWCASE.md`](../showcase/WINDOWS_DASHBOARD_SHOWCASE.md) and [`WINDOWS_DASHBOARD_SHOWCASE.html`](../showcase/WINDOWS_DASHBOARD_SHOWCASE.html)
-- [`MACOS_WINDOWS_FEATURE_COMPARISON.md`](../showcase/MACOS_WINDOWS_FEATURE_COMPARISON.md) and [`MACOS_WINDOWS_FEATURE_COMPARISON.html`](../showcase/MACOS_WINDOWS_FEATURE_COMPARISON.html)
+| Check | Result |
+| --- | --- |
+| `npm run build` | pass |
+| `cargo test --workspace` | pass: 35 core + 7 Tauri tests |
+| `cargo tauri build --no-bundle` | pass; release EXE built 2026-07-28 04:23:36 Asia/Shanghai |
+| `git diff --check` | pass |
