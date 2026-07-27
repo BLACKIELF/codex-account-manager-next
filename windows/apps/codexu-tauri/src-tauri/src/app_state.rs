@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -108,9 +109,10 @@ impl DashboardSourceKey {
 /// Cached usage snapshot plus metadata.
 #[derive(Debug, Clone)]
 pub struct CachedSnapshot {
-    pub usage: Option<CodexDashboardSnapshot>,
+    pub dashboard: Option<CodexDashboardSnapshot>,
     pub refreshed_at: DateTime<Utc>,
     pub source_key: DashboardSourceKey,
+    pub source_generation: u64,
 }
 
 /// Shared application state.
@@ -119,8 +121,11 @@ pub struct AppState {
     pub snapshot: RwLock<Option<CachedSnapshot>>,
     pub refresh_lock: Mutex<()>,
     pub app_data_dir: PathBuf,
+    source_generation: AtomicU64,
     #[cfg(test)]
     pub(crate) refresh_call_count: Arc<AtomicUsize>,
+    #[cfg(test)]
+    refresh_attempt_hook: Arc<tokio::sync::Mutex<Option<std::sync::Arc<dyn Fn(Arc<Self>, usize) + Send + Sync>>>>,
 }
 
 impl AppState {
@@ -131,8 +136,11 @@ impl AppState {
             snapshot: RwLock::new(None),
             refresh_lock: Mutex::new(()),
             app_data_dir,
+            source_generation: AtomicU64::new(0),
             #[cfg(test)]
             refresh_call_count: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            refresh_attempt_hook: Arc::new(tokio::sync::Mutex::new(None)),
         }
     }
 
@@ -156,8 +164,11 @@ impl AppState {
         {
             let snapshot = self.snapshot.read().await;
             if let Some(ref cached) = *snapshot {
-                if cached.source_key == current_source && Self::is_fresh(cached, max_age_secs) {
-                    return Ok(cached.usage.clone());
+                if cached.source_key == current_source
+                    && cached.source_generation == self.source_generation.load(Ordering::SeqCst)
+                    && Self::is_fresh(cached, max_age_secs)
+                {
+                    return Ok(cached.dashboard.clone());
                 }
             }
         }
@@ -168,47 +179,66 @@ impl AppState {
         {
             let snapshot = self.snapshot.read().await;
             if let Some(ref cached) = *snapshot {
-                if cached.source_key == current_source && Self::is_fresh(cached, max_age_secs) {
-                    return Ok(cached.usage.clone());
+                if cached.source_key == current_source
+                    && cached.source_generation == self.source_generation.load(Ordering::SeqCst)
+                    && Self::is_fresh(cached, max_age_secs)
+                {
+                    return Ok(cached.dashboard.clone());
                 }
             }
         }
 
-        self.refresh_usage_from_source(current_source).await
+        self.refresh_usage_from_source(
+            current_source,
+            self.source_generation.load(Ordering::SeqCst),
+        )
+        .await
     }
 
     /// Force a refresh of the usage snapshot.
     pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         let _guard = self.refresh_lock.lock().await;
         let source = self.current_source_key().await;
-        self.refresh_usage_from_source(source).await
+        self.refresh_usage_from_source(source, self.source_generation.load(Ordering::SeqCst))
+            .await
     }
 
     async fn refresh_usage_from_source(
         self: &Arc<Self>,
         source: DashboardSourceKey,
+        expected_generation: u64,
     ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         let mut source = source;
-        let mut latest_snapshot: Option<CodexDashboardSnapshot> = None;
+        let mut expected_generation = expected_generation;
 
-        for _ in 0..2 {
+        for _attempt in 0..2 {
             let provider = CodexDashboardProvider::new(&source.codex_root, &source.cache_dir);
             let now = Utc::now();
             let snapshot = provider.load_dashboard_snapshot(now).await?;
-            latest_snapshot = snapshot.clone();
 
             #[cfg(test)]
             self.refresh_call_count.fetch_add(1, Ordering::SeqCst);
 
+            #[cfg(test)]
+            {
+                let hook = self.refresh_attempt_hook.lock().await.clone();
+                if let Some(hook) = hook {
+                    hook(self.clone(), _attempt);
+                }
+            }
+
             let cache = Some(CachedSnapshot {
-                usage: snapshot.clone(),
+                dashboard: snapshot.clone(),
                 refreshed_at: now,
                 source_key: source.clone(),
+                source_generation: expected_generation,
             });
             {
                 let mut guard = self.snapshot.write().await;
                 let config = self.config.read().await;
-                if DashboardSourceKey::from_config(&config) == source {
+                if DashboardSourceKey::from_config(&config) == source
+                    && self.source_generation.load(Ordering::SeqCst) == expected_generation
+                {
                     *guard = cache;
                     if snapshot.is_some() {
                         info!("Usage snapshot refreshed");
@@ -219,19 +249,27 @@ impl AppState {
                 }
             }
 
-            warn!(
-                "Config source changed while refreshing dashboard snapshot; retrying with latest config"
-            );
+            if self.source_generation.load(Ordering::SeqCst) != expected_generation {
+                warn!(
+                    "Config source changed while refreshing dashboard snapshot; retrying with latest config"
+                );
+            } else {
+                warn!("Could not refresh dashboard snapshot with stable source; retrying");
+            }
 
             let latest_source = {
                 let config = self.config.read().await;
                 DashboardSourceKey::from_config(&config)
             };
+            let latest_generation = self.source_generation.load(Ordering::SeqCst);
             source = latest_source;
+            expected_generation = latest_generation;
         }
 
         warn!("Could not refresh usage snapshot with stable source config");
-        Ok(latest_snapshot)
+        anyhow::bail!(
+            "Failed to refresh dashboard snapshot due to concurrent config source changes"
+        );
     }
 
     /// Update config and persist to disk.
@@ -240,7 +278,12 @@ impl AppState {
         F: FnOnce(&mut AppConfig),
     {
         let mut config = self.config.write().await;
+        let previous_source = DashboardSourceKey::from_config(&config);
         f(&mut config);
+        let current_source = DashboardSourceKey::from_config(&config);
+        if current_source != previous_source {
+            self.source_generation.fetch_add(1, Ordering::SeqCst);
+        }
         let cloned = config.clone();
         drop(config);
         cloned.save(&self.app_data_dir)?;
@@ -267,6 +310,7 @@ pub async fn clear_cache(state: &Arc<AppState>) {
         let mut guard = state.snapshot.write().await;
         *guard = None;
     }
+    state.source_generation.fetch_add(1, Ordering::SeqCst);
     info!("Cleared codexU cache");
 }
 
@@ -344,9 +388,10 @@ mod tests {
                 DashboardSourceKey::from_config(&config)
             };
             *snapshot = Some(CachedSnapshot {
-                usage: Some(create_snapshot(now - Duration::seconds(5))),
+                dashboard: Some(create_snapshot(now - Duration::seconds(5))),
                 refreshed_at: now,
                 source_key: source,
+                source_generation: 0,
             });
         }
 
@@ -367,9 +412,10 @@ mod tests {
                 DashboardSourceKey::from_config(&config)
             };
             *snapshot = Some(CachedSnapshot {
-                usage: None,
+                dashboard: None,
                 refreshed_at: now,
                 source_key: source,
+                source_generation: 0,
             });
         }
 
@@ -396,7 +442,7 @@ mod tests {
 
         let cached = state.snapshot.read().await.clone();
         assert!(cached.is_some());
-        assert!(cached.unwrap().usage.is_none());
+        assert!(cached.unwrap().dashboard.is_none());
     }
 
     #[tokio::test]
@@ -419,7 +465,7 @@ mod tests {
         {
             let mut snapshot = state.snapshot.write().await;
             *snapshot = Some(CachedSnapshot {
-                usage: None,
+                dashboard: None,
                 refreshed_at: Utc::now() - Duration::seconds(120),
                 source_key: DashboardSourceKey::from_config(&AppConfig {
                     codex_root: old_root.clone(),
@@ -428,6 +474,7 @@ mod tests {
                     refresh_interval_secs: 60,
                     tray_density: TrayDensity::Classic,
                 }),
+                source_generation: 0,
             });
         }
 
@@ -453,9 +500,10 @@ mod tests {
                 DashboardSourceKey::from_config(&config)
             };
             *snapshot = Some(CachedSnapshot {
-                usage: None,
+                dashboard: None,
                 refreshed_at: Utc::now() - Duration::seconds(120),
                 source_key: source,
+                source_generation: 0,
             });
         }
         {
@@ -480,5 +528,77 @@ mod tests {
         let value = state.get_usage(60).await.unwrap();
         assert!(value.is_none());
         assert_eq!(1, state.refresh_call_count.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn get_usage_rejects_stale_snapshot_after_source_generation_cycle() {
+        let app_data_dir = unique_temp_path("codexu-tauri-generation-cycle");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let source_a = unique_temp_path("codexu-tauri-generation-root-a");
+        let source_b = unique_temp_path("codexu-tauri-generation-root-b");
+        let cache_dir = unique_temp_path("codexu-tauri-generation-cache");
+        std::fs::create_dir_all(&source_a).unwrap();
+        std::fs::create_dir_all(&source_b).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = source_a.clone();
+            config.cache_dir = cache_dir;
+        }
+
+        let stale_source = {
+            let config = state.config.read().await;
+            DashboardSourceKey::from_config(&config)
+        };
+        {
+            let mut snapshot = state.snapshot.write().await;
+            *snapshot = Some(CachedSnapshot {
+                dashboard: Some(create_snapshot(Utc::now())),
+                refreshed_at: Utc::now(),
+                source_key: stale_source,
+                source_generation: 0,
+            });
+        }
+
+        let _ = state
+            .update_config(|config| {
+                config.codex_root = source_b.clone();
+            })
+            .await
+            .unwrap();
+        let _ = state
+            .update_config(|config| {
+                config.codex_root = source_a.clone();
+            })
+            .await
+            .unwrap();
+
+        let value = state.get_usage(600).await.unwrap();
+        assert!(value.is_none());
+        let cached = state.snapshot.read().await.clone().expect("cache refreshed");
+        assert_eq!(cached.source_generation, 2);
+        assert_eq!(cached.source_key.codex_root, source_a);
+    }
+
+    #[tokio::test]
+    async fn refresh_usage_returns_error_after_retry_exhaustion_with_generation_toggles() {
+        let app_data_dir = unique_temp_path("codexu-tauri-retry-exhaustion");
+        let state = Arc::new(AppState::new(app_data_dir));
+        {
+            let mut hook = state.refresh_attempt_hook.lock().await;
+            *hook = Some(std::sync::Arc::new(|state, _attempt| {
+                state.source_generation.fetch_add(1, Ordering::SeqCst);
+            }));
+        }
+
+        let value = state.refresh_usage().await;
+        assert!(value.is_err());
+        assert!(
+            value
+                .unwrap_err()
+                .to_string()
+                .contains("Failed to refresh dashboard snapshot due to concurrent config source changes")
+        );
+        assert_eq!(state.refresh_call_count.load(Ordering::SeqCst), 2);
     }
 }
