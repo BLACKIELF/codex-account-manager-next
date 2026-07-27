@@ -20,6 +20,10 @@ pub struct CodexThreadMetadata {
     pub archived: bool,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    /// Runtime thread source (`main`, `subagent`, `automation`), if known.
+    pub thread_source: Option<String>,
+    /// Parent thread id from runtime spawn edges, if available.
+    pub parent_thread_id: Option<String>,
     pub git_branch: Option<String>,
     pub git_origin_url: Option<String>,
 }
@@ -49,7 +53,18 @@ impl CodexStateReader {
 
 fn load_metadata_sync(db_path: &Path) -> anyhow::Result<HashMap<String, CodexThreadMetadata>> {
     let conn = rusqlite::Connection::open(db_path)?;
-    let mut stmt = conn.prepare(
+    let mut has_thread_source = false;
+    if let Ok(mut pragma) = conn.prepare("PRAGMA table_info(threads)") {
+        let rows = pragma.query_map([], |row| row.get::<_, String>(1))?;
+        for row in rows {
+            if row? == "thread_source" {
+                has_thread_source = true;
+                break;
+            }
+        }
+    }
+
+    let mut query = String::from(
         "SELECT
             id,
             rollout_path,
@@ -61,43 +76,87 @@ fn load_metadata_sync(db_path: &Path) -> anyhow::Result<HashMap<String, CodexThr
             updated_at_ms,
             git_branch,
             git_origin_url
+            ",
+    );
+    if has_thread_source {
+        query.push_str(", thread_source");
+    }
+    query.push_str(
+        "
         FROM threads
         WHERE rollout_path IS NOT NULL AND rollout_path != ''",
-    )?;
+    );
 
-    let rows = stmt.query_map([], |row| {
-        let thread_id: String = row.get(0)?;
-        let rollout_path: String = row.get(1)?;
-        let title: Option<String> = row.get(2)?;
-        let cwd: Option<String> = row.get(3)?;
-        let model: Option<String> = row.get(4)?;
-        let archived: i64 = row.get(5)?;
-        let created_at_ms: Option<i64> = row.get(6)?;
-        let updated_at_ms: Option<i64> = row.get(7)?;
-        let git_branch: Option<String> = row.get(8)?;
-        let git_origin_url: Option<String> = row.get(9)?;
+    let mut stmt = conn.prepare(&query)?;
 
-        Ok((
+    let mut entries: HashMap<String, CodexThreadMetadata> = HashMap::new();
+    let mut rows = stmt.query_map([], |row| {
+        let thread_id: String = row.get::<_, String>(0)?;
+        let rollout_path: String = row.get::<_, String>(1)?;
+        let title: Option<String> = row.get::<_, Option<String>>(2)?;
+        let cwd: Option<String> = row.get::<_, Option<String>>(3)?;
+        let model: Option<String> = row.get::<_, Option<String>>(4)?;
+        let archived: i64 = row.get::<_, i64>(5)?;
+        let created_at_ms: Option<i64> = row.get::<_, Option<i64>>(6)?;
+        let updated_at_ms: Option<i64> = row.get::<_, Option<i64>>(7)?;
+        let git_branch: Option<String> = row.get::<_, Option<String>>(8)?;
+        let git_origin_url: Option<String> = row.get::<_, Option<String>>(9)?;
+        let thread_source: Option<String> = if has_thread_source {
+            row.get::<_, Option<String>>(10)?
+        } else {
+            None
+        };
+
+        Ok((thread_id, rollout_path, title, cwd, model, archived, created_at_ms, updated_at_ms, git_branch, git_origin_url, thread_source))
+    })?;
+
+    let parent_edges = load_parent_edges(&conn)?;
+    for row in rows.by_ref() {
+        let (thread_id, rollout_path, title, cwd, model, archived, created_at_ms, updated_at_ms, git_branch, git_origin_url, thread_source) = row?;
+        let parent_thread_id = parent_edges.get(&thread_id).cloned();
+        entries.insert(
             normalize_rollout_key(&rollout_path),
             CodexThreadMetadata {
                 thread_id,
-                rollout_path,
+                rollout_path: rollout_path.clone(),
                 title: title.filter(|s| !s.trim().is_empty()),
                 cwd: cwd.filter(|s| !s.trim().is_empty()),
                 model: model.filter(|s| !s.trim().is_empty()),
                 archived: archived != 0,
                 created_at: created_at_ms.and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
                 updated_at: updated_at_ms.and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
+                thread_source: thread_source.filter(|s| !s.trim().is_empty()),
+                parent_thread_id,
                 git_branch,
                 git_origin_url,
             },
-        ))
+        );
+    }
+
+    Ok(entries)
+}
+
+fn load_parent_edges(
+    conn: &rusqlite::Connection,
+) -> anyhow::Result<HashMap<String, String>> {
+    let query = conn.prepare("SELECT child_thread_id, parent_thread_id FROM thread_spawn_edges");
+    let mut statement = match query {
+        Ok(statement) => statement,
+        Err(_) => return Ok(HashMap::new()),
+    };
+
+    let rows = statement.query_map([], |row| {
+        let child: String = row.get(0)?;
+        let parent: Option<String> = row.get(1)?;
+        Ok((child, parent))
     })?;
 
     let mut map = HashMap::new();
     for row in rows {
-        let (key, meta) = row?;
-        map.insert(key, meta);
+        let (child, parent) = row?;
+        if let Some(parent_thread_id) = parent {
+            map.insert(child, parent_thread_id);
+        }
     }
     Ok(map)
 }

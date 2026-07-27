@@ -8,12 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Datelike, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::models::*;
-
-const LEADERSHIP_REPORT_VERSION: &str = "1.4-real";
-const LEADERSHIP_PERIOD_DAYS: i64 = 28;
-const LEADERSHIP_TOKENS_PER_HOUR: f64 = 12_000.0;
 
 pub const MAX_CACHE_BYTES: u64 = 128 * 1024 * 1024;
 pub const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
@@ -38,6 +35,16 @@ pub struct UsageDelta {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodexTaskInterval {
+    pub turn_id: Option<String>,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub started_at: DateTime<Utc>,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub ended_at: DateTime<Utc>,
+    pub quality: LeadershipEvidenceQuality,
+}
+
 /// Per-session metadata and deltas extracted from one transcript file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SessionSummary {
@@ -56,6 +63,12 @@ pub struct SessionSummary {
     pub git_branch: Option<String>,
     /// Git origin URL captured when the thread was created.
     pub git_origin_url: Option<String>,
+    /// Worker kind source from the state DB, if available (`main`, `subagent`, `automation`).
+    pub thread_source: Option<String>,
+    /// Parent thread id from optional runtime edges table, if available.
+    pub parent_thread_id: Option<String>,
+    /// Task timing evidence extracted from transcript events.
+    pub task_intervals: Vec<CodexTaskInterval>,
 }
 
 /// Enumerates all `.jsonl` files under `root`, sorted.
@@ -235,8 +248,6 @@ pub fn make_local_usage(summaries: Vec<SessionSummary>, now: DateTime<Utc>) -> O
 
     let tool_usages = make_tool_usages(&summaries, &lifetime);
 
-    let leadership = build_leadership_snapshot(&summaries, now);
-
     let usage = LocalUsage {
         lifetime_tokens: lifetime.tokens.visible_total_tokens(),
         today_tokens: today.tokens.visible_total_tokens(),
@@ -253,378 +264,9 @@ pub fn make_local_usage(summaries: Vec<SessionSummary>, now: DateTime<Utc>) -> O
         }),
         tool_usages,
         skill_usages: Vec::new(), // TODO: implement skill resolver
-        leadership: Some(leadership),
     };
 
     Some(usage)
-}
-
-fn build_leadership_snapshot(
-    summaries: &[SessionSummary],
-    now: DateTime<Utc>,
-) -> LeadershipDashboardSnapshot {
-    let mut unique_deltas: Vec<&UsageDelta> = Vec::new();
-    let mut seen_message_ids = HashSet::new();
-    for delta in summaries.iter().flat_map(|s| s.deltas.iter()) {
-        if let Some(ref id) = delta.message_id {
-            if seen_message_ids.contains(id) {
-                continue;
-            }
-            seen_message_ids.insert(id.clone());
-        }
-        unique_deltas.push(delta);
-    }
-
-    let mut project_tokens: HashMap<String, (i64, HashSet<String>)> = HashMap::new();
-    let mut daily_tokens: HashMap<String, i64> = HashMap::new();
-    let mut daily_session_ids: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut active_days = HashSet::new();
-    let mut session_ids = HashSet::new();
-    let mut models_seen = HashSet::new();
-    let mut total_events = 0i64;
-    let mut total_tokens = 0i64;
-    let mut total_cost_usd = 0.0;
-    let mut total_tool_calls = 0i64;
-
-    for summary in summaries {
-        for (_name, count) in &summary.tool_calls {
-            total_tool_calls += count;
-        }
-    }
-
-    let period_end = Utc
-        .with_ymd_and_hms(now.year(), now.month(), now.day(), 0, 0, 0)
-        .unwrap();
-    let period_start = period_end - chrono::Duration::days(LEADERSHIP_PERIOD_DAYS - 1);
-
-    for delta in unique_deltas {
-        let tokens = delta.tokens.visible_total_tokens();
-        if tokens <= 0 {
-            continue;
-        }
-
-        let bucket_date = Utc
-            .with_ymd_and_hms(
-                delta.date.year(),
-                delta.date.month(),
-                delta.date.day(),
-                0,
-                0,
-                0,
-            )
-            .unwrap();
-        let day_key = bucket_date.format("%Y-%m-%d").to_string();
-        if bucket_date < period_start || bucket_date > period_end {
-            continue;
-        }
-        active_days.insert(day_key.clone());
-
-        let project_path = if delta.project_path.is_empty() {
-            "Codex".to_string()
-        } else {
-            delta.project_path.clone()
-        };
-
-        session_ids.insert(delta.session_id.clone());
-        if let Some(model) = &delta.model {
-            if !model.is_empty() {
-                models_seen.insert(model.clone());
-            }
-        }
-
-        let cost = estimated_cost_usd(&delta.tokens, delta.model.as_deref());
-        total_cost_usd += cost;
-        total_tokens += tokens;
-        total_events += 1;
-        *daily_tokens.entry(day_key.clone()).or_insert(0) += tokens;
-        daily_session_ids
-            .entry(day_key.clone())
-            .or_default()
-            .insert(delta.session_id.clone());
-
-        project_tokens
-            .entry(project_path)
-            .and_modify(|(stored_tokens, ids)| {
-                *stored_tokens += tokens;
-                ids.insert(delta.session_id.clone());
-            })
-            .or_insert((tokens, {
-                let mut ids = HashSet::new();
-                ids.insert(delta.session_id.clone());
-                ids
-            }));
-    }
-
-    let project_count = project_tokens.len() as i64;
-    let active_day_count = active_days.len() as i64;
-
-    let mut daily_points: Vec<LeadershipDayPoint> = Vec::new();
-    let mut peak_concurrency = 0i64;
-    let mut concurrency_sum = 0f64;
-
-    let mut day_cursor = period_start;
-    while day_cursor <= period_end {
-        let day_key = day_cursor.format("%Y-%m-%d").to_string();
-        let point_tokens = daily_tokens.get(&day_key).copied().unwrap_or(0);
-        let point_agents = daily_session_ids
-            .get(&day_key)
-            .map(|ids| ids.len() as i64)
-            .unwrap_or(0);
-        peak_concurrency = peak_concurrency.max(point_agents);
-        concurrency_sum += point_agents as f64;
-        let point = LeadershipDayPoint {
-            day: day_cursor,
-            agent_count: point_agents,
-            ai_hours: leadership_hours(point_tokens),
-            peak_concurrency: point_agents,
-        };
-        daily_points.push(point);
-        day_cursor += chrono::Duration::days(1);
-    }
-
-    let average_parallelism = if active_day_count > 0 {
-        Some(concurrency_sum / active_day_count as f64)
-    } else {
-        Some(0.0)
-    };
-
-    let ai_hours = leadership_hours(total_tokens);
-    let autonomy_ratio = if total_events == 0 || total_tool_calls == 0 {
-        if total_events > 0 {
-            0.35
-        } else {
-            0.0
-        }
-    } else {
-        let call_ratio = total_tool_calls as f64 / total_events as f64;
-        (0.25 + 0.55 * call_ratio.min(2.0)).min(1.0)
-    };
-    let autonomous_hours = if total_events > 0 {
-        Some(ai_hours * autonomy_ratio)
-    } else {
-        None
-    };
-
-    let evidence_coverage = {
-        let mut score = 0.0;
-        if total_events > 0 {
-            score += 1.0;
-        }
-        if active_day_count > 0 {
-            score += 1.0;
-        }
-        if project_count > 0 {
-            score += 1.0;
-        }
-        if !models_seen.is_empty() {
-            score += 1.0;
-        }
-        if total_tool_calls > 0 {
-            score += 1.0;
-        }
-        if total_cost_usd > 0.0 {
-            score += 1.0;
-        }
-        let normalized_score = score / 6.0;
-        if normalized_score > 1.0 {
-            1.0
-        } else if normalized_score < 0.0 {
-            0.0
-        } else {
-            normalized_score
-        }
-    };
-
-    let top_project_ratio = project_tokens
-        .values()
-        .map(|(tokens, _)| *tokens as f64 / total_tokens.max(1) as f64)
-        .fold(0.0, f64::max);
-
-    let span_summary = if LEADERSHIP_PERIOD_DAYS > 0 {
-        active_day_count as f64 / LEADERSHIP_PERIOD_DAYS as f64 * 100.0
-    } else {
-        0.0
-    };
-    let span_score =
-        clamp_0_100((span_summary * 0.85) + (((session_ids.len() as f64 + 1.0).ln() / 3.0) * 15.0));
-
-    let leverage_summary = if total_tokens > 0 {
-        (((project_count as f64) + 1.0).ln() / 4.0_f64.ln()).min(4.0) / 4.0 * 100.0
-    } else {
-        0.0
-    };
-    let leverage_score =
-        clamp_0_100((leverage_summary * 0.7) + ((1.0 - top_project_ratio).max(0.0) * 30.0));
-
-    let orchestration_summary = if active_day_count > 0 {
-        (concurrency_sum / active_day_count as f64) * 20.0
-    } else {
-        0.0
-    };
-    let orchestration_score = clamp_0_100(
-        (orchestration_summary.min(100.0) * 0.5)
-            + ((peak_concurrency as f64 / 6.0).min(1.0) * 50.0),
-    );
-
-    let autonomy_summary = autonomy_ratio * 100.0;
-    let autonomy_score = clamp_0_100(autonomy_summary);
-
-    let confidence = 0.55 + (evidence_coverage * 0.45);
-    let confidence = if confidence > 1.0 {
-        1.0
-    } else if confidence < 0.0 {
-        0.0
-    } else {
-        confidence
-    };
-    let dimensions = vec![
-        LeadershipDimension {
-            kind: LeadershipDimensionKind::Span,
-            score: span_score,
-            confidence,
-            summary_value: clamp_0_100(span_summary),
-        },
-        LeadershipDimension {
-            kind: LeadershipDimensionKind::Leverage,
-            score: leverage_score,
-            confidence,
-            summary_value: clamp_0_100(leverage_summary),
-        },
-        LeadershipDimension {
-            kind: LeadershipDimensionKind::Orchestration,
-            score: orchestration_score,
-            confidence,
-            summary_value: clamp_0_100(orchestration_summary),
-        },
-        LeadershipDimension {
-            kind: LeadershipDimensionKind::Autonomy,
-            score: autonomy_score,
-            confidence,
-            summary_value: clamp_0_100(autonomy_summary),
-        },
-    ];
-
-    let core_score = dimensions
-        .iter()
-        .map(|dimension| {
-            let weight = dimension.kind.weight();
-            dimension.score * weight
-        })
-        .sum::<f64>();
-    let score = clamp_percentage_score(core_score);
-    let title = leadership_title_from_score(score);
-
-    let mut projects: Vec<LeadershipProjectContribution> = project_tokens
-        .into_iter()
-        .map(|(project_id, (tokens, ids))| {
-            let is_empty = project_id.is_empty();
-            let project_name = short_workspace_name(if is_empty { "Codex" } else { &project_id });
-            LeadershipProjectContribution {
-                project_id,
-                project_name,
-                agent_count: ids.len() as i64,
-                ai_hours: leadership_hours(tokens),
-                autonomous_hours: leadership_hours(tokens) * autonomy_ratio,
-            }
-        })
-        .collect();
-    projects.sort_by(|a, b| {
-        b.ai_hours
-            .partial_cmp(&a.ai_hours)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    LeadershipDashboardSnapshot {
-        model_version: LEADERSHIP_REPORT_VERSION.to_string(),
-        refreshed_at: now,
-        reports: vec![LeadershipReport {
-            period: "28d".to_string(),
-            score: Some(score),
-            core_score: Some(core_score),
-            title: Some(title),
-            dimensions,
-            maturity: clamp_0_100(
-                (span_summary + leverage_summary + orchestration_summary + autonomy_summary) / 4.0,
-            ),
-            evidence_coverage,
-            active_day_count,
-            agent_count: Some(session_ids.len() as i64),
-            ai_hours: Some(ai_hours),
-            autonomous_hours,
-            average_parallelism,
-            peak_concurrency: Some(peak_concurrency),
-            project_count,
-            daily_points,
-            projects,
-        }],
-    }
-}
-
-fn leadership_hours(tokens: i64) -> f64 {
-    if tokens <= 0 {
-        0.0
-    } else {
-        tokens as f64 / LEADERSHIP_TOKENS_PER_HOUR
-    }
-}
-
-fn leadership_title_from_score(score: i32) -> LeadershipTitle {
-    match score {
-        90..=100 => LeadershipTitle {
-            level: 5,
-            name: "Architect".to_string(),
-            english_name: "Architect".to_string(),
-            lower_bound: 90,
-            upper_bound: 100,
-        },
-        75..=89 => LeadershipTitle {
-            level: 4,
-            name: "Operator".to_string(),
-            english_name: "Operator".to_string(),
-            lower_bound: 75,
-            upper_bound: 89,
-        },
-        60..=74 => LeadershipTitle {
-            level: 3,
-            name: "Navigator".to_string(),
-            english_name: "Navigator".to_string(),
-            lower_bound: 60,
-            upper_bound: 74,
-        },
-        45..=59 => LeadershipTitle {
-            level: 2,
-            name: "Co-Pilot".to_string(),
-            english_name: "Co-Pilot".to_string(),
-            lower_bound: 45,
-            upper_bound: 59,
-        },
-        30..=44 => LeadershipTitle {
-            level: 1,
-            name: "Starter".to_string(),
-            english_name: "Starter".to_string(),
-            lower_bound: 30,
-            upper_bound: 44,
-        },
-        _ => LeadershipTitle {
-            level: 0,
-            name: "Rookie".to_string(),
-            english_name: "Rookie".to_string(),
-            lower_bound: 0,
-            upper_bound: 29,
-        },
-    }
-}
-
-fn clamp_0_100(value: f64) -> f64 {
-    value.max(0.0).min(100.0)
-}
-
-fn clamp_percentage_score(score: f64) -> i32 {
-    if !score.is_finite() {
-        0
-    } else {
-        score.round().max(0.0).min(100.0) as i32
-    }
 }
 
 fn make_seven_day_buckets(
@@ -949,100 +591,4 @@ impl UsageDayBucket {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn builds_real_leadership_snapshot_from_usage() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 26, 12, 30, 0).unwrap();
-        let summary = SessionSummary {
-            file_path: "/tmp/rollout.jsonl".to_string(),
-            session_id: "session-1".to_string(),
-            project_path: "h:\\project\\demo".to_string(),
-            model: Some("gpt-5.4".to_string()),
-            last_active_at: Some(now),
-            deltas: vec![
-                UsageDelta {
-                    message_id: Some("msg-1".to_string()),
-                    date: now - chrono::Duration::hours(1),
-                    tokens: TokenBreakdown {
-                        input_tokens: 120,
-                        cached_input_tokens: 0,
-                        output_tokens: 80,
-                        reasoning_output_tokens: 0,
-                        total_tokens: 200,
-                    },
-                    model: Some("gpt-5.4".to_string()),
-                    project_path: "h:\\project\\demo".to_string(),
-                    session_id: "session-1".to_string(),
-                },
-                UsageDelta {
-                    message_id: Some("msg-2".to_string()),
-                    date: now - chrono::Duration::days(10),
-                    tokens: TokenBreakdown {
-                        input_tokens: 200,
-                        cached_input_tokens: 0,
-                        output_tokens: 100,
-                        reasoning_output_tokens: 0,
-                        total_tokens: 300,
-                    },
-                    model: Some("gpt-5.4".to_string()),
-                    project_path: "h:\\project\\demo".to_string(),
-                    session_id: "session-1".to_string(),
-                },
-            ],
-            tool_calls: HashMap::from_iter([("bash".to_string(), 2)].into_iter()),
-            title: Some("Demo Thread".to_string()),
-            archived: false,
-            git_branch: None,
-            git_origin_url: None,
-        };
-
-        let snapshot = build_leadership_snapshot(&[summary], now);
-        let report = &snapshot.reports[0];
-
-        assert!(!snapshot.model_version.contains("stub"));
-        assert_eq!(snapshot.model_version, LEADERSHIP_REPORT_VERSION);
-        assert_eq!(snapshot.reports.len(), 1);
-        assert_eq!(report.dimensions.len(), 4);
-        assert!(report.score.is_some());
-        assert!(report.core_score.is_some());
-        assert!(report.title.is_some());
-        assert!(report.active_day_count > 0);
-        assert!(report.ai_hours.is_some());
-        assert!(report.ai_hours.unwrap() > 0.0);
-        assert!(report.autonomous_hours.is_some());
-        assert!(report.average_parallelism.is_some());
-        assert!(report.peak_concurrency.is_some());
-        assert_eq!(report.daily_points.len(), LEADERSHIP_PERIOD_DAYS as usize);
-        assert!(!report.projects.is_empty());
-        assert!(report.evidence_coverage >= 0.0);
-    }
-
-    #[test]
-    fn preserves_empty_fallback_when_no_delta_points() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 26, 12, 30, 0).unwrap();
-        let summary = SessionSummary {
-            file_path: "/tmp/rollout.jsonl".to_string(),
-            session_id: "session-2".to_string(),
-            project_path: "h:\\project\\empty".to_string(),
-            model: None,
-            last_active_at: None,
-            deltas: vec![],
-            tool_calls: HashMap::new(),
-            title: None,
-            archived: false,
-            git_branch: None,
-            git_origin_url: None,
-        };
-
-        let snapshot = build_leadership_snapshot(&[summary], now);
-        let report = &snapshot.reports[0];
-
-        assert!(!snapshot.model_version.contains("stub"));
-        assert!(report.score.unwrap() <= 20);
-        assert_eq!(report.projects.len(), 0);
-        assert_eq!(report.daily_points.len(), LEADERSHIP_PERIOD_DAYS as usize);
-        assert_eq!(report.active_day_count, 0);
-        assert_eq!(report.peak_concurrency, Some(0));
-        assert_eq!(report.average_parallelism, Some(0.0));
-    }
 }

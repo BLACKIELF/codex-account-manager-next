@@ -220,8 +220,6 @@ pub struct LocalUsage {
     pub project_board: Option<ProjectBoard>,
     pub tool_usages: Vec<ToolUsage>,
     pub skill_usages: Vec<SkillUsage>,
-    /// Optional leadership snapshot assembled by the Windows leadership pipeline.
-    pub leadership: Option<crate::models::LeadershipDashboardSnapshot>,
 }
 
 /// A bucket for the recent 7-day bar chart.
