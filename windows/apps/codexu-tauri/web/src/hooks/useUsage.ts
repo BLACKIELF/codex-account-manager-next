@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { LocalUsage } from '../types/models';
+import type { CodexDashboardSnapshot } from '../types/models';
 import {
   isTauriRuntimeAvailable,
   requireTauriRuntime,
 } from '../utils/tauri';
 
 export function useUsage() {
-  const [usage, setUsage] = useState<LocalUsage | null | undefined>(undefined);
+  const [dashboard, setDashboard] = useState<CodexDashboardSnapshot | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,10 +17,10 @@ export function useUsage() {
     setError(null);
     try {
       requireTauriRuntime();
-      const result = await invoke<LocalUsage | null>(
+      const result = await invoke<CodexDashboardSnapshot | null>(
         force ? 'refresh_usage' : 'get_local_usage'
       );
-      setUsage(result);
+      setDashboard(result);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -60,5 +60,5 @@ useEffect(() => {
   };
 }, [load]);
 
-  return { usage, loading, error, refresh: () => load(true) };
+  return { dashboard, loading, error, refresh: () => load(true) };
 }

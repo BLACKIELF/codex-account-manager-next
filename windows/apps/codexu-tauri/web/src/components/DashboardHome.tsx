@@ -1,6 +1,10 @@
 import { Activity, Calendar, ClipboardList, Cpu, Database, TrendingUp, Wrench } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent } from 'react';
-import type { LocalUsage, LeadershipReport } from '../types/models';
+import type {
+  CodexLeadershipSignal,
+  LeadershipReport,
+  LocalUsage,
+} from '../types/models';
 import { LEADERSHIP_BANDS, resolveLeadershipBand } from '../utils/leadershipTitles';
 import { LeadershipCommandRail, LeadershipOrbit } from './LeadershipPanel';
 import { MonthlyValueProgress } from './MonthlyValueProgress';
@@ -10,6 +14,7 @@ import { StatCard } from './StatCard';
 
 interface DashboardHomeProps {
   usage: LocalUsage | null | undefined;
+  leadershipSignal: CodexLeadershipSignal | null | undefined;
   onOpenLeadership: () => void;
 }
 
@@ -27,18 +32,19 @@ const formatUSD = (value: unknown): string => {
   return value.toFixed(2);
 };
 
-export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
+export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: DashboardHomeProps) {
+  const signal = leadershipSignal ?? null;
+  const report = getReportForSignal(signal);
   const hasUsage = usage !== null && usage !== undefined;
-  const report = usage?.leadership?.reports?.[0] ?? null;
 
   const detailed = usage?.detailed_usage ?? null;
   const tokenMix = buildTokenMix(detailed);
   const hasTokenDetail = tokenMix.hasData;
 
-  const score = hasUsage ? report?.score ?? null : null;
-  const evidenceRatio = report?.evidence_coverage ?? 0;
-  const activeBand = resolveLeadershipBand(score, evidenceRatio, report?.active_day_count ?? 0);
-  const hasSignal = activeBand !== null;
+  const score = signal?.score ?? null;
+  const evidenceRatio = signal?.evidence_coverage ?? 0;
+  const activeBand = resolveLeadershipBand(score, evidenceRatio, signal?.active_day_count ?? 0);
+  const hasSignal = score !== null && activeBand !== null;
   const scoreForVisual = hasSignal && score !== null ? Math.max(0, Math.min(100, Math.round(score))) : 0;
 
   const [activeLowerTab, setActiveLowerTab] = useState<LowerTab>('tasks');
@@ -84,14 +90,16 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
             <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
             <h2 className="text-2xl font-semibold text-primary leading-tight mt-1">
               {hasSignal
-                ? activeBand.enName
+                ? activeBand?.enName ?? 'AI Leadership'
                 : hasUsage
                   ? 'Leadership score pending'
                   : 'No usage snapshot yet'}
             </h2>
             <p className="text-sm text-secondary mt-1">
               {hasSignal
-                ? `${report?.period ?? '28d'} · ${report?.active_day_count ?? 0} active days · Evidence ${Math.round(evidenceRatio * 100)}%`
+                ? `${report?.period ?? signal?.period ?? '28d'} · ${signal?.active_day_count ?? 0} active days · Evidence ${Math.round(
+                    evidenceRatio * 100,
+                  )}%`
                 : hasUsage
                   ? 'Record insufficient for authoritative title'
                   : 'Data not ready. Refresh to load local snapshots.'}
@@ -101,9 +109,11 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
               {hasSignal ? (
                 <>
                   <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                    L{activeBand.level}
+                    L{activeBand?.level}
                   </span>
-                  <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
+                  <span className="text-tertiary text-xs">
+                    Band {activeBand?.scoreMin}-{activeBand?.scoreMax}
+                  </span>
                 </>
               ) : (
                 <>
@@ -132,9 +142,7 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
 
         <section className="glass-panel p-4 dashboard-home-mix" aria-label="7-day token mix">
           <h3 className="text-sm font-semibold text-primary mb-3">7-day Token mix</h3>
-          <p className="text-xs text-tertiary mb-3">
-            Source: 7-day usage signal from local detailed snapshot.
-          </p>
+          <p className="text-xs text-tertiary mb-3">Source: 7-day usage signal from local detailed snapshot.</p>
           <div className="space-y-2.5 text-sm">
             <MixRow
               label="Input"
@@ -310,6 +318,12 @@ export function DashboardHome({ usage, onOpenLeadership }: DashboardHomeProps) {
       )}
     </div>
   );
+}
+
+function getReportForSignal(signal: CodexLeadershipSignal | null): LeadershipReport | null {
+  if (!signal?.report) return null;
+  const byPeriod = signal.report.reports.find((item) => item.period === signal.period);
+  return byPeriod ?? signal.report.reports[0] ?? null;
 }
 
 function MixRow({

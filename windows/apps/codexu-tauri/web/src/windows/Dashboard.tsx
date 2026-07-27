@@ -2,17 +2,13 @@ import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Activity, ChevronRight, CircleDashed } from 'lucide-react';
 import { Header } from '../components/Header';
 import { DashboardHome } from '../components/DashboardHome';
-import { ProjectBoard } from '../components/ProjectBoard';
-import { LeadershipPanel } from '../components/LeadershipPanel';
 import { ThreadList } from '../components/ThreadList';
-import { UsagePanel } from '../components/UsagePanel';
-import { ProjectsPanel } from '../components/ProjectsPanel';
-import { ToolUsageList } from '../components/ToolUsageList';
+import { LeadershipPanel } from '../components/LeadershipPanel';
 import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
 import { applyAppTheme } from '../utils/appTheme';
 
-type DashboardTab = 'home' | 'overview' | 'leadership' | 'threads' | 'projects';
+type DashboardTab = 'home' | 'leadership' | 'threads';
 
 const TABS: Array<{ id: DashboardTab; title: string }> = [
   { id: 'home', title: 'Dashboard' },
@@ -21,13 +17,19 @@ const TABS: Array<{ id: DashboardTab; title: string }> = [
 ];
 
 export function Dashboard() {
-  const { usage, loading, error, refresh } = useUsage();
+  const { dashboard, loading, error, refresh } = useUsage();
   const { settings, update } = useSettings();
   const [activeTab, setActiveTab] = useState<DashboardTab>('home');
 
   useEffect(() => {
     applyAppTheme(settings?.config.theme ?? 'system');
   }, [settings?.config.theme]);
+
+  const localUsage = dashboard?.codex?.snapshot?.local ?? null;
+  const hasUsage = localUsage !== null;
+  const isLeadershipAvailable = dashboard?.leadership?.report !== null;
+  const lastUpdated =
+    localUsage?.last_updated_at ?? dashboard?.refreshed_at ?? dashboard?.codex?.snapshot?.refreshed_at ?? null;
 
   const handleThemeChange = async (theme: 'system' | 'light' | 'dark') => {
     await update({ theme });
@@ -49,8 +51,6 @@ export function Dashboard() {
         : (currentIndex - 1 + TABS.length) % TABS.length;
     setActiveTab(TABS[nextIndex].id);
   };
-
-  const hasUsage = usage !== null && usage !== undefined;
 
   if (error) {
     return (
@@ -78,12 +78,10 @@ export function Dashboard() {
     );
   }
 
-  const isLeadershipAvailable = usage?.leadership && usage.leadership.reports.length > 0;
-
   return (
     <div className="h-full flex flex-col">
       <Header
-        lastUpdated={usage?.last_updated_at ?? null}
+        lastUpdated={lastUpdated}
         theme={settings?.config.theme ?? 'system'}
         onThemeChange={handleThemeChange}
         onRefresh={refresh}
@@ -91,7 +89,7 @@ export function Dashboard() {
       />
 
       <main className="flex-1 overflow-auto p-6 md:p-7">
-        {!hasUsage ? (
+        {!dashboard && (
           <div className="glass-panel p-6 mb-6" role="status" aria-live="polite">
             {loading ? (
               <>
@@ -113,7 +111,7 @@ export function Dashboard() {
               </>
             )}
           </div>
-        ) : null}
+        )}
 
         <div className="max-w-6xl mx-auto w-full space-y-6">
           <div className="flex items-center justify-between gap-2">
@@ -121,14 +119,25 @@ export function Dashboard() {
               <span className="inline-flex items-center gap-1.5 chip-like bg-status-warn/12 text-status-warn border-status-warn/30">
                 <Activity size={12} /> Local only
               </span>
-              <span className="text-xs text-tertiary">Codex {usage?.thread_count ?? 0} threads</span>
+              <span className="text-xs text-tertiary">
+                Codex {(localUsage?.thread_count ?? 0)} threads
+              </span>
+              {!hasUsage ? (
+                <span className="text-xs text-tertiary">
+                  {dashboard ? 'No local usage details yet' : 'Waiting for snapshot'}
+                </span>
+              ) : null}
             </div>
             <span className="inline-flex items-center gap-1.5 chip-like text-xs text-secondary">
               <CircleDashed size={12} />
-              Last update:
-              {usage?.last_updated_at ? new Date(usage.last_updated_at).toLocaleTimeString() : 'waiting'}
+              Last update: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'waiting'}
             </span>
           </div>
+          {dashboard?.messages?.length ? (
+            <p className="text-xs text-tertiary mt-2">
+              Status: {dashboard.messages.join(' · ')}
+            </p>
+          ) : null}
 
           <div
             onKeyDown={handleTabKeyDown}
@@ -161,24 +170,11 @@ export function Dashboard() {
               aria-labelledby="dashboard-tab-home"
               className="space-y-6"
             >
-              <DashboardHome usage={usage} onOpenLeadership={() => setActiveTab('leadership')} />
-            </section>
-          )}
-
-          {activeTab === 'overview' && (
-            <section
-              role="tabpanel"
-              id="dashboard-panel-overview"
-              aria-labelledby="dashboard-tab-overview"
-              className="space-y-6"
-            >
-              <UsagePanel usage={usage} />
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <ThreadList threads={usage?.recent_threads ?? []} />
-                <ProjectBoard projects={usage?.project_board?.recent_projects ?? []} />
-              </div>
-              <ToolUsageList tools={usage?.tool_usages ?? []} />
+              <DashboardHome
+                usage={localUsage}
+                leadershipSignal={dashboard?.leadership ?? null}
+                onOpenLeadership={() => setActiveTab('leadership')}
+              />
             </section>
           )}
 
@@ -202,34 +198,7 @@ export function Dashboard() {
                   </button>
                 </div>
               </header>
-              <ThreadList threads={usage?.recent_threads ?? []} />
-            </section>
-          )}
-
-          {activeTab === 'projects' && (
-            <section
-              role="tabpanel"
-              id="dashboard-panel-projects"
-              aria-labelledby="dashboard-tab-projects"
-              className="space-y-4"
-            >
-              <header className="glass-panel p-4 sm:p-5">
-                <div className="flex items-center justify-between text-sm">
-                  <h2 className="font-semibold text-primary">Projects</h2>
-                  <button
-                    aria-label="Back to Leadership"
-                    className="inline-flex items-center gap-1 text-secondary hover:text-primary"
-                    onClick={() => setActiveTab('leadership')}
-                  >
-                    <ChevronRight size={14} className="rotate-180" />
-                    Leadership
-                  </button>
-                </div>
-              </header>
-              <ProjectsPanel
-                projects={usage?.project_board?.recent_projects ?? []}
-                tools={usage?.tool_usages ?? []}
-              />
+              <ThreadList threads={localUsage?.recent_threads ?? []} />
             </section>
           )}
 
@@ -240,16 +209,23 @@ export function Dashboard() {
               aria-labelledby="dashboard-tab-leadership"
             >
               {isLeadershipAvailable ? (
-                <LeadershipPanel snapshot={usage?.leadership ?? null} />
+                <LeadershipPanel signal={dashboard?.leadership ?? null} />
               ) : (
-                <div className="glass-panel p-6">
+                <section className="glass-panel p-6">
                   <p className="text-sm text-secondary">
-                    No leadership snapshot yet. Move usage to continue collecting automation traces and refresh.
+                    No leadership snapshot yet. Keep using local sessions and refresh to load leadership
+                    details.
                   </p>
-                </div>
+                </section>
               )}
             </section>
           )}
+
+          {!hasUsage && dashboard && activeTab !== 'leadership' ? (
+            <section className="glass-panel p-4 text-sm text-secondary">
+              <p>No local usage details yet. Local usage summary will appear after first snapshot.</p>
+            </section>
+          ) : null}
         </div>
       </main>
     </div>

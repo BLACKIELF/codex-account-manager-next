@@ -11,15 +11,16 @@ import {
 } from 'lucide-react';
 import { Fragment, type CSSProperties, type ReactNode } from 'react';
 import type {
-  LeadershipDashboardSnapshot,
+  CodexLeadershipSignal,
   LeadershipDayPoint,
   LeadershipDimension,
   LeadershipProjectContribution,
+  LeadershipReport,
 } from '../types/models';
 import { LEADERSHIP_BANDS, type LeadershipBand, resolveLeadershipBand } from '../utils/leadershipTitles';
 
 interface LeadershipPanelProps {
-  snapshot: LeadershipDashboardSnapshot | null;
+  signal: CodexLeadershipSignal | null;
 }
 
 type DimensionKind = LeadershipDimension['kind'];
@@ -55,8 +56,8 @@ const DIMENSION_META: Record<DimensionKind, DimensionMeta> = {
   },
 };
 
-export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
-  if (!snapshot || snapshot.reports.length === 0) {
+export function LeadershipPanel({ signal }: LeadershipPanelProps) {
+  if (!signal) {
     return (
       <section className="glass-panel p-6 sm:p-7 space-y-3">
         <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
@@ -67,16 +68,28 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
     );
   }
 
-  const report = snapshot.reports[0];
-  const score = report.score;
-  const evidenceRatio = Number.isFinite(report.evidence_coverage) ? report.evidence_coverage : 0;
+  const report = getReportFromSignal(signal);
+  if (!report) {
+    return (
+      <section className="glass-panel p-6 sm:p-7 space-y-3">
+        <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
+        <p className="text-sm text-secondary">
+          Leadership report is not ready yet for period {signal.period}. Refresh after more local snapshots are
+          collected.
+        </p>
+      </section>
+    );
+  }
+
+  const score = signal.score;
+  const evidenceRatio = Number.isFinite(signal.evidence_coverage) ? signal.evidence_coverage : 0;
   const activeBand = resolveLeadershipBand(score, evidenceRatio, report.active_day_count);
-  const hasSignal = activeBand !== null;
+  const hasSignal = score !== null && activeBand !== null;
   const confidence = Math.max(0, Math.min(100, Math.round(evidenceRatio * 100)));
   const trend = buildTrendSummary(report.daily_points);
   const sortedProjects = sortProjects(report.projects, 'ai_hours');
   const latest = report.daily_points.length > 0 ? report.daily_points[report.daily_points.length - 1] : null;
-  const isStub = snapshot.model_version.toLowerCase().includes('stub');
+  const isStub = signal.model_version.toLowerCase().includes('stub');
   const scoreForVisual = hasSignal ? Math.max(0, Math.min(100, Math.round(score ?? 0))) : 0;
 
   return (
@@ -88,7 +101,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <div>
               <p className="font-semibold text-primary">Fallback snapshot mode</p>
               <p className="text-xs text-tertiary mt-1">
-                Snapshot source is {snapshot.model_version}; fields may be fallback-approximated.
+                Snapshot source is {signal.model_version}; fields may be fallback-approximated.
               </p>
             </div>
           </div>
@@ -100,9 +113,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
           <div className="leadership-hero-left">
             <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
             <h2 className="text-2xl sm:text-3xl font-semibold mt-1 text-primary leading-tight">
-              {hasSignal
-                ? `${activeBand.zhName} / ${activeBand.enName}`
-                : 'Leadership score pending'}
+              {hasSignal ? `${activeBand?.zhName} / ${activeBand?.enName}` : 'Leadership score pending'}
             </h2>
             <p className="text-sm text-secondary mt-1">
               {hasSignal
@@ -113,9 +124,9 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
               {hasSignal ? (
                 <>
                   <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                    L{activeBand.level}
+                    L{activeBand?.level}
                   </span>
-                  <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
+                  <span className="text-tertiary text-xs">Band {activeBand?.scoreMin}-{activeBand?.scoreMax}</span>
                 </>
               ) : (
                 <>
@@ -190,9 +201,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <BookOpenText size={16} className="text-secondary" />
             <h3 className="text-sm font-semibold text-primary">Score Path</h3>
           </div>
-          <p className="text-sm text-secondary">
-            This score is composed of span, leverage, orchestration, and autonomy.
-          </p>
+          <p className="text-sm text-secondary">This score is composed of span, leverage, orchestration, and autonomy.</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Pill icon={<Globe size={14} />} label="Core score" value={formatCoreScore(report.core_score)} />
             <Pill icon={<Eye size={14} />} label="Maturity" value={report.maturity.toFixed(1)} />
@@ -427,7 +436,12 @@ export function LeadershipCommandRail({
       {railContent}
     </button>
   );
+}
 
+function getReportFromSignal(signal: CodexLeadershipSignal): LeadershipReport | null {
+  if (!signal.report) return null;
+  const byPeriod = signal.report.reports.find((item) => item.period === signal.period);
+  return byPeriod ?? signal.report.reports[0] ?? null;
 }
 
 function Pill({
