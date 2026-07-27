@@ -37,7 +37,7 @@ use super::codex_state::CodexThreadMetadata;
 use super::common::*;
 use crate::models::*;
 
-const CODEX_CACHE_VERSION: i32 = 1;
+const CODEX_CACHE_VERSION: i32 = 2;
 
 /// On-disk cache for Codex transcript summaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -734,6 +734,70 @@ mod tests {
         let started = completed - Duration::seconds(5);
         assert_eq!(interval.started_at, started);
         assert_eq!(interval.ended_at, completed);
+    }
+
+    #[tokio::test]
+    async fn legacy_cache_version_is_discarded_when_version_bumps() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-legacy-cache.jsonl");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:00:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-03-26T12:00:00.000Z"}}"#,
+            r#"{"timestamp":"2026-03-26T12:01:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-03-26T12:01:00.000Z"}}"#,
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let cache_path = cache.join("codex").join("session-usage-v1.json");
+        tokio::fs::create_dir_all(cache_path.parent().unwrap()).await.unwrap();
+        let key = session.to_string_lossy().to_string();
+        let v1_cache = serde_json::json!({
+            "version": 1,
+            "entries": {
+                key.clone(): {
+                    "file_size": 1024,
+                    "modification_time_ns": 1,
+                    "summary": {
+                        "file_path": key,
+                        "session_id": "rollout-legacy-cache",
+                        "project_path": "legacy",
+                        "model": null,
+                        "last_active_at": null,
+                        "deltas": [],
+                        "tool_calls": {}
+                    }
+                }
+            }
+        });
+        tokio::fs::write(&cache_path, serde_json::to_vec(&v1_cache).unwrap()).await.unwrap();
+
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 1);
+        assert_eq!(summaries[0].task_intervals[0].quality, LeadershipEvidenceQuality::Fact);
+    }
+
+    #[test]
+    fn deserialize_legacy_summary_json_without_task_intervals() {
+        let legacy = r#"{
+            "file_path":"rollout-legacy.jsonl",
+            "session_id":"rollout-legacy",
+            "project_path":"/tmp",
+            "model":null,
+            "last_active_at":null,
+            "deltas":[],
+            "tool_calls":{}
+        }"#;
+        let summary: CodexTranscriptSummary = serde_json::from_str(legacy).unwrap();
+        assert!(summary.task_intervals.is_empty());
     }
 
 
