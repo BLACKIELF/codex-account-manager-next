@@ -14,14 +14,15 @@ The Dashboard consumes one local `CodexDashboardSnapshot`: a nested Codex runtim
 
 ## Accepted native evidence
 
-Capture used HWND-specific `PrintWindow`, not Computer Use. Both valid final images are `1462x1196` physical pixels at DPI 144, approximately `975x797 CSS px`.
+Capture used HWND-specific `PrintWindow`, not Computer Use. The three valid final images are `1462x1196` physical pixels at DPI 144, approximately `975x797 CSS px`. The lower-tabs frame was reached through pure Win32 `SendInput` PageDown plus wheel scrolling, then captured with `PW_RENDERFULLCONTENT`; it did not use Computer Use, UIA, or Playwright.
 
 | Surface | Current evidence | What it proves |
 | --- | --- | --- |
 | Default Dashboard | [codex-dashboard-snapshot-default-native.png](../reports/assets/codex-dashboard-snapshot-default-native.png) | Exactly three global tabs; full L1-L7 rail; Token mix `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541`; no raw body content. |
 | AI Leadership detail | [codex-dashboard-snapshot-leadership-native.png](../reports/assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics in the drill-down hierarchy. |
+| Lower Dashboard navigation | [codex-dashboard-snapshot-lower-tabs-native.png](../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png) | Readable L1-L7, Month value explicitly labelled local API-equivalent estimate / not official quota, and exactly one Tasks / Usage / Projects / Skills tab bar. |
 
-No fresh final scrolled lower-tabs image was accepted. The absence is recorded as an evidence gap; no earlier lower-panel capture is reused to prove final navigation or snapshot behavior.
+The accepted lower-tabs image proves the current navigation hierarchy and its single tab bar only. It does not prove each variable panel's internal content or strict one-to-one macOS feature equivalence.
 
 ## Validation
 

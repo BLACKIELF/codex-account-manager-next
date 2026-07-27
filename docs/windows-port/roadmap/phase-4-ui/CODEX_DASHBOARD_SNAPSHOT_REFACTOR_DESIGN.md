@@ -62,16 +62,17 @@ When the report does not yield a valid score, `leadership.score` is `null`; UI c
 
 ## Native evidence and validation
 
-Accepted final release evidence uses HWND-specific `PrintWindow`; it is a non-Computer-Use native capture. The two valid assets are:
+Accepted final release evidence uses HWND-specific `PrintWindow`; it is a non-Computer-Use native capture. The three valid assets are:
 
 - [default Dashboard](../../reports/assets/codex-dashboard-snapshot-default-native.png)
 - [AI Leadership detail](../../reports/assets/codex-dashboard-snapshot-leadership-native.png)
+- [lower Dashboard navigation](../../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png)
 
 Capture bounds were `1462x1196` physical pixels at DPI 144, approximately `975x797 CSS px`.
 
 - Default: exactly three global tabs, full L1-L7 rail, and a Token mix of `1,784,569,471` input + `1,706,410,112` cached input + `9,142,958` output = `3,500,122,541`, with no raw body content.
 - Leadership: identity, score, rail, and metrics are visible in the detail hierarchy.
-- No fresh final scrolled lower-tabs image was accepted; this design document does not use an older frame as final evidence for that state.
+- Lower navigation: pure Win32 `SendInput` PageDown plus wheel scrolling, then `PW_RENDERFULLCONTENT`, shows readable L1-L7, local API-equivalent Month value / not official quota, and one Tasks / Usage / Projects / Skills tab bar. It proves navigation hierarchy only, not variable-panel internals or strict cross-platform equivalence.
 
 Final validation:
 

@@ -25,14 +25,15 @@
 
 ## Acceptance evidence
 
-The accepted native capture method is HWND-specific `PrintWindow`, not Computer Use. Both current images were captured at `1462x1196` physical pixels / DPI 144, approximately `975x797 CSS px`.
+The accepted native capture method is HWND-specific `PrintWindow`, not Computer Use. All three current images were captured at `1462x1196` physical pixels / DPI 144, approximately `975x797 CSS px`. The lower-tabs frame used pure Win32 `SendInput` PageDown plus wheel scrolling, then `PW_RENDERFULLCONTENT`; it did not use Computer Use, UIA, or Playwright.
 
 | Surface | Valid evidence | Acceptance fact |
 | --- | --- | --- |
 | Default Dashboard | [codex-dashboard-snapshot-default-native.png](../../reports/assets/codex-dashboard-snapshot-default-native.png) | Three global tabs, complete L1-L7 rail, and a non-duplicated Token mix totaling `3,500,122,541` (`1,784,569,471` + `1,706,410,112` + `9,142,958`) with no raw body content. |
 | AI Leadership | [codex-dashboard-snapshot-leadership-native.png](../../reports/assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics are visible in the detail hierarchy. |
+| Lower Dashboard navigation | [codex-dashboard-snapshot-lower-tabs-native.png](../../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png) | Readable L1-L7, local API-equivalent Month value / not official quota, and one Tasks / Usage / Projects / Skills tab bar. |
 
-No fresh final scrolled lower-tabs capture was accepted. It remains an evidence gap; no prior lower-panel image is relabelled as proof of the final snapshot architecture or current navigation.
+The lower-tabs image proves current navigation hierarchy and its single tab bar only. It does not establish each variable panel's internal content or strict cross-platform feature equivalence.
 
 ## Final validation
 
@@ -47,5 +48,5 @@ No fresh final scrolled lower-tabs capture was accepted. It remains an evidence 
 
 - A Claude provider or runtime-selection UI.
 - Official account quota/rate-limit data or any synthetic quota replacement.
-- A new accepted lower-tabs screenshot until it is captured from the final release state.
+- Variable-panel internal-content evidence beyond the accepted lower navigation hierarchy.
 - Any claim that local Month estimate is a strict macOS Wool equivalent.

@@ -13,14 +13,15 @@
 
 ## Native evidence
 
-Native acceptance used non-Computer-Use HWND `PrintWindow` capture. Both valid images were captured at `1462x1196` physical pixels / DPI 144, approximately `975x797 CSS px`.
+Native acceptance used non-Computer-Use HWND `PrintWindow` capture. All three valid images were captured at `1462x1196` physical pixels / DPI 144, approximately `975x797 CSS px`. The lower-tabs frame used pure Win32 `SendInput` PageDown plus wheel scrolling, followed by `PW_RENDERFULLCONTENT`; it did not use Computer Use, UIA, or Playwright.
 
 | Surface | Evidence | Accepted fact |
 | --- | --- | --- |
 | Default Dashboard | [codex-dashboard-snapshot-default-native.png](assets/codex-dashboard-snapshot-default-native.png) | Three global tabs; complete L1-L7; `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541` Token mix; no raw body content. |
 | AI Leadership | [codex-dashboard-snapshot-leadership-native.png](assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics. |
+| Lower Dashboard navigation | [codex-dashboard-snapshot-lower-tabs-native.png](assets/codex-dashboard-snapshot-lower-tabs-native.png) | Readable L1-L7, local API-equivalent Month value / not official quota, and one Tasks / Usage / Projects / Skills tab bar. |
 
-No fresh final scrolled lower-tabs image was accepted. This report does not use an old lower-panel frame as evidence for current navigation or final snapshot behavior.
+The lower-tabs image is accepted evidence for current navigation hierarchy and the single tab bar only. It does not establish variable-panel internals or strict cross-platform feature equivalence.
 
 ## Cross-platform interpretation
 
@@ -28,8 +29,8 @@ No fresh final scrolled lower-tabs image was accepted. This report does not use 
 | --- | --- | --- |
 | Fixed overview / AI Leadership | Accepted hierarchy correspondence | Leadership is fixed overview plus drill-down; Token mix semantics differ from macOS. |
 | Month value | Local estimate surface | Not official quota/bill and not strict macOS Wool equivalence. |
-| Tasks / Skills | `variable panel + not implemented` for strict comparison | No fresh final lower-tabs evidence; this label is comparison evidence only, not a global product/IPC/source conclusion. |
-| Usage / Projects | Existing lower-area surfaces | No fresh final scrolled screenshot accepted in this batch. |
+| Tasks / Skills | `variable panel + not implemented` for strict comparison | The current image proves the shared tab bar, not panel internals; this label is comparison evidence only, not a global product/IPC/source conclusion. |
+| Usage / Projects | Existing lower-area surfaces | The current image proves their shared tab bar only, not internal panel content. |
 
 There is no active Claude provider or selector in this Dashboard. The refactor does not introduce a fake quota, a remote data source, or a UI inference from raw body content.
 

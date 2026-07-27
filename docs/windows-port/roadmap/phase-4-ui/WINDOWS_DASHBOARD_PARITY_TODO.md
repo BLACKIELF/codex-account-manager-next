@@ -27,7 +27,7 @@ The implemented snapshot refactor resolves the top-level contract and default/Le
 | Usage safety | Complete: local usage is `codex.snapshot.local`; official quota remains unavailable and is not fabricated. |
 | Leadership | Complete: interval-backed report/score is independent of usage and gated by dimensions, active days, coverage, maturity, and non-stub model version. |
 | Global navigation | Complete: current native default evidence shows Dashboard / AI Leadership / Threads only. |
-| Lower panels | Evidence incomplete: no fresh final scrolled lower-tabs capture was accepted. Do not reuse historical lower-panel captures as current proof. |
+| Lower panels | Navigation evidence complete: a final lower-tabs capture proves one Tasks / Usage / Projects / Skills tab bar. It does not prove each panel's internal content. |
 
 ## Current evidence boundary
 
@@ -37,8 +37,9 @@ The accepted release captures use non-Computer-Use HWND `PrintWindow` at `1462x1
 | --- | --- | --- |
 | Default Dashboard | [codex-dashboard-snapshot-default-native.png](../../reports/assets/codex-dashboard-snapshot-default-native.png) | Three global tabs, complete L1-L7 rail, and local Token mix `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541` without raw body content. |
 | AI Leadership | [codex-dashboard-snapshot-leadership-native.png](../../reports/assets/codex-dashboard-snapshot-leadership-native.png) | Leadership identity, evidence-gated score, rail, and metrics. |
+| Lower Dashboard navigation | [codex-dashboard-snapshot-lower-tabs-native.png](../../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png) | Readable L1-L7, local API-equivalent Month value / not official quota, and one Tasks / Usage / Projects / Skills tab bar; not panel-internal evidence. |
 
-No blank/black frame or older lower-panel frame is part of the accepted evidence set.
+The lower-tabs frame was produced through pure Win32 `SendInput` PageDown plus wheel scrolling and HWND `PrintWindow` / `PW_RENDERFULLCONTENT`, without Computer Use, UIA, or Playwright. No blank/black or historical lower-panel frame is part of the accepted set.
 
 ## Cross-platform clarification
 

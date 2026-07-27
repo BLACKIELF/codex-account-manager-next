@@ -33,7 +33,7 @@ The Windows drill-down shows identity, score, rail, and metrics. Its score is an
 
 ## Lower panels: evidence boundary
 
-The Dashboard may expose Tasks / Usage / Projects / Skills in its lower area, but **no fresh final scrolled lower-tabs image was accepted for this snapshot refactor**. This comparison therefore does not reuse older lower-panel images as proof of current global navigation, final snapshot wiring, or strict one-to-one macOS equivalence.
+The current native lower-navigation evidence is ![Windows lower Dashboard navigation](../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png). At `1462x1196` physical pixels / DPI 144, it shows readable L1-L7, Month value explicitly labelled local API-equivalent estimate / not official quota, and one Tasks / Usage / Projects / Skills tab bar. It establishes that current navigation hierarchy only; it does not establish each variable panel's internal content or strict one-to-one macOS equivalence.
 
 For strict cross-platform comparison, Tasks and Skills remain `variable panel + not implemented`: this label describes missing strict equivalence evidence only. It is not a conclusion about the full product area, source code, Reader, IPC, or roadmap. Tool usage is not relabelled as Skills.
 
