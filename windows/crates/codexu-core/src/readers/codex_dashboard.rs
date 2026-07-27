@@ -26,6 +26,9 @@ const DEFAULT_LEADERSHIP_MODEL_VERSION: &str = "1.3-codex-interval";
 /// - local session summaries (parsed once)
 /// - local usage aggregation
 /// - leadership score/report composition
+///
+/// Provider calls should be serialized (single-flight) by the AppState/caller cache
+/// so we do not emit overlapping refreshes or race updates into shared snapshot state.
 pub struct CodexDashboardProvider {
     codex_root: PathBuf,
     cache_dir: PathBuf,
@@ -44,7 +47,7 @@ impl CodexDashboardProvider {
         &self,
         now: DateTime<Utc>,
     ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
-        let state_metadata = self.load_state_metadata().await?;
+        let (state_metadata, messages) = self.load_state_metadata().await?;
 
         let transcript_reader = CodexTranscriptReader::new(&self.cache_dir);
         let summaries = transcript_reader
@@ -62,21 +65,31 @@ impl CodexDashboardProvider {
             codex: build_codex_runtime_snapshot(local_usage, now),
             leadership: leadership_signal,
             refreshed_at: now,
-            messages: vec![],
+            messages,
         }))
     }
 
     async fn load_state_metadata(
         &self,
-    ) -> anyhow::Result<HashMap<String, CodexThreadMetadata>> {
+    ) -> anyhow::Result<(HashMap<String, CodexThreadMetadata>, Vec<String>)> {
         let state_db_path = self.codex_root.join("state_5.sqlite");
         if !tokio::fs::try_exists(&state_db_path).await.unwrap_or(false) {
-            return Ok(HashMap::new());
+            return Ok((
+                HashMap::new(),
+                vec!["No local Codex state metadata file (state_5.sqlite); using transcript summaries only."
+                    .to_string()],
+            ));
         }
 
         match CodexStateReader::new(&state_db_path).load_metadata().await {
-            Ok(metadata) => Ok(metadata),
-            Err(_) => Ok(HashMap::new()),
+            Ok(metadata) => Ok((metadata, vec![])),
+            Err(err) => Ok((
+                HashMap::new(),
+                vec![format!(
+                    "Failed to load local Codex state metadata from state_5.sqlite; using transcript summaries only. {}",
+                    err
+                )],
+            )),
         }
     }
 }
@@ -261,6 +274,16 @@ mod tests {
         let temp = tempdir().unwrap();
         let archived = temp.path().join("archived_sessions");
         std::fs::create_dir_all(&archived).unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 3, 26, 12, 53, 47).unwrap();
+        let state_path = temp.path().join("state_5.sqlite");
+        create_codex_state_db(
+            &state_path,
+            "rollout-local.jsonl",
+            "Task",
+            "C:\\Projects\\A",
+            "gpt-5.4",
+            now,
+        );
 
         let session = archived.join("rollout-local.jsonl");
         write_session_file(
@@ -275,7 +298,7 @@ mod tests {
         let provider = CodexDashboardProvider::new(temp.path(), &cache);
 
         let snapshot = provider
-            .load_dashboard_snapshot(Utc.with_ymd_and_hms(2026, 3, 26, 12, 53, 47).unwrap())
+            .load_dashboard_snapshot(now)
             .await
             .unwrap()
             .expect("should return snapshot");
@@ -292,6 +315,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_state_db_preserves_local_transcripts_with_snapshot_warning() {
+        let temp = tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        std::fs::create_dir_all(&archived).unwrap();
+
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let session = archived.join("rollout-no-state.jsonl");
+        write_session_file(
+            &session,
+            vec![
+                r#"{"timestamp":"2026-07-28T11:30:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-07-28T11:30:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:45:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-07-28T11:45:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:45:10.000Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":180,"cached_input_tokens":0,"output_tokens":60,"reasoning_output_tokens":0,"total_tokens":240}}}}"#,
+            ],
+        );
+
+        let provider = CodexDashboardProvider::new(temp.path(), temp.path().join("cache"));
+        let snapshot = provider
+            .load_dashboard_snapshot(now)
+            .await
+            .unwrap()
+            .expect("should produce snapshot");
+
+        assert!(snapshot.codex.snapshot.local.is_some());
+        assert!(
+            snapshot
+                .messages
+                .iter()
+                .any(|message| message.contains("state_5.sqlite"))
+        );
+    }
+
+    #[tokio::test]
+    async fn corrupted_state_db_preserves_local_transcripts_with_snapshot_warning() {
+        let temp = tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        std::fs::create_dir_all(&archived).unwrap();
+
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let state_path = temp.path().join("state_5.sqlite");
+        std::fs::write(&state_path, b"not a sqlite database").unwrap();
+
+        let session = archived.join("rollout-corrupt.jsonl");
+        write_session_file(
+            &session,
+            vec![
+                r#"{"timestamp":"2026-07-28T11:10:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-07-28T11:10:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:25:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-07-28T11:25:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:25:10.000Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":250,"cached_input_tokens":10,"output_tokens":50,"reasoning_output_tokens":5,"total_tokens":315}}}}"#,
+            ],
+        );
+
+        let provider = CodexDashboardProvider::new(temp.path(), temp.path().join("cache"));
+        let snapshot = provider
+            .load_dashboard_snapshot(now)
+            .await
+            .unwrap()
+            .expect("should produce snapshot");
+
+        assert!(snapshot.codex.snapshot.local.is_some());
+        assert!(
+            snapshot
+                .messages
+                .iter()
+                .any(|message| message.starts_with("Failed to load local Codex state metadata"))
+        );
+    }
+
+    #[tokio::test]
     async fn factual_twenty_eight_day_leadership_data_stays_in_leadership_report() {
         let temp = tempdir().unwrap();
         let archived = temp.path().join("archived_sessions");
@@ -299,14 +391,21 @@ mod tests {
 
         let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
         let state_path = temp.path().join("state_5.sqlite");
-        create_codex_state_db(&state_path, "rollout-28d.jsonl", "Task", "C:\\Projects\\A", "gpt-5.4", now - Duration::minutes(5));
+        create_codex_state_db(
+            &state_path,
+            "rollout-28d.jsonl",
+            "Task",
+            "C:\\Projects\\A",
+            "gpt-5.4",
+            now - Duration::hours(2),
+        );
 
         let session = archived.join("rollout-28d.jsonl");
         write_session_file(
             &session,
             vec![
-                r#"{"timestamp":"2026-07-28T11:55:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-07-28T11:55:00.000Z"}}"#,
-                r#"{"timestamp":"2026-07-28T11:56:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-07-28T11:56:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:40:00.000Z","type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1","started_at":"2026-07-28T11:40:00.000Z"}}"#,
+                r#"{"timestamp":"2026-07-28T11:55:00.000Z","type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-1","completed_at":"2026-07-28T11:55:00.000Z"}}"#,
                 r#"{"timestamp":"2026-07-28T11:56:10.000Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":25,"reasoning_output_tokens":0,"total_tokens":125}}}}"#,
             ],
         );
@@ -325,6 +424,8 @@ mod tests {
             .and_then(|report| report.reports.iter().find(|r| r.period == "twentyEightDays"));
         assert!(report.is_some());
         let report = report.unwrap();
+        assert!(snapshot.leadership.score.is_some());
+        assert_eq!(snapshot.leadership.score, report.score);
         assert_eq!(report.period, snapshot.leadership.period);
         assert_eq!(report.evidence_coverage, snapshot.leadership.evidence_coverage);
         assert_eq!(report.active_day_count, snapshot.leadership.active_day_count);
