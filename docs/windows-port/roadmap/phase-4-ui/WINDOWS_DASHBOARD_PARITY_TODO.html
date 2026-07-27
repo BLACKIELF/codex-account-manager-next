@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Windows Dashboard Parity TODO</title>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; line-height: 1.5; margin: 24px; color: #171717; }
+    h1,h2,h3 { margin: 24px 0 8px; }
+    p { margin: 8px 0; }
+    .meta { background: #f5f7fb; border: 1px solid #dfe7f5; padding: 12px; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { border: 1px solid #d3dbe8; padding: 8px; vertical-align: top; }
+    th { background: #eef2fa; text-align: left; }
+    .status { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .ready { background: #e4f7e7; color: #0a5f28; }
+    .blocked { background: #f7e8ea; color: #7a1823; }
+    .need { background: #fff3cd; color: #805300; }
+    code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; }
+    ul { margin: 6px 0 12px 22px; }
+  </style>
+</head>
+<body>
+  <h1>Windows Dashboard Parity TODO（阶段分支前置）</h1>
+  <div class="meta">
+    <p><strong>目标：</strong>为下一分支 <code>codex/windows-dashboard-lower-panels</code> 形成可执行待办，不作功能完成承诺。</p>
+    <p><strong>范围：</strong>仅文档；不改产品代码、数据模型、IPC、截图资产，不改 README。</p>
+  </div>
+
+  <h2>任务定位与证据边界</h2>
+  <ul>
+    <li>macOS 参考：
+      <ul>
+        <li>固定概览（leadership/用量/羊毛）来源：<code>Sources/CodexUsageWidget/main.swift:4057-4113</code></li>
+        <li>五个变体页签定义：<code>tasks / leadership / usage / projects / skills</code>（<code>Sources/CodexUsageWidget/main.swift:3880-3884</code>）</li>
+        <li>页签切换与内容插槽逻辑：<code>Sources/CodexUsageWidget/main.swift:4122-4148</code></li>
+      </ul>
+    </li>
+    <li>Windows 现状：主导航目前为 <code>Dashboard / AI Leadership / Usage / Threads / Projects</code>。</li>
+  </ul>
+
+  <h2>总体约束</h2>
+  <ul>
+    <li>仅在现有前端数据契约内实现视图重组，不改 Reader / cache / IPC / thread parser。</li>
+    <li>缺失字段使用真实空态，不做推断或伪值。</li>
+    <li>每个 TODO 均需具备：状态、作用域、No-go 边界、验收标准、预期验证。</li>
+  </ul>
+
+  <h2>TODO 列表</h2>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>状态</th><th>内容</th><th>No-go 边界</th><th>验收标准</th><th>预期验证</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>TODO-01</td>
+        <td><span class="status ready">ready frontend</span></td>
+        <td>重构 Windows Dashboard 骨架：固定上方 + 下方四格切换（Tasks / Usage / Projects / Skills），Leadership 保持明细入口，不成为第 5 张下方面板。</td>
+        <td>不改 <code>useUsage()</code> 结构，不改现有数据源。</td>
+        <td>macOS 有五个页签；Windows 目标为“固定头 + 4 下方插槽”，且 Leadership 为固定明细入口。</td>
+        <td>手工 UI 结构复核；本轮只改 Dashboard 视图组合逻辑；<code>git diff --check</code>。</td>
+      </tr>
+      <tr>
+        <td>TODO-02</td>
+        <td><span class="status ready">ready frontend</span></td>
+        <td>复用并迁移现有 Usage 与 Projects 组件到下方插槽。</td>
+        <td>不新增计算字段，不改图表口径。</td>
+        <td>Usage/Projects 面板在下方可见并可切换；963px 附近保持可访问导航与布局顺序。</td>
+        <td>关键断点响应式复核；键盘可达性；<code>git diff --check</code>。</td>
+      </tr>
+      <tr>
+        <td>TODO-03</td>
+        <td><span class="status blocked">blocked data contract</span></td>
+        <td>Today 任务盘：当前 Windows 仅有 Today token 与 recent threads 数据，不具备任务状态模型。</td>
+        <td>禁止 thread 伪装为任务；禁止更改线程解析。</td>
+        <td>文档中明确标记为阻塞，未以伪数据完成任务盘。</td>
+        <td>字段核对与数据契约确认。</td>
+      </tr>
+      <tr>
+        <td>TODO-04</td>
+        <td><span class="status blocked">blocked data contract</span></td>
+        <td>Skills 面板：当前 web 层未对接可用技能使用 typed 数据。</td>
+        <td>不改 reader/cache/IPC；不制造技能使用率值。</td>
+        <td>明确定义 Skills 当前缺失；等待数据契约变更后再做面板实现。</td>
+        <td>类型审阅确认 <code>models.ts</code> 缺少可消费技能统计。</td>
+      </tr>
+      <tr>
+        <td>TODO-05</td>
+        <td><span class="status need">decision needed</span></td>
+        <td>月度羊毛进度与 API 口径对齐：是否采用现有 month estimate 做对齐，需产品/数据评审。</td>
+        <td>不把 month 估值直接等同为 Token mix；不把估值标注为官方配额。</td>
+        <td>形成决议并写入后续计划：继续对齐/不对齐/新增口径。</td>
+        <td>口径评审记录。</td>
+      </tr>
+      <tr>
+        <td>TODO-06</td>
+        <td><span class="status need">decision needed</span></td>
+        <td>仅在 native UI 手工验收通过后更新真实截图证据与 showcase。</td>
+        <td>不使用旧图替代新状态；不把截图更新计入当前 TODO 完成。</td>
+        <td>证据与章节一一对应，缺失项（Today / Skills）与 partial 项（Usage / Projects）明确标注缺口与现状。</td>
+        <td>原生截图抽样复核；<code>git diff --check</code>。</td>
+      </tr>
+      <tr>
+        <td>TODO-07</td>
+        <td><span class="status ready">ready frontend</span></td>
+        <td>分支顺序：先提交此“证据边界+对齐 TODO”，再开 <code>codex/windows-dashboard-lower-panels</code> 做 UI 重构。</td>
+        <td>不将 TODO 作为实现完成标记，不混入无关文件。</td>
+        <td>分支命名与顺序文档记录；TODO 文档可回放。</td>
+        <td><code>git status --short</code> 与分支说明记录。</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>输出一致性与后续规则</h2>
+  <ul>
+    <li>Markdown 与 HTML 结论一致（状态、阻塞项、边界、验收口径完全同项）。</li>
+    <li>页面级对比统一使用“证据边界”语义，不将“未采集字段”写成“功能缺失结论”。</li>
+    <li>新增字段或证据出现时追加新 TODO，不覆盖历史阻塞记录。</li>
+  </ul>
+</body>
+</html>
