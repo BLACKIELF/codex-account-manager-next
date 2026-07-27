@@ -18,6 +18,8 @@ const LEADERSHIP_PERIOD_DEFAULT: &str = "twentyEightDays";
 
 /// Default model version for dashboard leadership snapshots.
 const DEFAULT_LEADERSHIP_MODEL_VERSION: &str = "1.3-codex-interval";
+const METADATA_WARNING: &str =
+    "Local Codex state metadata is unavailable; using transcript summaries only.";
 
 /// Codex-only dashboard snapshot provider.
 ///
@@ -73,23 +75,23 @@ impl CodexDashboardProvider {
         &self,
     ) -> anyhow::Result<(HashMap<String, CodexThreadMetadata>, Vec<String>)> {
         let state_db_path = self.codex_root.join("state_5.sqlite");
-        if !tokio::fs::try_exists(&state_db_path).await.unwrap_or(false) {
-            return Ok((
-                HashMap::new(),
-                vec!["No local Codex state metadata file (state_5.sqlite); using transcript summaries only."
-                    .to_string()],
-            ));
+        match tokio::fs::try_exists(&state_db_path).await {
+            Ok(false) => {
+                return Ok((HashMap::new(), vec![METADATA_WARNING.to_string()]));
+            }
+            Err(_) => {
+                return Ok((HashMap::new(), vec![METADATA_WARNING.to_string()]));
+            }
+            Ok(true) => {}
         }
 
         match CodexStateReader::new(&state_db_path).load_metadata().await {
             Ok(metadata) => Ok((metadata, vec![])),
-            Err(err) => Ok((
-                HashMap::new(),
-                vec![format!(
-                    "Failed to load local Codex state metadata from state_5.sqlite; using transcript summaries only. {}",
-                    err
-                )],
-            )),
+            Err(_) => {
+                // Keep low-level database diagnostics internal to avoid leaking local paths
+                // or SQLite internals to UI-facing snapshot payloads.
+                Ok((HashMap::new(), vec![METADATA_WARNING.to_string()]))
+            }
         }
     }
 }
@@ -343,7 +345,7 @@ mod tests {
             snapshot
                 .messages
                 .iter()
-                .any(|message| message.contains("state_5.sqlite"))
+                .any(|message| message.contains("state metadata is unavailable"))
         );
     }
 
@@ -379,7 +381,7 @@ mod tests {
             snapshot
                 .messages
                 .iter()
-                .any(|message| message.starts_with("Failed to load local Codex state metadata"))
+                .any(|message| message.contains("state metadata is unavailable"))
         );
     }
 
