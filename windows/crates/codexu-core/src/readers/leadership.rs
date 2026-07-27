@@ -1,6 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{DateTime, Datelike, Duration, FixedOffset, Local, TimeZone, Utc};
+use chrono::{
+    offset::LocalResult,
+    DateTime,
+    Duration,
+    Local,
+    NaiveDate,
+    NaiveTime,
+    TimeZone,
+    Utc,
+};
 
 use crate::models::*;
 use crate::readers::common::{CodexTaskInterval, SessionSummary};
@@ -10,16 +19,22 @@ pub fn build_leadership_snapshot(
     sessions: &[SessionSummary],
     now: DateTime<Utc>,
 ) -> LeadershipDashboardSnapshot {
-    let statistics_tz = *Local::now().offset();
+    let statistics_tz = LeadershipStatisticsTimezone::Local;
     build_leadership_snapshot_with_timezone(sessions, now, statistics_tz)
 }
 
 /// Build a leadership snapshot with an explicit local statistics boundary.
 /// This supports timezone-aware day bucketing in period metrics.
+#[derive(Debug, Clone, Copy)]
+pub enum LeadershipStatisticsTimezone {
+    Local,
+    Named(chrono_tz::Tz),
+}
+
 pub fn build_leadership_snapshot_with_timezone(
     sessions: &[SessionSummary],
     now: DateTime<Utc>,
-    statistics_tz: FixedOffset,
+    statistics_tz: LeadershipStatisticsTimezone,
 ) -> LeadershipDashboardSnapshot {
     let workers = deduplicate_workers(sessions.iter().map(make_worker).collect());
     let intervals = build_intervals(sessions, &workers, now);
@@ -116,9 +131,9 @@ fn build_report(
     intervals: &[LeadershipInterval],
     now: DateTime<Utc>,
     day_count: i64,
-    statistics_tz: FixedOffset,
+    statistics_tz: LeadershipStatisticsTimezone,
 ) -> LeadershipReport {
-    let start = day_start(now, statistics_tz) - Duration::days(day_count - 1);
+    let start = statistics_tz.days_before_start(now, day_count - 1);
 
     let mut period_intervals = intervals
         .iter()
@@ -140,7 +155,11 @@ fn build_report(
 
     let active_day_count = daily_points
         .iter()
-        .filter(|point| point.ai_hours >= 0.25 || (point.agent_count > 0 && day_has_autonomous(point.day, &period_intervals)))
+        .filter(|point| {
+            point.ai_hours >= 0.25
+                || (point.agent_count > 0
+                    && day_has_autonomous(point.day, &period_intervals, statistics_tz))
+        })
         .count() as i64;
 
     let metrics = timeline_metrics(&period_intervals);
@@ -168,7 +187,7 @@ fn build_report(
     let autonomous_day_count = period_intervals
         .iter()
         .filter(|interval| interval.is_autonomous)
-        .map(|interval| day_start(interval.start_at, statistics_tz))
+        .map(|interval| statistics_tz.day_start(interval.start_at))
         .collect::<HashSet<_>>()
         .len() as f64;
     let daily_ai_hours = if active_day_count > 0 {
@@ -495,14 +514,14 @@ fn build_daily_points(
     intervals: &[LeadershipInterval],
     start: DateTime<Utc>,
     now: DateTime<Utc>,
-    statistics_tz: FixedOffset,
+    statistics_tz: LeadershipStatisticsTimezone,
 ) -> Vec<LeadershipDayPoint> {
     let mut points = Vec::new();
-    let mut day = day_start(start, statistics_tz);
-    let end_day = day_start(now, statistics_tz);
+    let mut day = statistics_tz.day_start(start);
+    let end_day = statistics_tz.day_start(now);
 
     while day <= end_day {
-        let next = (day + Duration::days(1)).min(now);
+        let next = statistics_tz.next_day_start(day).min(now);
         let clipped = intervals
             .iter()
             .filter_map(|interval| clip_interval(interval, day, next))
@@ -512,16 +531,23 @@ fn build_daily_points(
             day,
             agent_count: clipped.iter().map(|interval| interval.worker_id.clone()).collect::<HashSet<_>>().len()
                 as i64,
-            ai_hours: clipped.iter().map(duration_seconds).sum::<f64>() / 3600.0,
+                ai_hours: clipped.iter().map(duration_seconds).sum::<f64>() / 3600.0,
             peak_concurrency: metrics.peak_concurrency,
         });
-        day += Duration::days(1);
+        if next <= day {
+            break;
+        }
+        day = next;
     }
     points
 }
 
-fn day_has_autonomous(day: DateTime<Utc>, intervals: &[LeadershipInterval]) -> bool {
-    let next = day + Duration::days(1);
+fn day_has_autonomous(
+    day: DateTime<Utc>,
+    intervals: &[LeadershipInterval],
+    statistics_tz: LeadershipStatisticsTimezone,
+) -> bool {
+    let next = statistics_tz.next_day_start(day);
     intervals.iter().any(|interval| {
         interval.is_autonomous && interval.start_at < next && interval.end_at > day
     })
@@ -795,14 +821,76 @@ fn hash_path(value: &str) -> String {
     format!("{hash:x}")
 }
 
-fn day_start(date: DateTime<Utc>, statistics_tz: FixedOffset) -> DateTime<Utc> {
-    let local = date.with_timezone(&statistics_tz);
-    let local_midnight = statistics_tz
-        .with_ymd_and_hms(local.year(), local.month(), local.day(), 0, 0, 0)
-        .single()
-        .unwrap()
-        .with_timezone(&Utc);
-    local_midnight
+impl LeadershipStatisticsTimezone {
+    fn day_start(&self, date: DateTime<Utc>) -> DateTime<Utc> {
+        match self {
+            Self::Local => day_start_in_timezone(date, &Local),
+            Self::Named(timezone) => day_start_in_timezone(date, timezone),
+        }
+    }
+
+    fn days_before_start(&self, date: DateTime<Utc>, day_count: i64) -> DateTime<Utc> {
+        if day_count <= 0 {
+            return self.day_start(date);
+        }
+        match self {
+            Self::Local => {
+                let local_day = date.with_timezone(&Local).date_naive() - Duration::days(day_count);
+                to_midnight_utc_from_date(local_day, &Local)
+                    .or_else(|| to_midnight_utc_from_date(local_day + Duration::days(1), &Local))
+                    .unwrap_or_else(|| self.day_start(date))
+            }
+            Self::Named(timezone) => {
+                let local_day = date.with_timezone(timezone).date_naive() - Duration::days(day_count);
+                to_midnight_utc_from_date(local_day, timezone)
+                    .or_else(|| to_midnight_utc_from_date(local_day + Duration::days(1), timezone))
+                    .unwrap_or_else(|| self.day_start(date))
+            }
+        }
+    }
+
+    fn next_day_start(&self, date: DateTime<Utc>) -> DateTime<Utc> {
+        match self {
+            Self::Local => {
+                let next_local_day: NaiveDate = date.with_timezone(&Local).date_naive() + Duration::days(1);
+                to_midnight_utc_from_date(next_local_day, &Local)
+                    .or_else(|| to_midnight_utc_from_date(next_local_day + Duration::days(1), &Local))
+                    .unwrap_or(date)
+            }
+            Self::Named(timezone) => {
+                let next_local_day: NaiveDate = date.with_timezone(timezone).date_naive() + Duration::days(1);
+                to_midnight_utc_from_date(next_local_day, timezone)
+                    .or_else(|| to_midnight_utc_from_date(next_local_day + Duration::days(1), timezone))
+                    .unwrap_or(date)
+            }
+        }
+    }
+}
+
+fn day_start_in_timezone<Tz: TimeZone>(date: DateTime<Utc>, timezone: &Tz) -> DateTime<Utc> {
+    let local = date.with_timezone(timezone);
+    to_midnight_utc_from_date(local.date_naive(), timezone).unwrap_or(date)
+}
+
+fn to_midnight_utc_from_date<Tz: TimeZone>(date: NaiveDate, timezone: &Tz) -> Option<DateTime<Utc>> {
+    resolve_midnight_utc(timezone, date)
+}
+
+fn resolve_midnight_utc<Tz: TimeZone>(timezone: &Tz, date: NaiveDate) -> Option<DateTime<Utc>> {
+    let local_midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+    let mut local = date.and_time(local_midnight);
+    loop {
+        match timezone.from_local_datetime(&local) {
+            LocalResult::Single(datetime) => return Some(datetime.with_timezone(&Utc)),
+            LocalResult::Ambiguous(earliest, _) => return Some(earliest.with_timezone(&Utc)),
+            LocalResult::None => {
+                local += Duration::minutes(1);
+                if local.date() != date {
+                    return None;
+                }
+            }
+        }
+    }
 }
 
 fn duration_seconds(interval: &LeadershipInterval) -> f64 {
@@ -1187,10 +1275,28 @@ mod tests {
     }
 
     #[test]
-    fn statistics_day_boundary_uses_supplied_timezone_not_utc() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 4, 0, 0).unwrap();
-        let local_tz = FixedOffset::east_opt(8 * 3600).unwrap();
-        let utc_tz = FixedOffset::east_opt(0).unwrap();
+    fn statistics_day_boundary_uses_calendar_timezone_for_during_spring_forward() {
+        let tz = chrono_tz::America::New_York;
+        let now = tz
+            .with_ymd_and_hms(2026, 3, 9, 12, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let expected_day_7 = tz
+            .with_ymd_and_hms(2026, 3, 7, 0, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let expected_day_8 = tz
+            .with_ymd_and_hms(2026, 3, 8, 0, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
+        let expected_day_9 = tz
+            .with_ymd_and_hms(2026, 3, 9, 0, 0, 0)
+            .single()
+            .unwrap()
+            .with_timezone(&Utc);
 
         let session = SessionSummary {
             file_path: "rollout-boundary.jsonl".to_string(),
@@ -1202,36 +1308,77 @@ mod tests {
             tool_calls: HashMap::new(),
             title: Some("Boundary task".to_string()),
             archived: false,
-            created_at: Some(Utc.with_ymd_and_hms(2026, 7, 27, 15, 30, 0).unwrap()),
+            created_at: Some(
+                tz.with_ymd_and_hms(2026, 3, 8, 0, 30, 0)
+                    .single()
+                    .unwrap()
+                    .with_timezone(&Utc),
+            ),
             git_branch: None,
             git_origin_url: None,
             thread_source: Some("main".to_string()),
             parent_thread_id: None,
             task_intervals: vec![CodexTaskInterval {
                 turn_id: Some("turn-1".to_string()),
-                started_at: Utc.with_ymd_and_hms(2026, 7, 27, 15, 30, 0).unwrap(),
-                ended_at: Utc.with_ymd_and_hms(2026, 7, 27, 16, 30, 0).unwrap(),
+                started_at: tz
+                    .with_ymd_and_hms(2026, 3, 8, 0, 30, 0)
+                    .single()
+                    .unwrap()
+                    .with_timezone(&Utc),
+                ended_at: tz
+                    .with_ymd_and_hms(2026, 3, 8, 1, 30, 0)
+                    .single()
+                    .unwrap()
+                    .with_timezone(&Utc),
                 quality: LeadershipEvidenceQuality::Fact,
             }],
         };
 
-        let local_snapshot =
-            build_leadership_snapshot_with_timezone(std::slice::from_ref(&session), now, local_tz);
-        let utc_snapshot =
-            build_leadership_snapshot_with_timezone(std::slice::from_ref(&session), now, utc_tz);
+        let workers = vec![make_worker(&session)];
+        let intervals = build_intervals(std::slice::from_ref(&session), &workers, now);
+        let report = build_report(
+            "manual".to_string(),
+            &workers,
+            &intervals,
+            now,
+            3,
+            LeadershipStatisticsTimezone::Named(tz),
+        );
 
-        let local_report = local_snapshot
+        let expected_start = LeadershipStatisticsTimezone::Named(tz).days_before_start(now, 2);
+        let report_daily_points = report
+            .daily_points
+            .iter()
+            .filter(|point| point.ai_hours > 0.0)
+            .count();
+        let active_day_point = report
+            .daily_points
+            .iter()
+            .find(|point| point.ai_hours > 0.0)
+            .expect("should emit activity point");
+
+        assert_eq!(intervals.len(), 1);
+        assert_eq!(report.daily_points.len(), 3);
+        assert_eq!(report.daily_points[0].day, expected_day_7);
+        assert_eq!(report.daily_points[1].day, expected_day_8);
+        assert_eq!(report.daily_points[2].day, expected_day_9);
+        assert_eq!((expected_day_8 - expected_day_7).num_hours(), 24);
+        assert_eq!((expected_day_9 - expected_day_8).num_hours(), 23);
+        assert_eq!(report.active_day_count, 1);
+        assert_eq!(report_daily_points, 1);
+        assert_eq!(expected_start, expected_day_7);
+        assert_eq!(active_day_point.day, expected_day_8);
+
+        let snapshot = build_leadership_snapshot_with_timezone(
+            std::slice::from_ref(&session),
+            now,
+            LeadershipStatisticsTimezone::Named(tz),
+        );
+        let report = snapshot
             .reports
             .iter()
             .find(|r| r.period == "today")
             .unwrap();
-        let utc_report = utc_snapshot
-            .reports
-            .iter()
-            .find(|r| r.period == "today")
-            .unwrap();
-
-        assert_eq!(local_report.active_day_count, 1);
-        assert_eq!(utc_report.active_day_count, 0);
+        assert_eq!(report.daily_points.last().unwrap().day, expected_day_9);
     }
 }

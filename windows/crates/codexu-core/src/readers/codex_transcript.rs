@@ -38,6 +38,7 @@ use super::common::*;
 use crate::models::*;
 
 const CODEX_CACHE_VERSION: i32 = 2;
+const MAX_DERIVED_TASK_DURATION_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// On-disk cache for Codex transcript summaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -430,9 +431,9 @@ async fn parse_transcript(
                 }
 
                 let duration_ms = codex_f64_value(payload.get("duration_ms"));
-                let duration_seconds = duration_ms
-                    .and_then(|d| if d > 0.0 { Some(d / 1_000.0) } else { None });
-                if let Some(started_at) = duration_seconds.map(|duration| completed_at - chrono::Duration::milliseconds((duration * 1000.0) as i64)) {
+                if let Some(started_at) =
+                    parse_derived_task_started_at(completed_at, duration_ms)
+                {
                     if started_at < completed_at {
                         summary.task_intervals.push(CodexTaskInterval {
                             turn_id,
@@ -496,6 +497,26 @@ async fn parse_transcript(
     }
 
     summary
+}
+
+fn parse_derived_task_started_at(
+    completed_at: DateTime<Utc>,
+    duration_ms: Option<f64>,
+) -> Option<DateTime<Utc>> {
+    let duration_ms = duration_ms?;
+    if !duration_ms.is_finite() || duration_ms <= 0.0 {
+        return None;
+    }
+    if duration_ms > MAX_DERIVED_TASK_DURATION_MS as f64 {
+        return None;
+    }
+    if duration_ms > i64::MAX as f64 {
+        return None;
+    }
+
+    let duration_ms = duration_ms.trunc() as i64;
+    let duration = chrono::Duration::milliseconds(duration_ms);
+    completed_at.checked_sub_signed(duration)
 }
 
 fn parse_usage(usage: &serde_json::Value) -> Option<TokenBreakdown> {
@@ -729,6 +750,69 @@ mod tests {
         let started = completed - Duration::seconds(5);
         assert_eq!(interval.started_at, started);
         assert_eq!(interval.ended_at, completed);
+    }
+
+    #[tokio::test]
+    async fn parse_task_complete_with_nonnumeric_duration_ms_is_ignored() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+        let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
+
+        let session = archived.join("rollout-task-derived-nonnumeric.jsonl");
+        let lines = vec![format!(
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":"NaN"}}}}"#,
+            completed.to_rfc3339(),
+            completed.to_rfc3339()
+        )];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn parse_task_complete_with_excessive_duration_is_ignored() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+        let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
+
+        let session = archived.join("rollout-task-derived-excessive.jsonl");
+        let lines = vec![format!(
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":86401001}}}}"#,
+            completed.to_rfc3339(),
+            completed.to_rfc3339()
+        )];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let summaries = reader
+            .load_local_summaries(temp.path())
+            .await
+            .unwrap()
+            .expect("should parse summaries");
+
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].task_intervals.len(), 0);
+    }
+
+    #[test]
+    fn parse_task_complete_with_derive_duration_that_underflows_is_ignored() {
+        let complete_at = chrono::Utc.from_utc_datetime(&chrono::NaiveDateTime::MIN);
+        assert_eq!(
+            parse_derived_task_started_at(complete_at, Some(1_000.0)),
+            None
+        );
     }
 
     #[tokio::test]
