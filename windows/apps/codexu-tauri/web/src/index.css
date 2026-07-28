@@ -274,30 +274,90 @@ body {
   }
 
   .leadership-command-rail {
-    --rail-track-top: 78px;
-    --rail-track-center: calc(var(--rail-track-top) + 6.5px);
-    position: relative;
-    padding: 0.35rem 0.55rem 0.5rem;
-    min-height: 132px;
+    --leadership-rail-inset: 38px;
+    display: grid;
+    grid-template-rows: 47px 16px;
+    gap: 5px;
+    min-width: 0;
+    padding: 0.35rem 0 0.5rem;
   }
 
-  .leadership-rail-track,
-  .leadership-rail-fill {
+  .leadership-rail-stage-layer,
+  .leadership-rail-track-layer {
+    position: relative;
+    min-width: 0;
+    margin-inline: var(--leadership-rail-inset);
+  }
+
+  .leadership-rail-stage-layer {
+    height: 47px;
+    pointer-events: none;
+  }
+
+  .leadership-rail-stage {
     position: absolute;
-    left: 0.6rem;
-    right: 0.6rem;
-    height: 13px;
+    top: 0;
+    width: 62px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    transform: translateX(-50%);
+  }
+
+  .leadership-rail-stage-badge-slot {
+    display: grid;
+    width: 33px;
+    height: 33px;
+    place-items: center;
+  }
+
+  .leadership-rail-badge {
+    display: block;
+    width: 29px;
+    height: 29px;
+    object-fit: contain;
     border-radius: 999px;
-    top: var(--rail-track-top);
+    opacity: 0.72;
+    transition: width 180ms ease, height 180ms ease, filter 180ms ease, opacity 180ms ease;
+  }
+
+  .leadership-rail-badge-current {
+    width: 33px;
+    height: 33px;
+    opacity: 1;
+    filter: drop-shadow(0 1px 6px color-mix(in oklab, var(--accent) 42%, transparent));
+  }
+
+  .leadership-rail-stage-label {
+    color: var(--text-secondary);
+    font-size: 8.2px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .leadership-rail-stage-label-current {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+
+  .leadership-rail-track-layer {
+    height: 16px;
   }
 
   .leadership-rail-track {
+    position: absolute;
+    inset: 0;
     background: color-mix(in oklab, var(--surface) 84%, transparent);
     border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+    border-radius: 999px;
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--text-tertiary) 10%, transparent);
   }
 
   .leadership-rail-fill {
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
       90deg,
       var(--quota-primary-start),
@@ -305,164 +365,52 @@ body {
       var(--accent-secondary)
     );
     border: 1px solid color-mix(in oklab, var(--accent) 18%, transparent);
+    border-radius: 999px;
     box-shadow: 0 6px 16px -12px color-mix(in oklab, var(--accent) 40%, transparent);
-    --progress: 0%;
     will-change: clip-path;
-    clip-path: inset(0 calc(100% - var(--progress)) 0 0);
-  }
-
-  .leadership-threshold-points {
-    position: absolute;
-    left: 0.6rem;
-    right: 0.6rem;
-    top: 0;
-    height: 112px;
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  .leadership-rail-node {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 132px;
-    pointer-events: none;
-    transform: translateX(-50%);
-    z-index: 3;
+    clip-path: inset(0 calc(100% - var(--rail-progress)) 0 0);
   }
 
   .leadership-rail-dot {
     position: absolute;
     width: 7px;
     height: 7px;
-    left: 50%;
-    top: calc(var(--rail-track-center) - 3.5px);
+    top: 50%;
+    transform: translate(-50%, -50%);
     border-radius: 999px;
-    background: var(--text-tertiary);
+    background: color-mix(in oklab, var(--accent) 34%, transparent);
     border: 1px solid color-mix(in oklab, var(--surface-elevated-strong) 64%, transparent);
-  }
-
-  .leadership-rail-badge {
-    position: absolute;
-    left: 0;
-    top: calc(var(--rail-track-top) - 80px);
-    width: 36px;
-    height: 36px;
-    transform: translateX(-50%);
-    display: block;
-    padding: 0;
-    object-fit: contain;
-    object-position: center;
-    image-rendering: auto;
-    border-radius: 999px;
-    background: transparent;
-    border: 0;
-    box-shadow: none;
-    opacity: 1;
-    box-sizing: border-box;
-    mix-blend-mode: normal;
     z-index: 2;
-    transition: opacity 180ms ease, transform 180ms ease;
   }
 
-  .leadership-rail-badge-large {
-    top: calc(var(--rail-track-top) - 94px);
-    width: 40px;
-    height: 40px;
-    padding: 0;
-    opacity: 1;
-    transform: translateX(-50%) scale(1.04);
-    filter: drop-shadow(0 0 0 1px color-mix(in oklab, var(--surface-elevated-strong) 45%, transparent))
-      drop-shadow(0 0 6px color-mix(in oklab, var(--accent) 22%, transparent));
-  }
-
-  .leadership-rail-badge-current {
-    opacity: 0.96;
-    transform: translateX(-50%) scale(1.04);
-    filter: drop-shadow(0 0 0 1px color-mix(in oklab, var(--accent) 32%, transparent));
-  }
-
-  .leadership-rail-badge-left-edge {
-    left: 0% !important;
-    transform: translateX(0);
-  }
-
-  .leadership-rail-node-left-edge {
-    transform: translateX(0);
-    left: 0% !important;
-  }
-
-  .leadership-rail-node-current .leadership-rail-dot {
-    background: var(--accent);
+  .leadership-rail-dot-reached {
+    background: var(--ornament-highlight);
     border-color: color-mix(in oklab, var(--surface-elevated-strong) 72%, transparent);
   }
 
-  .leadership-rail-node-label {
-    position: absolute;
-    left: 50%;
-    top: calc(var(--rail-track-center) + 20px);
-    transform: translateX(-50%);
-    font-size: 11px;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    line-height: 1;
-  }
-
-  .leadership-rail-node-current .leadership-rail-node-label {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-
-  .leadership-rail-score-marker {
-    position: absolute;
-    top: 0;
-    transform: translate(-50%, 0);
-    width: 0;
-    height: 0;
-    z-index: 2;
-    pointer-events: none;
+  .leadership-rail-dot-current {
+    background: var(--accent);
+    border-color: color-mix(in oklab, var(--ornament-highlight) 72%, transparent);
   }
 
   .leadership-rail-score-text {
     position: absolute;
-    left: 50%;
-    top: calc(var(--rail-track-top) - 42px);
-    transform: translateX(-50%);
-    white-space: nowrap;
-    font-size: 11px;
-    line-height: 1.15;
-    color: var(--text-primary);
-    font-weight: 600;
-    padding: 0.16rem 0.45rem;
-    background: color-mix(in oklab, var(--surface-elevated-strong) 84%, transparent);
-    border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
-    border-radius: 999px;
-    box-shadow: 0 10px 24px -14px color-mix(in oklab, var(--text-tertiary) 25%, transparent);
-  }
-
-  .leadership-rail-score-stem {
-    pointer-events: none;
-    position: absolute;
-    left: 50%;
-    top: calc(var(--rail-track-top) - 17px);
-    transform: translateX(-50%);
-    width: 1px;
-    height: 17px;
-    background: color-mix(in oklab, var(--text-tertiary) 56%, transparent);
-  }
-
-  .leadership-rail-score-pin {
-    pointer-events: none;
-    position: absolute;
-    left: 50%;
-    top: var(--rail-track-center);
+    top: 50%;
+    left: clamp(27px, var(--rail-progress), calc(100% - 27px));
     transform: translate(-50%, -50%);
-    width: 7px;
-    height: 7px;
-    border-radius: 999px;
-    background: var(--accent);
-    box-shadow: 0 0 0 2px color-mix(in oklab, var(--surface-elevated-strong) 74%, transparent);
+    white-space: nowrap;
+    color: var(--ornament-highlight);
+    font-size: 8.5px;
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+    text-shadow: 0 1px 1px color-mix(in oklab, var(--text-primary) 28%, transparent);
+    z-index: 3;
+  }
+
+  .leadership-rail-score-text-low {
+    color: var(--accent-strong);
+    text-shadow: none;
   }
 
   .chip-like {
@@ -492,11 +440,6 @@ body {
     display: inline-flex;
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .dashboard-home-rail .leadership-command-rail {
-    --rail-track-top: 62px;
-    min-height: 112px;
   }
 
   .dashboard-home .glass-panel {
@@ -620,54 +563,6 @@ body {
     margin-bottom: 0.5rem !important;
   }
 
-  .dashboard-home .dashboard-home-rail .leadership-command-rail {
-    --rail-track-top: 46px;
-    min-height: 94px;
-    padding-top: 0.15rem;
-    padding-bottom: 0.15rem;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-threshold-points {
-    height: 88px;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-node {
-    height: 98px;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-badge {
-    width: 34px;
-    height: 34px;
-    top: calc(var(--rail-track-top) - 68px);
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-badge-large {
-    width: 37px;
-    height: 37px;
-    top: calc(var(--rail-track-top) - 76px);
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-node-label {
-    top: calc(var(--rail-track-center) + 14px);
-    font-size: 10px;
-    line-height: 1;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-score-text {
-    top: calc(var(--rail-track-top) - 34px);
-    font-size: 10px;
-    padding: 0.12rem 0.4rem;
-    line-height: 1;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-score-stem {
-    top: calc(var(--rail-track-top) - 12px);
-    height: 12px;
-  }
-
-  .dashboard-home .dashboard-home-rail .leadership-rail-score-pin {
-    top: calc(var(--rail-track-center) + 0px);
-  }
 }
 
 @media (max-width: 900px) {

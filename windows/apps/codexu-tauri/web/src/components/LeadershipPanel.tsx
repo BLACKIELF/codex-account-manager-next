@@ -9,7 +9,7 @@ import {
   ShieldQuestion,
   TrendingUp,
 } from 'lucide-react';
-import { Fragment, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import type {
   CodexLeadershipSignal,
   LeadershipDayPoint,
@@ -356,64 +356,66 @@ export function LeadershipCommandRail({
   const signalLabel = currentBand
     ? `Open AI Leadership detail for score ${safeScore}, L${currentBand.level} ${currentBand.zhName} / ${currentBand.enName}`
     : 'Open AI Leadership detail';
+  const trackStyle = {
+    ['--rail-progress' as keyof CSSProperties]: `${safeScore}%`,
+  } as CSSProperties;
   const railContent = (
     <>
-      <div className="leadership-rail-track" />
-      {hasSignal ? (
-        <div
-          className="leadership-rail-fill"
-          style={{ ['--progress' as keyof CSSProperties]: `${safeScore}%` } as CSSProperties}
-        />
-      ) : null}
+      <div className="leadership-rail-stage-layer" aria-hidden="true">
+        {hasSignal
+          ? bands.map((band) => {
+              const isCurrent = safeScore >= band.scoreMin && safeScore <= band.scoreMax;
+              const thresholdPercent = clampPercent(band.scoreMin);
 
-      {hasSignal ? (
-        <div className="leadership-threshold-points">
-          {bands.map((band) => {
-            const isCurrent = score >= band.scoreMin && score <= band.scoreMax;
-            const thresholdPercent = clampPercent((band.scoreMin / 100) * 100);
-            const isLargeBadge = band.level === 6;
-            const isLeftEdge = band.scoreMin === 0;
-            const nodeClass = [
-              'leadership-rail-node',
-              isCurrent ? 'leadership-rail-node-current' : '',
-              isLeftEdge ? 'leadership-rail-node-left-edge' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-
-            return (
-              <Fragment key={band.id}>
-                <div
-                  className={nodeClass}
-                  style={{ left: `${thresholdPercent}%` }}
-                  aria-label={`Band ${band.level} start at ${band.scoreMin}`}
-                >
-                  <span className="leadership-rail-dot" aria-hidden="true" />
-                  <span className="leadership-rail-node-label">L{band.level}</span>
+              return (
+                <div key={band.id} className="leadership-rail-stage" style={{ left: `${thresholdPercent}%` }}>
+                  <span className="leadership-rail-stage-badge-slot">
+                    <img
+                      src={band.badge}
+                      alt=""
+                      className={`leadership-rail-badge ${isCurrent ? 'leadership-rail-badge-current' : ''}`}
+                    />
+                  </span>
+                  <span className={`leadership-rail-stage-label ${isCurrent ? 'leadership-rail-stage-label-current' : ''}`}>
+                    L{band.level}
+                  </span>
                 </div>
-                <img
-                  src={band.badge}
-                  alt=""
-                  style={{ left: `${thresholdPercent}%` }}
+              );
+            })
+          : null}
+      </div>
+
+      <div className="leadership-rail-track-layer" style={trackStyle}>
+        <div className="leadership-rail-track" />
+        {hasSignal ? <div className="leadership-rail-fill" /> : null}
+        {hasSignal
+          ? bands.map((band) => {
+              const isCurrent = safeScore >= band.scoreMin && safeScore <= band.scoreMax;
+              const isReached = safeScore >= band.scoreMin;
+              const thresholdPercent = clampPercent(band.scoreMin);
+
+              return (
+                <span
+                  key={band.id}
                   className={[
-                    'leadership-rail-badge',
-                    isCurrent ? 'leadership-rail-badge-current' : '',
-                    isLeftEdge ? 'leadership-rail-badge-left-edge' : '',
-                    isLargeBadge ? 'leadership-rail-badge-large' : '',
+                    'leadership-rail-dot',
+                    isReached ? 'leadership-rail-dot-reached' : '',
+                    isCurrent ? 'leadership-rail-dot-current' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
+                  style={{ left: `${thresholdPercent}%` }}
+                  aria-hidden="true"
                 />
-              </Fragment>
-            );
-          })}
-          <div className="leadership-rail-score-marker" style={{ left: `${safeScore}%` }}>
-            <span className="leadership-rail-score-text">{`${safeScore} / 100`}</span>
-            <span className="leadership-rail-score-stem" aria-hidden="true" />
-            <span className="leadership-rail-score-pin" aria-hidden="true" />
-          </div>
-        </div>
-      ) : null}
+              );
+            })
+          : null}
+        {hasSignal ? (
+          <span className={`leadership-rail-score-text ${safeScore < 9 ? 'leadership-rail-score-text-low' : ''}`}>
+            {`${safeScore} / 100`}
+          </span>
+        ) : null}
+      </div>
     </>
   );
 
