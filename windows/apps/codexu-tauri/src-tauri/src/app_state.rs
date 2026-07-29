@@ -10,7 +10,13 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
 use codexu_core::models::CodexDashboardSnapshot;
-use codexu_core::readers::CodexDashboardProvider;
+use codexu_core::readers::{
+    apply_official_quota,
+    read_installed_codex_quota,
+    retain_last_verified_quota,
+    CodexAppServerQuotaSnapshot,
+    CodexDashboardProvider,
+};
 
 /// User-configurable app settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -212,9 +218,29 @@ impl AppState {
         let mut expected_generation = expected_generation;
 
         for _attempt in 0..2 {
+            let previous_dashboard = {
+                let snapshot = self.snapshot.read().await;
+                snapshot.as_ref().and_then(|cached| {
+                    (cached.source_key == source
+                        && cached.source_generation == expected_generation)
+                        .then(|| cached.dashboard.clone())
+                        .flatten()
+                })
+            };
             let provider = CodexDashboardProvider::new(&source.codex_root, &source.cache_dir);
             let now = Utc::now();
-            let snapshot = provider.load_dashboard_snapshot(now).await?;
+            let snapshot = match provider.load_dashboard_snapshot(now).await? {
+                Some(dashboard) => {
+                    let quota = read_installed_codex_quota()
+                        .await
+                        .unwrap_or_else(|_| CodexAppServerQuotaSnapshot::unavailable());
+                    Some(retain_last_verified_quota(
+                        previous_dashboard.as_ref(),
+                        apply_official_quota(dashboard, quota),
+                    ))
+                }
+                None => None,
+            };
 
             #[cfg(test)]
             self.refresh_call_count.fetch_add(1, Ordering::SeqCst);

@@ -64,12 +64,9 @@ export interface ToolUsage {
 export interface SkillUsage {
   id: string;
   name: string;
-  path: string;
   source_label: string;
   load_count: number;
   thread_count: number;
-  static_token_estimate: number | null;
-  static_byte_count: number | null;
   last_loaded_at: number | null;
 }
 

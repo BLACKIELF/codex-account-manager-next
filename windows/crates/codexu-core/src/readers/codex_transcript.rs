@@ -37,7 +37,7 @@ use super::codex_state::CodexThreadMetadata;
 use super::common::*;
 use crate::models::*;
 
-const CODEX_CACHE_VERSION: i32 = 2;
+const CODEX_CACHE_VERSION: i32 = 3;
 
 /// On-disk cache for Codex transcript summaries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -72,8 +72,21 @@ pub struct CodexTranscriptSummary {
     pub last_active_at: Option<DateTime<Utc>>,
     pub deltas: Vec<CodexUsageDelta>,
     pub tool_calls: HashMap<String, i64>,
+    /// Safe summaries of `SKILL.md` references observed in local tool calls.
+    /// The original path and tool argument are discarded during parsing.
+    #[serde(default)]
+    pub skill_loads: Vec<CodexSkillLoad>,
     #[serde(default)]
     pub task_intervals: Vec<CodexTaskInterval>,
+}
+
+/// A privacy-preserving local skill-read observation.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CodexSkillLoad {
+    pub name: String,
+    pub source_label: String,
+    #[serde(with = "chrono::serde::ts_milliseconds_option")]
+    pub observed_at: Option<DateTime<Utc>>,
 }
 
 /// A single usage delta extracted from a Codex transcript.
@@ -134,10 +147,14 @@ impl CodexTranscriptReader {
         metadata: HashMap<String, CodexThreadMetadata>,
         now: DateTime<Utc>,
     ) -> anyhow::Result<Option<LocalUsage>> {
-        let summaries = self
-            .load_local_session_summaries(data_root, metadata)
-            .await?;
-        Ok(summaries.and_then(|sessions| make_local_usage(sessions, now)))
+        let summaries = self.load_local_summaries_internal(data_root).await?;
+        Ok(summaries.and_then(|summaries| {
+            let skill_usages = make_skill_usages(&summaries);
+            let sessions = combine_session_metadata(summaries, metadata);
+            let mut usage = make_local_usage(sessions, now)?;
+            usage.skill_usages = skill_usages;
+            Some(usage)
+        }))
     }
 
     async fn load_local_summaries_internal(
@@ -275,8 +292,8 @@ fn combine_session_metadata(
                         model: d.model,
                         project_path: project_path.clone(),
                         session_id: d.session_id,
-                    })
-                    .collect(),
+                })
+                .collect(),
                 tool_calls: s.tool_calls,
                 title: meta.and_then(|m| m.title.clone()),
                 archived: meta.map(|m| m.archived).unwrap_or(false),
@@ -320,6 +337,7 @@ async fn parse_transcript(
         last_active_at: modification_date,
         deltas: Vec::new(),
         tool_calls: HashMap::new(),
+        skill_loads: Vec::new(),
         task_intervals: Vec::new(),
     };
 
@@ -383,7 +401,9 @@ async fn parse_transcript(
             .map(|d| d.max(timestamp))
             .or(Some(timestamp));
 
-        // Tool calls are response_items with payload.type == "custom_tool_call".
+        // `SKILL.md` reads can be present in either local function or custom
+        // tool calls. Reduce them immediately to safe metadata; do not retain
+        // arguments, prompts, paths, or source contents.
         if envelope_type == Some("response_item") {
             if let Some(payload_type) = codex_string_value(payload.get("type")) {
                 if payload_type == "custom_tool_call" {
@@ -392,6 +412,11 @@ async fn parse_transcript(
                             *summary.tool_calls.entry(name).or_insert(0) += 1;
                         }
                     }
+                }
+                if payload_type == "function_call" || payload_type == "custom_tool_call" {
+                    summary
+                        .skill_loads
+                        .extend(safe_skill_loads_from_tool_payload(payload, Some(timestamp)));
                 }
             }
             continue;
@@ -496,6 +521,195 @@ async fn parse_transcript(
     }
 
     summary
+}
+
+#[derive(Debug)]
+struct SkillUsageAccumulator {
+    name: String,
+    source_label: String,
+    load_count: i64,
+    thread_ids: HashSet<String>,
+    last_loaded_at: Option<DateTime<Utc>>,
+}
+
+impl SkillUsageAccumulator {
+    fn new(name: String, source_label: String) -> Self {
+        Self {
+            name,
+            source_label,
+            load_count: 0,
+            thread_ids: HashSet::new(),
+            last_loaded_at: None,
+        }
+    }
+
+    fn record(&mut self, session_id: &str, observed_at: Option<DateTime<Utc>>) {
+        self.load_count += 1;
+        self.thread_ids.insert(session_id.to_string());
+        if observed_at.is_some() && observed_at > self.last_loaded_at {
+            self.last_loaded_at = observed_at;
+        }
+    }
+
+    fn into_usage(self) -> SkillUsage {
+        let id = format!(
+            "{}:{}",
+            self.source_label.to_ascii_lowercase().replace(' ', "-"),
+            self.name
+        );
+        SkillUsage {
+            id,
+            name: self.name,
+            source_label: self.source_label,
+            load_count: self.load_count,
+            thread_count: self.thread_ids.len() as i64,
+            last_loaded_at: self.last_loaded_at,
+        }
+    }
+}
+
+fn make_skill_usages(summaries: &[CodexTranscriptSummary]) -> Vec<SkillUsage> {
+    let mut accumulated: HashMap<(String, String), SkillUsageAccumulator> = HashMap::new();
+
+    for summary in summaries {
+        for load in &summary.skill_loads {
+            let key = (load.source_label.clone(), load.name.clone());
+            let accumulator = accumulated.entry(key).or_insert_with(|| {
+                SkillUsageAccumulator::new(load.name.clone(), load.source_label.clone())
+            });
+            accumulator.record(&summary.session_id, load.observed_at);
+        }
+    }
+
+    let mut usages: Vec<SkillUsage> = accumulated
+        .into_values()
+        .map(SkillUsageAccumulator::into_usage)
+        .collect();
+    usages.sort_by(|left, right| {
+        right
+            .load_count
+            .cmp(&left.load_count)
+            .then_with(|| left.name.cmp(&right.name))
+            .then_with(|| left.source_label.cmp(&right.source_label))
+    });
+    usages
+}
+
+fn safe_skill_loads_from_tool_payload(
+    payload: &serde_json::Value,
+    observed_at: Option<DateTime<Utc>>,
+) -> Vec<CodexSkillLoad> {
+    let mut loads = Vec::new();
+    let mut seen = HashSet::new();
+
+    for key in ["arguments", "input", "cmd", "command"] {
+        let Some(argument_text) = payload.get(key).and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        for load in extract_safe_skill_loads(argument_text, observed_at) {
+            if seen.insert((load.source_label.clone(), load.name.clone())) {
+                loads.push(load);
+            }
+        }
+    }
+
+    loads
+}
+
+fn extract_safe_skill_loads(text: &str, observed_at: Option<DateTime<Utc>>) -> Vec<CodexSkillLoad> {
+    const SKILL_FILENAME: &str = "skill.md";
+    let lowercase = text.to_ascii_lowercase();
+    let mut loads = Vec::new();
+    let mut seen = HashSet::new();
+    let mut offset = 0;
+
+    while offset < lowercase.len() {
+        let Some(relative_match) = lowercase[offset..].find(SKILL_FILENAME) else {
+            break;
+        };
+        let end = offset + relative_match + SKILL_FILENAME.len();
+        let candidate_start = text[..end - SKILL_FILENAME.len()]
+            .rfind(is_skill_path_boundary)
+            .map(|index| index + 1)
+            .unwrap_or(0);
+        let candidate = &text[candidate_start..end];
+
+        if let Some((name, source_label)) = safe_skill_identity(candidate) {
+            let key = (source_label.clone(), name.clone());
+            if seen.insert(key) {
+                loads.push(CodexSkillLoad {
+                    name,
+                    source_label,
+                    observed_at,
+                });
+            }
+        }
+        offset = end;
+    }
+
+    loads
+}
+
+fn is_skill_path_boundary(character: char) -> bool {
+    character.is_whitespace()
+        || matches!(
+            character,
+            '\"' | '\'' | '`' | '<' | '>' | ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}'
+        )
+}
+
+fn safe_skill_identity(candidate: &str) -> Option<(String, String)> {
+    let normalized = candidate
+        .trim_matches(|character: char| {
+            character.is_whitespace() || "\"'`<>,;.()[]{}".contains(character)
+        })
+        .replace('\\', "/");
+    let lowercase = normalized.to_ascii_lowercase();
+    if !lowercase.ends_with("/skill.md") {
+        return None;
+    }
+
+    let components: Vec<&str> = normalized
+        .split('/')
+        .filter(|component| !component.is_empty())
+        .collect();
+    let name = components.get(components.len().checked_sub(2)?).copied()?;
+    if !is_safe_skill_name(name) {
+        return None;
+    }
+
+    let lowercase_components: Vec<String> = components
+        .iter()
+        .map(|component| component.to_ascii_lowercase())
+        .collect();
+    let source_label = if lowercase_components
+        .windows(2)
+        .any(|components| components == ["plugins", "cache"])
+    {
+        "Bundled Codex skill"
+    } else if lowercase_components
+        .windows(2)
+        .any(|components| components == [".codex", "skills"])
+    {
+        "Personal Codex skill"
+    } else if lowercase_components
+        .windows(2)
+        .any(|components| components == [".agents", "skills"])
+    {
+        "Project skill"
+    } else {
+        "Local skill reference"
+    };
+
+    Some((name.to_string(), source_label.to_string()))
+}
+
+fn is_safe_skill_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 80
+        && name.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
 }
 
 fn parse_derived_task_started_at(
@@ -612,6 +826,45 @@ mod tests {
 
     use super::*;
     use crate::readers::CodexStateReader;
+
+    #[tokio::test]
+    async fn reduces_skill_reads_to_safe_local_usage_without_paths_or_arguments() {
+        let temp = tempfile::tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        tokio::fs::create_dir_all(&archived).await.unwrap();
+
+        let session = archived.join("rollout-skill.jsonl");
+        let private_path = r"C:\\Users\\private-user\\.codex\\skills\\review\\SKILL.md";
+        let raw_argument = format!("Get-Content -Raw '{private_path}'");
+        let lines = vec![
+            r#"{"timestamp":"2026-03-26T12:53:47.026Z","type":"session_meta","payload":{"id":"session-s","cwd":"C:\\workspace"}}"#.to_string(),
+            format!(
+                r#"{{"timestamp":"2026-03-26T12:53:48.000Z","type":"response_item","payload":{{"type":"function_call","name":"exec_command","arguments":{}}}}}"#,
+                serde_json::to_string(&raw_argument).unwrap()
+            ),
+            r#"{"timestamp":"2026-03-26T12:53:49.000Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#.to_string(),
+        ];
+        tokio::fs::write(&session, lines.join("\n")).await.unwrap();
+
+        let cache = temp.path().join("cache");
+        let reader = CodexTranscriptReader::new(&cache);
+        let usage = reader
+            .load_local_usage(temp.path(), Utc::now())
+            .await
+            .unwrap()
+            .expect("should produce LocalUsage");
+
+        assert_eq!(usage.skill_usages.len(), 1);
+        let skill = &usage.skill_usages[0];
+        assert_eq!(skill.name, "review");
+        assert_eq!(skill.source_label, "Personal Codex skill");
+        assert_eq!(skill.load_count, 1);
+        assert_eq!(skill.thread_count, 1);
+
+        let dashboard_json = serde_json::to_string(&usage).unwrap();
+        assert!(!dashboard_json.contains(private_path));
+        assert!(!dashboard_json.contains(&raw_argument));
+    }
 
     #[tokio::test]
     async fn parses_codex_session_jsonl() {
@@ -978,8 +1231,6 @@ mod tests {
         let summary: CodexTranscriptSummary = serde_json::from_str(legacy).unwrap();
         assert!(summary.task_intervals.is_empty());
     }
-
-
     #[tokio::test]
     async fn enriches_session_with_state_metadata() {
         let temp = tempfile::tempdir().unwrap();

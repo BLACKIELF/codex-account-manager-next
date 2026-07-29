@@ -1,7 +1,7 @@
 # Windows Dashboard Home Design
 
-**Status:** approved direction, 2026-07-27
-**Scope:** Windows Tauri presentation layer and static showcase only
+**Status:** approved direction; official quota boundary revised 2026-07-29
+**Scope:** Windows Tauri dashboard, local Codex app-server quota reader, and static showcase
 
 ## Goal
 
@@ -11,11 +11,13 @@ Turn the Windows app's default view into a real, high-density Dashboard that car
 
 The product stays a quiet, local-first Liquid Glass utility. The result is not a dark promotional clone: it keeps the Windows light/system theme, system typography, semantic palette tokens, and readable surfaces. Its memorable element is a single, unified leadership-and-usage instrument cluster—not a page of unrelated cards, gradients, or decorative effects.
 
-## Existing-data boundary
+## Data boundary
 
-The current Tauri commands expose `LocalUsage`: local Token totals, detailed Token splits, daily/long-range trends, projects, tools, and the Leadership snapshot. They do **not** expose an official quota/rate-limit response. Although the core has a `RateWindow` model, the active Windows `AppState` neither reads nor caches it.
+The Tauri commands expose `LocalUsage`: local Token totals, detailed Token splits, daily/long-range trends, projects, tools, and the Leadership snapshot. These values remain explicitly local usage rather than account allowance.
 
-Therefore this scope does not add a reader, cache, IPC field, estimate, or placeholder quota percentage. The dashboard's central usage focus is a clearly labelled seven-day Token mix and total; it is not presented as official remaining allowance.
+The dashboard may additionally read the user's already-installed `codex app-server` over a private loopback WebSocket. It calls only `initialize`, `account/read`, and `account/rateLimits/read`, then normalizes the official `rateLimitsByLimitId.codex` response into the existing `RateWindow` shape. No Codex data is uploaded, and no local transcript, token total, or time-series value is used to estimate quota.
+
+An authoritative response may contain only one known window (for example a seven-day limit); that single window is displayed rather than rejected or completed with a made-up five-hour value. Unknown, malformed, or duplicate duration topologies fail closed. A failed refresh retains the last verified official window for display and marks it as last verified; a first read stays neutral and exposes a retry action.
 
 ## Information architecture
 
@@ -35,8 +37,9 @@ At narrow widths, the instrument row and lower chart row stack without changing 
 
 ## Components and responsibilities
 
-- `Dashboard.tsx` owns tab selection, the default home route, and existing data hooks.
-- `DashboardHome.tsx` is a presentation-only composition over `LocalUsage` and `LeadershipDashboardSnapshot`; it does not invoke Tauri and never computes product scores.
+- `Dashboard.tsx` owns tab selection, the default home route, existing data hooks, and the concise quota freshness status.
+- `DashboardHome.tsx` is a presentation-only composition over `LocalUsage`, `LeadershipDashboardSnapshot`, and normalized official rate-limit windows; it does not invoke Tauri and never computes product scores or quota estimates.
+- `codex_app_server.rs` owns local app-server discovery, the loopback-only JSON-RPC exchange, and fail-closed rate-window normalization.
 - `LeadershipPanel.tsx` retains the detailed view. Its compact, reusable overview and progression primitives are extracted only when doing so removes duplicated visual/data mapping.
 - `UsageMixFocus.tsx` renders the real Token composition from `DetailedUsage.seven_day`; its labels make clear that the values are local Token usage, not account quota.
 - Existing `StatCard`, `TokenBarChart`, and `TrendChart` stay the canonical sources for their existing facts and interaction behavior.
@@ -56,6 +59,6 @@ After native acceptance, create `docs/windows-port/showcase/WINDOWS_DASHBOARD_SH
 
 - At 960×760-ish native size, the home page shows Leadership identity, seven-day Token focus, three usage summaries, and the L1–L7 progression without clipping.
 - The progression uses existing assets and exact canonical mapping; its 0–100 color domain is clipped at score rather than compressed into the completed segment.
-- No new data reader, cache behavior, score calculation, thread parsing, network use, or raw local content exposure is introduced.
+- The only new data reader is the private-loopback `codex app-server` rate-limit reader. It makes no remote service request of its own, does not parse raw transcript content, and does not estimate or fabricate a missing quota window.
 - `npm run build`, `cargo test --workspace`, `cargo tauri build --no-bundle`, and `git diff --check` pass.
 - The final pair of showcase documents and the parity report agree on screenshots, conclusions, validation, and retained differences.

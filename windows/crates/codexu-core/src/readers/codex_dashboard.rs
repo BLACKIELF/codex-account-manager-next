@@ -8,7 +8,9 @@ use crate::models::*;
 use crate::readers::{
     build_leadership_snapshot,
     make_local_usage,
+    CodexAppServerQuotaSnapshot,
     CodexStateReader,
+    CodexTaskBoardReader,
     CodexThreadMetadata,
     CodexTranscriptReader,
 };
@@ -34,6 +36,67 @@ const METADATA_WARNING: &str =
 pub struct CodexDashboardProvider {
     codex_root: PathBuf,
     cache_dir: PathBuf,
+}
+
+/// Applies only an authoritative app-server quota result to a local dashboard
+/// snapshot. Local transcript data remains intact and never becomes quota.
+pub fn apply_official_quota(
+    mut dashboard: CodexDashboardSnapshot,
+    quota: CodexAppServerQuotaSnapshot,
+) -> CodexDashboardSnapshot {
+    if !quota.quota_read_succeeded {
+        dashboard.codex.quota_source_label = "Checking official Codex quota".to_string();
+        return dashboard;
+    }
+
+    if let Some(account) = quota.account {
+        dashboard.codex.snapshot.account = account;
+    }
+    if let Some(limit_id) = quota.limit_id {
+        dashboard.codex.snapshot.limit_id = limit_id;
+    }
+    if let Some(limit_name) = quota.limit_name {
+        dashboard.codex.snapshot.limit_name = limit_name;
+    }
+    dashboard.codex.snapshot.quota_read_succeeded = true;
+    dashboard.codex.snapshot.five_hour_quota = quota.five_hour_quota;
+    dashboard.codex.snapshot.seven_day_quota = quota.seven_day_quota;
+    dashboard.codex.snapshot.monthly_quota = quota.monthly_quota;
+    dashboard.codex.status = RuntimeMenuStatus::Available;
+    dashboard.codex.quota_source_label = "Official Codex quota".to_string();
+    dashboard
+}
+
+/// Retains only previously verified official quota windows when the latest
+/// app-server read fails. The local-usage portion always comes from `next`.
+pub fn retain_last_verified_quota(
+    previous: Option<&CodexDashboardSnapshot>,
+    mut next: CodexDashboardSnapshot,
+) -> CodexDashboardSnapshot {
+    if next.codex.snapshot.quota_read_succeeded {
+        return next;
+    }
+    let Some(previous) = previous else {
+        return next;
+    };
+    let prior = &previous.codex.snapshot;
+    let has_prior_quota = prior.five_hour_quota.is_some()
+        || prior.seven_day_quota.is_some()
+        || prior.monthly_quota.is_some();
+    if !has_prior_quota {
+        return next;
+    }
+
+    next.codex.snapshot.account = prior.account.clone();
+    next.codex.snapshot.limit_id = prior.limit_id.clone();
+    next.codex.snapshot.limit_name = prior.limit_name.clone();
+    next.codex.snapshot.quota_read_succeeded = false;
+    next.codex.snapshot.five_hour_quota = prior.five_hour_quota.clone();
+    next.codex.snapshot.seven_day_quota = prior.seven_day_quota.clone();
+    next.codex.snapshot.monthly_quota = prior.monthly_quota.clone();
+    next.codex.status = RuntimeMenuStatus::Stale;
+    next.codex.quota_source_label = "Official Codex quota - last verified".to_string();
+    next
 }
 
 impl CodexDashboardProvider {
@@ -63,8 +126,13 @@ impl CodexDashboardProvider {
         let leadership_snapshot = build_leadership_snapshot(&summaries, now);
         let leadership_signal = build_codex_leadership_signal(&leadership_snapshot);
 
+        let task_board = CodexTaskBoardReader::new(&self.codex_root)
+            .load(now)
+            .await
+            .unwrap_or(None);
+
         Ok(Some(CodexDashboardSnapshot {
-            codex: build_codex_runtime_snapshot(local_usage, now),
+            codex: build_codex_runtime_snapshot(local_usage, task_board, now),
             leadership: leadership_signal,
             refreshed_at: now,
             messages,
@@ -98,6 +166,7 @@ impl CodexDashboardProvider {
 
 fn build_codex_runtime_snapshot(
     local: Option<LocalUsage>,
+    task_board: Option<TaskBoard>,
     refreshed_at: DateTime<Utc>,
 ) -> RuntimeUsageSnapshot {
     let usage = UsageSnapshot {
@@ -114,7 +183,7 @@ fn build_codex_runtime_snapshot(
         seven_day_quota: None,
         monthly_quota: None,
         local,
-        task_board: None,
+        task_board,
         messages: vec![],
     };
 
@@ -122,7 +191,7 @@ fn build_codex_runtime_snapshot(
         scope: RuntimeScope::Codex,
         snapshot: usage,
         status: RuntimeMenuStatus::LocalOnly,
-        quota_source_label: "Official quota unavailable on Windows".to_string(),
+        quota_source_label: "Checking official Codex quota".to_string(),
         usage_source_label: "Local Codex transcript data".to_string(),
     }
 }
@@ -308,10 +377,19 @@ mod tests {
         assert_eq!(snapshot.codex.scope, RuntimeScope::Codex);
         assert_eq!(snapshot.codex.status, RuntimeMenuStatus::LocalOnly);
         assert_eq!(snapshot.codex.usage_source_label, "Local Codex transcript data");
-        assert_eq!(snapshot.codex.quota_source_label, "Official quota unavailable on Windows");
+        assert_eq!(snapshot.codex.quota_source_label, "Checking official Codex quota");
         assert!(!snapshot.codex.snapshot.quota_read_succeeded);
         assert!(snapshot.codex.snapshot.five_hour_quota.is_none());
-        assert!(snapshot.codex.snapshot.task_board.is_none());
+        assert!(snapshot.codex.snapshot.task_board.is_some());
+        assert!(snapshot
+            .codex
+            .snapshot
+            .task_board
+            .as_ref()
+            .unwrap()
+            .columns
+            .iter()
+            .all(|column| column.items.is_empty()));
         assert_eq!(snapshot.codex.snapshot.local.as_ref().unwrap().thread_count, 1);
         assert!(snapshot.messages.is_empty());
     }
@@ -500,7 +578,7 @@ mod tests {
         )
         .unwrap();
 
-        let runtime = build_codex_runtime_snapshot(Some(usage), now);
+        let runtime = build_codex_runtime_snapshot(Some(usage), None, now);
         let report = LeadershipReport {
             period: LEADERSHIP_PERIOD_DEFAULT.to_string(),
             score: Some(72),

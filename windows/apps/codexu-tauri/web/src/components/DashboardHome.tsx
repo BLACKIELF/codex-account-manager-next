@@ -1,27 +1,28 @@
-import { Activity, Calendar, ClipboardList, Cpu, Database, TrendingUp, Wrench } from 'lucide-react';
+import { Activity, Calendar, TrendingUp } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent } from 'react';
-import type {
-  CodexLeadershipSignal,
-  LeadershipReport,
-  LocalUsage,
-} from '../types/models';
-import { LEADERSHIP_BANDS, resolveLeadershipBand } from '../utils/leadershipTitles';
-import { LeadershipCommandRail, LeadershipOrbit } from './LeadershipPanel';
+import type { CodexLeadershipSignal, UsageSnapshot } from '../types/models';
+import { resolveLeadershipBand } from '../utils/leadershipTitles';
+import { LeadershipOrbit, LeadershipPanel } from './LeadershipPanel';
 import { MonthlyValueProgress } from './MonthlyValueProgress';
 import { ProjectsPanel } from './ProjectsPanel';
+import { QuotaOverview } from './QuotaOverview';
+import { SkillsPanel } from './SkillsPanel';
+import { TaskBoardPanel } from './TaskBoardPanel';
 import { UsagePanel } from './UsagePanel';
 import { StatCard } from './StatCard';
 
 interface DashboardHomeProps {
-  usage: LocalUsage | null | undefined;
+  snapshot: UsageSnapshot | null | undefined;
+  quotaSourceLabel: string | null | undefined;
   leadershipSignal: CodexLeadershipSignal | null | undefined;
-  onOpenLeadership: () => void;
+  onQuotaRefresh: () => void;
 }
 
-type LowerTab = 'tasks' | 'usage' | 'projects' | 'skills';
+type DashboardContentTab = 'tasks' | 'leadership' | 'usage' | 'projects' | 'skills';
 
-const LOWER_TABS: Array<{ id: LowerTab; title: string }> = [
+const DASHBOARD_TABS: Array<{ id: DashboardContentTab; title: string }> = [
   { id: 'tasks', title: 'Tasks' },
+  { id: 'leadership', title: 'AI Leadership' },
   { id: 'usage', title: 'Usage' },
   { id: 'projects', title: 'Projects' },
   { id: 'skills', title: 'Skills' },
@@ -32,14 +33,11 @@ const formatUSD = (value: unknown): string => {
   return value.toFixed(2);
 };
 
-export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: DashboardHomeProps) {
+export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, onQuotaRefresh }: DashboardHomeProps) {
+  const usage = snapshot?.local ?? null;
   const signal = leadershipSignal ?? null;
-  const report = getReportForSignal(signal);
-  const hasUsage = usage !== null && usage !== undefined;
-
   const detailed = usage?.detailed_usage ?? null;
-  const tokenMix = buildTokenMix(detailed);
-  const hasTokenDetail = tokenMix.hasData;
+  const hasUsage = usage !== null;
 
   const score = signal?.score ?? null;
   const evidenceRatio = signal?.evidence_coverage ?? 0;
@@ -47,16 +45,17 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
   const hasSignal = score !== null && activeBand !== null;
   const scoreForVisual = hasSignal && score !== null ? Math.max(0, Math.min(100, Math.round(score))) : 0;
 
-  const [activeLowerTab, setActiveLowerTab] = useState<LowerTab>('tasks');
-  const lowerTabRefs = useRef<Record<LowerTab, HTMLButtonElement | null>>({
+  const [activeDashboardTab, setActiveDashboardTab] = useState<DashboardContentTab>('tasks');
+  const tabRefs = useRef<Record<DashboardContentTab, HTMLButtonElement | null>>({
     tasks: null,
+    leadership: null,
     usage: null,
     projects: null,
     skills: null,
   });
 
-  const focusLowerTabButton = (tabId: LowerTab) => {
-    lowerTabRefs.current[tabId]?.focus();
+  const focusTabButton = (tabId: DashboardContentTab) => {
+    tabRefs.current[tabId]?.focus();
   };
 
   const handleLowerTabKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -64,7 +63,7 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
       return;
     }
 
-    const currentIndex = LOWER_TABS.findIndex((item) => item.id === activeLowerTab);
+    const currentIndex = DASHBOARD_TABS.findIndex((item) => item.id === activeDashboardTab);
     if (currentIndex < 0) return;
 
     event.preventDefault();
@@ -72,159 +71,77 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
 
     const nextIndex =
       event.key === 'ArrowRight'
-        ? (currentIndex + 1) % LOWER_TABS.length
-        : (currentIndex - 1 + LOWER_TABS.length) % LOWER_TABS.length;
-    const nextTab = LOWER_TABS[nextIndex].id;
-    setActiveLowerTab(nextTab);
+        ? (currentIndex + 1) % DASHBOARD_TABS.length
+        : (currentIndex - 1 + DASHBOARD_TABS.length) % DASHBOARD_TABS.length;
+    const nextTab = DASHBOARD_TABS[nextIndex].id;
+    setActiveDashboardTab(nextTab);
 
     requestAnimationFrame(() => {
-      focusLowerTabButton(nextTab);
+      focusTabButton(nextTab);
     });
   };
 
   return (
     <div className="space-y-4 dashboard-home">
-      <div className="grid dashboard-home-top-grid gap-4">
-        <section className="glass-panel p-4 dashboard-home-leadership" aria-label="Leadership summary">
-          <div className="dashboard-home-leadership-summary">
-            <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
-            <h2 className="text-2xl font-semibold text-primary leading-tight mt-1">
+      <div className="dashboard-home-overview">
+        <button
+          className="dashboard-home-command glass-panel p-4"
+          type="button"
+          onClick={() => setActiveDashboardTab('leadership')}
+          aria-controls="dashboard-home-panel-leadership"
+        >
+          <div className="flex flex-col gap-2 items-center text-center">
+            <LeadershipOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
+            <h3 className="text-sm font-semibold text-primary">AI Leadership</h3>
+            <p className="text-xs text-tertiary">
               {hasSignal
-                ? activeBand?.enName ?? 'AI Leadership'
-                : hasUsage
-                  ? 'Leadership score pending'
-                  : 'No usage snapshot yet'}
-            </h2>
-            <p className="text-sm text-secondary mt-1">
-              {hasSignal
-                ? `${report?.period ?? signal?.period ?? '28d'} · ${signal?.active_day_count ?? 0} active days · Evidence ${Math.round(
-                    evidenceRatio * 100,
-                  )}%`
+                ? `Period ${signal?.period ?? '28d'} · ${signal?.active_day_count ?? 0} active days`
                 : hasUsage
                   ? 'Record insufficient for authoritative title'
-                  : 'Data not ready. Refresh to load local snapshots.'}
+                  : 'No usage snapshot yet'}
             </p>
-
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              {hasSignal ? (
-                <>
-                  <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                    L{activeBand?.level}
-                  </span>
-                  <span className="text-tertiary text-xs">
-                    Band {activeBand?.scoreMin}-{activeBand?.scoreMax}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="px-2 py-1 rounded-full border border-status-warn/45 bg-status-warn/12 text-status-warn text-xs font-medium">
-                    Record insufficient
-                  </span>
-                  <span className="text-tertiary text-xs">Record insufficient</span>
-                </>
-              )}
-            </div>
-
           </div>
+        </button>
 
-          <div className="mt-4 dashboard-leadership-orbit-wrap">
-            <LeadershipOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
-            <button
-              className="mt-3 inline-flex items-center gap-1 text-xs text-secondary hover:text-primary"
-              onClick={onOpenLeadership}
-              type="button"
-            >
-              <TrendingUp size={14} />
-              View Leadership detail
-            </button>
-          </div>
-        </section>
+        <QuotaOverview snapshot={snapshot} sourceLabel={quotaSourceLabel} onRefresh={onQuotaRefresh} />
 
-        <section className="glass-panel p-4 dashboard-home-mix" aria-label="7-day token mix">
-          <h3 className="text-sm font-semibold text-primary mb-3">7-day Token mix</h3>
-          <p className="text-xs text-tertiary mb-3">Source: 7-day usage signal from local detailed snapshot.</p>
-          <div className="space-y-2.5 text-sm">
-            <MixRow
-              label="Input"
-              value={tokenMix.input}
-              colorVar="--data-primary"
-              hasData={hasTokenDetail}
-              segmentTotal={tokenMix.segmentTotal}
-            />
-            <MixRow
-              label="Cached input"
-              value={tokenMix.cached}
-              colorVar="--data-secondary"
-              hasData={hasTokenDetail}
-              segmentTotal={tokenMix.segmentTotal}
-            />
-            <MixRow
-              label="Output"
-              value={tokenMix.output}
-              colorVar="--data-tertiary"
-              hasData={hasTokenDetail}
-              segmentTotal={tokenMix.segmentTotal}
-            />
-          </div>
-          <div className="mt-4 text-xs text-tertiary">
-            {hasTokenDetail ? `Total 7-day tokens: ${formatNumber(tokenMix.total)}` : 'Record insufficient'}
-          </div>
-          {!hasTokenDetail ? (
-            <div className="mt-2 text-xs text-status-warn">Not enough token detail yet. Continue using Codex locally.</div>
-          ) : null}
-        </section>
-
-        <section className="dashboard-home-metrics" aria-label="local metrics">
+        <section className="dashboard-home-metrics" aria-label="Local token metrics">
           <StatCard
-              label="Today"
-              value={formatNumber(hasUsage ? usage?.today_tokens ?? null : null)}
-              subValue={detailed ? `$${formatUSD(detailed.today.estimated_cost_usd)} est.` : 'Record insufficient'}
-              icon={<Activity size={16} />}
-              compact
-              accent="primary"
-            />
-            <StatCard
-              label="7-Day"
-              value={formatNumber(hasUsage ? usage?.seven_day_tokens ?? null : null)}
-              subValue={detailed ? `$${formatUSD(detailed.seven_day.estimated_cost_usd)} est.` : 'Record insufficient'}
-              icon={<Calendar size={16} />}
-              compact
-              accent="secondary"
-            />
+            label="Today"
+            value={formatNumber(hasUsage ? usage?.today_tokens ?? null : null)}
+            subValue={
+              detailed ? `$${formatUSD(detailed.today.estimated_cost_usd)} est.` : 'Record insufficient'
+            }
+            icon={<Activity size={16} />}
+            compact
+            accent="primary"
+          />
+          <StatCard
+            label="7-Day"
+            value={formatNumber(hasUsage ? usage?.seven_day_tokens ?? null : null)}
+            subValue={
+              detailed ? `$${formatUSD(detailed.seven_day.estimated_cost_usd)} est.` : 'Record insufficient'
+            }
+            icon={<Calendar size={16} />}
+            compact
+            accent="secondary"
+          />
           <StatCard
             label="Lifetime"
             value={formatNumber(hasUsage ? usage?.lifetime_tokens ?? null : null)}
-            subValue={detailed ? `$${formatUSD(detailed.lifetime.estimated_cost_usd)} est.` : 'Record insufficient'}
+            subValue={
+              detailed ? `$${formatUSD(detailed.lifetime.estimated_cost_usd)} est.` : 'Record insufficient'
+            }
             icon={<TrendingUp size={16} />}
             compact
             accent="tertiary"
           />
-          <p className="mt-2 text-xs text-tertiary px-1 text-right">7-day & lifetime from local cache only</p>
         </section>
-      </div>
 
-      <section className="glass-panel p-4 sm:p-5 dashboard-home-rail" aria-label="Leadership command rail">
-        <div className="text-xs text-tertiary uppercase tracking-wide">Progression</div>
-        <h3 className="text-sm font-semibold text-primary mt-1 mb-3">L1-L7 command rail</h3>
-        <LeadershipCommandRail
-          bands={LEADERSHIP_BANDS}
-          hasSignal={hasSignal}
-          score={scoreForVisual}
-          onOpenLeadership={onOpenLeadership}
-        />
-      </section>
-
-      <section className="glass-panel p-4" aria-label="Leadership facts">
-        <div className="text-xs text-tertiary uppercase tracking-wide">Leadership facts</div>
-        <div className="mt-3 grid dashboard-home-leadership-metrics">
-          <Pill icon={<Cpu size={14} />} label="28d Agents" value={formatNumberish(report?.agent_count)} />
-          <Pill icon={<TrendingUp size={14} />} label="AI Hours" value={formatHours(report?.ai_hours)} />
-          <Pill icon={<Database size={14} />} label="Autonomous" value={formatHours(report?.autonomous_hours)} />
-          <Pill icon={<Activity size={14} />} label="Peak / Avg" value={formatConcurrency(report)} />
+        <div className="dashboard-home-monthly">
+          <MonthlyValueProgress usage={usage} />
         </div>
-      </section>
-
-      <MonthlyValueProgress usage={usage} />
+      </div>
 
       <div
         onKeyDown={handleLowerTabKeyDown}
@@ -232,20 +149,20 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
         aria-label="Dashboard lower tabs"
         className="flex items-center gap-1.5 flex-wrap rounded-2xl p-1 glass-toolbar"
       >
-        {LOWER_TABS.map((tab) => (
+        {DASHBOARD_TABS.map((tab) => (
           <button
             key={tab.id}
             id={`dashboard-home-tab-${tab.id}`}
             role="tab"
-            aria-selected={activeLowerTab === tab.id}
+            aria-selected={activeDashboardTab === tab.id}
             aria-controls={`dashboard-home-panel-${tab.id}`}
-            tabIndex={activeLowerTab === tab.id ? 0 : -1}
+            tabIndex={activeDashboardTab === tab.id ? 0 : -1}
             ref={(element) => {
-              lowerTabRefs.current[tab.id] = element;
+              tabRefs.current[tab.id] = element;
             }}
-            onClick={() => setActiveLowerTab(tab.id)}
+            onClick={() => setActiveDashboardTab(tab.id)}
             className={`px-3 py-2 rounded-xl text-sm transition-all min-w-[90px] ${
-              activeLowerTab === tab.id ? 'glass-button-solid' : 'text-secondary glass-button'
+              activeDashboardTab === tab.id ? 'glass-button-solid' : 'text-secondary glass-button'
             }`}
           >
             {tab.title}
@@ -253,28 +170,27 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
         ))}
       </div>
 
-      {activeLowerTab === 'tasks' && (
+      {activeDashboardTab === 'tasks' && (
         <section
           role="tabpanel"
           id="dashboard-home-panel-tasks"
           aria-labelledby="dashboard-home-tab-tasks"
-          className="glass-panel p-4 sm:p-5"
         >
-          <div className="flex items-center gap-2">
-            <ClipboardList size={16} />
-            <h3 className="text-sm font-semibold text-primary">Tasks</h3>
-          </div>
-          <p className="text-sm text-secondary mt-2">
-            Task status is not available in the current local snapshot.
-          </p>
-          <p className="text-sm text-secondary mt-2">
-            Threads are separate local records and are not inferred as tasks here.
-          </p>
-          <p className="text-xs text-tertiary mt-3">Task details will appear when the local snapshot provides task status.</p>
+          <TaskBoardPanel taskBoard={snapshot?.task_board ?? null} />
         </section>
       )}
 
-      {activeLowerTab === 'usage' && (
+      {activeDashboardTab === 'leadership' && (
+        <section
+          role="tabpanel"
+          id="dashboard-home-panel-leadership"
+          aria-labelledby="dashboard-home-tab-leadership"
+        >
+          <LeadershipPanel signal={signal} />
+        </section>
+      )}
+
+      {activeDashboardTab === 'usage' && (
         <section
           role="tabpanel"
           id="dashboard-home-panel-usage"
@@ -284,7 +200,7 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
         </section>
       )}
 
-      {activeLowerTab === 'projects' && (
+      {activeDashboardTab === 'projects' && (
         <section
           role="tabpanel"
           id="dashboard-home-panel-projects"
@@ -297,143 +213,20 @@ export function DashboardHome({ usage, leadershipSignal, onOpenLeadership }: Das
         </section>
       )}
 
-      {activeLowerTab === 'skills' && (
+      {activeDashboardTab === 'skills' && (
         <section
           role="tabpanel"
           id="dashboard-home-panel-skills"
           aria-labelledby="dashboard-home-tab-skills"
-          className="glass-panel p-4 sm:p-5"
         >
-          <div className="flex items-center gap-2">
-            <Wrench size={16} />
-            <h3 className="text-sm font-semibold text-primary">Skills</h3>
-          </div>
-          <p className="text-sm text-secondary mt-2">
-            Skill usage is not available in the current local snapshot.
-          </p>
-          <p className="text-xs text-tertiary mt-1">
-            This area will show skill usage when that record becomes available.
-          </p>
+          <SkillsPanel skills={usage?.skill_usages ?? []} />
         </section>
       )}
     </div>
   );
 }
 
-function getReportForSignal(signal: CodexLeadershipSignal | null): LeadershipReport | null {
-  if (!signal?.report) return null;
-  const byPeriod = signal.report.reports.find((item) => item.period === signal.period);
-  return byPeriod ?? signal.report.reports[0] ?? null;
-}
-
-function MixRow({
-  label,
-  value,
-  colorVar,
-  hasData,
-  segmentTotal,
-}: {
-  label: string;
-  value: number;
-  colorVar: string;
-  hasData: boolean;
-  segmentTotal: number;
-}) {
-  const pct = hasData && segmentTotal > 0 ? Math.max(0, Math.min(100, (value / segmentTotal) * 100)) : 0;
-  const width = hasData ? `${pct}%` : '0%';
-  return (
-    <article className="space-y-1.5">
-      <div className="flex items-center justify-between text-xs text-tertiary">
-        <span>{label}</span>
-        <span>{hasData ? formatNumber(value) : '--'}</span>
-      </div>
-      <div className="h-2 rounded-full bg-surface border border-theme overflow-hidden">
-        <div className="h-full rounded-full" style={{ width, backgroundColor: `var(${colorVar})` }} />
-      </div>
-    </article>
-  );
-}
-
-function buildTokenMix(detailed: LocalUsage['detailed_usage']) {
-  const hasSevenDayTokens =
-    detailed?.seven_day?.tokens &&
-    Number.isFinite(detailed.seven_day.tokens.input_tokens) &&
-    Number.isFinite(detailed.seven_day.tokens.cached_input_tokens) &&
-    Number.isFinite(detailed.seven_day.tokens.output_tokens) &&
-    Number.isFinite(detailed.seven_day.tokens.total_tokens);
-
-  if (!hasSevenDayTokens) {
-    return { input: 0, cached: 0, output: 0, total: 0, segmentTotal: 0, hasData: false };
-  }
-
-  const rawInput = nonNegativeNumber(detailed.seven_day.tokens.input_tokens);
-  const rawCached = nonNegativeNumber(detailed.seven_day.tokens.cached_input_tokens);
-  const rawOutput = nonNegativeNumber(detailed.seven_day.tokens.output_tokens);
-  const rawTotal = nonNegativeNumber(detailed.seven_day.tokens.total_tokens);
-
-  const cached = clamp(Math.max(0, rawCached), 0, rawInput);
-  const input = clamp(rawInput - cached, 0, Infinity);
-  const output = clamp(rawOutput, 0, Infinity);
-  const visibleTotal = clamp(Math.max(rawTotal, rawInput + rawOutput), 0, Infinity);
-  const segmentTotal = clamp(input + cached + output, 0, Infinity);
-
-  return { input, cached, output, total: visibleTotal, segmentTotal, hasData: true };
-}
-
 function formatNumber(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return '--';
   return Math.round(value).toLocaleString();
-}
-
-function formatHours(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '--';
-  return `${value.toFixed(1)}h`;
-}
-
-function formatConcurrency(report: LeadershipReport | null): string {
-  if (!report) return '--';
-  const peakConcurrency = report.peak_concurrency;
-  const avgParallelism = report.average_parallelism;
-
-  const peak = typeof peakConcurrency === 'number' && Number.isFinite(peakConcurrency) ? Math.round(peakConcurrency) : null;
-  const avg = typeof avgParallelism === 'number' && Number.isFinite(avgParallelism) ? avgParallelism.toFixed(1) : null;
-  if (peak === null && avg === null) return '--';
-  return `${peak === null ? '--' : peak} / ${avg === null ? '--' : `${avg}x`}`;
-}
-
-function formatNumberish(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return '--';
-  return String(Math.round(value));
-}
-
-function nonNegativeNumber(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, value);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  const lowerBounded = Math.max(min, value);
-  return Math.min(max, lowerBounded);
-}
-
-function Pill({
-  icon,
-  label,
-  value,
-}: {
-  icon: JSX.Element;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-theme bg-surface-inset px-3 py-2">
-      <p className="inline-flex items-center gap-1 text-xs text-tertiary">
-        <span className="text-secondary inline-flex min-w-4" aria-hidden="true">
-          {icon}
-        </span>
-        <span>{label}</span>
-      </p>
-      <p className="text-sm font-medium text-primary text-right">{value}</p>
-    </div>
-  );
 }

@@ -15,6 +15,8 @@ chrono-tz = "0.10"
 thiserror.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 tracing.workspace = true
 rusqlite = { workspace = true, features = ["bundled", "chrono"] }
 
