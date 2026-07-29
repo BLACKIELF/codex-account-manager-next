@@ -1,18 +1,13 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use chrono::{DateTime, Utc};
 use crate::models::leadership::LeadershipDashboardSnapshot;
+use chrono::{DateTime, Utc};
 
 use crate::models::*;
 use crate::readers::{
-    build_leadership_snapshot,
-    make_local_usage,
-    CodexAppServerQuotaSnapshot,
-    CodexStateReader,
-    CodexTaskBoardReader,
-    CodexThreadMetadata,
-    CodexTranscriptReader,
+    build_leadership_snapshot, make_local_usage, CodexAppServerQuotaSnapshot, CodexStateReader,
+    CodexTaskBoardReader, CodexThreadMetadata, CodexTranscriptReader,
 };
 
 /// Default leadership period for dashboard visibility.
@@ -196,9 +191,7 @@ fn build_codex_runtime_snapshot(
     }
 }
 
-fn build_codex_leadership_signal(
-    snapshot: &LeadershipDashboardSnapshot,
-) -> CodexLeadershipSignal {
+fn build_codex_leadership_signal(snapshot: &LeadershipDashboardSnapshot) -> CodexLeadershipSignal {
     let default_report = snapshot
         .reports
         .iter()
@@ -218,8 +211,12 @@ fn build_codex_leadership_signal(
 
     CodexLeadershipSignal {
         score,
-        evidence_coverage: default_report.map(|report| report.evidence_coverage).unwrap_or(0.0),
-        active_day_count: default_report.map(|report| report.active_day_count).unwrap_or(0),
+        evidence_coverage: default_report
+            .map(|report| report.evidence_coverage)
+            .unwrap_or(0.0),
+        active_day_count: default_report
+            .map(|report| report.active_day_count)
+            .unwrap_or(0),
         period: default_report
             .map(|report| report.period.clone())
             .unwrap_or_else(|| LEADERSHIP_PERIOD_DEFAULT.to_string()),
@@ -235,8 +232,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::readers::{SessionSummary, UsageDelta};
     use crate::models::usage::TokenBreakdown;
+    use crate::readers::{SessionSummary, UsageDelta};
 
     fn create_codex_state_db(
         path: &std::path::Path,
@@ -376,8 +373,14 @@ mod tests {
 
         assert_eq!(snapshot.codex.scope, RuntimeScope::Codex);
         assert_eq!(snapshot.codex.status, RuntimeMenuStatus::LocalOnly);
-        assert_eq!(snapshot.codex.usage_source_label, "Local Codex transcript data");
-        assert_eq!(snapshot.codex.quota_source_label, "Checking official Codex quota");
+        assert_eq!(
+            snapshot.codex.usage_source_label,
+            "Local Codex transcript data"
+        );
+        assert_eq!(
+            snapshot.codex.quota_source_label,
+            "Checking official Codex quota"
+        );
         assert!(!snapshot.codex.snapshot.quota_read_succeeded);
         assert!(snapshot.codex.snapshot.five_hour_quota.is_none());
         assert!(snapshot.codex.snapshot.task_board.is_some());
@@ -390,7 +393,10 @@ mod tests {
             .columns
             .iter()
             .all(|column| column.items.is_empty()));
-        assert_eq!(snapshot.codex.snapshot.local.as_ref().unwrap().thread_count, 1);
+        assert_eq!(
+            snapshot.codex.snapshot.local.as_ref().unwrap().thread_count,
+            1
+        );
         assert!(snapshot.messages.is_empty());
     }
 
@@ -419,12 +425,10 @@ mod tests {
             .expect("should produce snapshot");
 
         assert!(snapshot.codex.snapshot.local.is_some());
-        assert!(
-            snapshot
-                .messages
-                .iter()
-                .any(|message| message.contains("state metadata is unavailable"))
-        );
+        assert!(snapshot
+            .messages
+            .iter()
+            .any(|message| message.contains("state metadata is unavailable")));
     }
 
     #[tokio::test]
@@ -455,12 +459,10 @@ mod tests {
             .expect("should produce snapshot");
 
         assert!(snapshot.codex.snapshot.local.is_some());
-        assert!(
-            snapshot
-                .messages
-                .iter()
-                .any(|message| message.contains("state metadata is unavailable"))
-        );
+        assert!(snapshot
+            .messages
+            .iter()
+            .any(|message| message.contains("state metadata is unavailable")));
     }
 
     #[tokio::test]
@@ -497,18 +499,25 @@ mod tests {
             .unwrap()
             .expect("should produce snapshot");
 
-        let report = snapshot
-            .leadership
-            .report
-            .as_ref()
-            .and_then(|report| report.reports.iter().find(|r| r.period == "twentyEightDays"));
+        let report = snapshot.leadership.report.as_ref().and_then(|report| {
+            report
+                .reports
+                .iter()
+                .find(|r| r.period == "twentyEightDays")
+        });
         assert!(report.is_some());
         let report = report.unwrap();
         assert!(snapshot.leadership.score.is_some());
         assert_eq!(snapshot.leadership.score, report.score);
         assert_eq!(report.period, snapshot.leadership.period);
-        assert_eq!(report.evidence_coverage, snapshot.leadership.evidence_coverage);
-        assert_eq!(report.active_day_count, snapshot.leadership.active_day_count);
+        assert_eq!(
+            report.evidence_coverage,
+            snapshot.leadership.evidence_coverage
+        );
+        assert_eq!(
+            report.active_day_count,
+            snapshot.leadership.active_day_count
+        );
         assert!(snapshot.codex.snapshot.local.is_some());
     }
 

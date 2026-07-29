@@ -21,7 +21,10 @@ fn create_task_state_db(root: &std::path::Path) {
         .unwrap();
 }
 
-fn column<'a>(board: &'a codexu_core::models::TaskBoard, id: &str) -> &'a codexu_core::models::TaskColumn {
+fn column<'a>(
+    board: &'a codexu_core::models::TaskBoard,
+    id: &str,
+) -> &'a codexu_core::models::TaskColumn {
     board
         .columns
         .iter()
@@ -34,14 +37,47 @@ async fn classifies_non_subagent_state_records_without_claiming_completion() {
     let root = tempfile::tempdir().unwrap();
     create_task_state_db(root.path());
     let now = Utc.with_ymd_and_hms(2026, 7, 29, 12, 0, 0).unwrap();
-    let today = now.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp();
+    let today = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp();
     let connection = Connection::open(root.path().join("state_5.sqlite")).unwrap();
 
     for (id, title, archived, source, updated_at, archived_at) in [
-        ("active", "Active work", 0, "main", now.timestamp() - 60, None),
-        ("pending", "Pending work", 0, "main", now.timestamp() - 3 * 60 * 60, None),
-        ("archived", "Archived work", 1, "main", now.timestamp() - 60, Some(now.timestamp() - 30)),
-        ("subagent", "Hidden worker", 0, "subagent", now.timestamp() - 60, None),
+        (
+            "active",
+            "Active work",
+            0,
+            "main",
+            now.timestamp() - 60,
+            None,
+        ),
+        (
+            "pending",
+            "Pending work",
+            0,
+            "main",
+            now.timestamp() - 3 * 60 * 60,
+            None,
+        ),
+        (
+            "archived",
+            "Archived work",
+            1,
+            "main",
+            now.timestamp() - 60,
+            Some(now.timestamp() - 30),
+        ),
+        (
+            "subagent",
+            "Hidden worker",
+            0,
+            "subagent",
+            now.timestamp() - 60,
+            None,
+        ),
     ] {
         connection
             .execute(
@@ -113,8 +149,15 @@ async fn returns_an_explicit_empty_board_when_state_records_are_empty() {
         .expect("an available state database should yield an empty board");
 
     assert_eq!(
-        board.columns.iter().map(|column| column.id.as_str()).collect::<Vec<_>>(),
+        board
+            .columns
+            .iter()
+            .map(|column| column.id.as_str())
+            .collect::<Vec<_>>(),
         vec!["active", "pending", "scheduled", "done"]
     );
-    assert!(board.columns.iter().all(|column| column.count == 0 && column.items.is_empty()));
+    assert!(board
+        .columns
+        .iter()
+        .all(|column| column.count == 0 && column.items.is_empty()));
 }

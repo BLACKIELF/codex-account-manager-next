@@ -107,12 +107,36 @@ fn load_metadata_sync(db_path: &Path) -> anyhow::Result<HashMap<String, CodexThr
             None
         };
 
-        Ok((thread_id, rollout_path, title, cwd, model, archived, created_at_ms, updated_at_ms, git_branch, git_origin_url, thread_source))
+        Ok((
+            thread_id,
+            rollout_path,
+            title,
+            cwd,
+            model,
+            archived,
+            created_at_ms,
+            updated_at_ms,
+            git_branch,
+            git_origin_url,
+            thread_source,
+        ))
     })?;
 
     let parent_edges = load_parent_edges(&conn)?;
     for row in rows.by_ref() {
-        let (thread_id, rollout_path, title, cwd, model, archived, created_at_ms, updated_at_ms, git_branch, git_origin_url, thread_source) = row?;
+        let (
+            thread_id,
+            rollout_path,
+            title,
+            cwd,
+            model,
+            archived,
+            created_at_ms,
+            updated_at_ms,
+            git_branch,
+            git_origin_url,
+            thread_source,
+        ) = row?;
         let parent_thread_id = parent_edges.get(&thread_id).cloned();
         entries.insert(
             normalize_rollout_key(&rollout_path),
@@ -136,9 +160,7 @@ fn load_metadata_sync(db_path: &Path) -> anyhow::Result<HashMap<String, CodexThr
     Ok(entries)
 }
 
-fn load_parent_edges(
-    conn: &rusqlite::Connection,
-) -> anyhow::Result<HashMap<String, String>> {
+fn load_parent_edges(conn: &rusqlite::Connection) -> anyhow::Result<HashMap<String, String>> {
     let query = conn.prepare("SELECT child_thread_id, parent_thread_id FROM thread_spawn_edges");
     let mut statement = match query {
         Ok(statement) => statement,

@@ -23,3 +23,15 @@ jobs:
         run: ./scripts/test-rate-limits.sh
       - name: Statistics time zone tests
         run: ./scripts/test-statistics-time-zone.sh
+
+  windows-rust-format:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt
+      - name: Check Windows Rust formatting
+        working-directory: windows
+        run: cargo fmt --all -- --check

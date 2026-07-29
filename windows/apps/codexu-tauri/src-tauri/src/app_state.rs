@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 #[cfg(test)]
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,11 +11,8 @@ use tracing::{error, info, warn};
 
 use codexu_core::models::CodexDashboardSnapshot;
 use codexu_core::readers::{
-    apply_official_quota,
-    read_installed_codex_quota,
-    retain_last_verified_quota,
-    CodexAppServerQuotaSnapshot,
-    CodexDashboardProvider,
+    apply_official_quota, read_installed_codex_quota, retain_last_verified_quota,
+    CodexAppServerQuotaSnapshot, CodexDashboardProvider,
 };
 
 /// User-configurable app settings.
@@ -131,7 +128,8 @@ pub struct AppState {
     #[cfg(test)]
     pub(crate) refresh_call_count: Arc<AtomicUsize>,
     #[cfg(test)]
-    refresh_attempt_hook: Arc<tokio::sync::Mutex<Option<std::sync::Arc<dyn Fn(Arc<Self>, usize) + Send + Sync>>>>,
+    refresh_attempt_hook:
+        Arc<tokio::sync::Mutex<Option<std::sync::Arc<dyn Fn(Arc<Self>, usize) + Send + Sync>>>>,
 }
 
 impl AppState {
@@ -221,8 +219,7 @@ impl AppState {
             let previous_dashboard = {
                 let snapshot = self.snapshot.read().await;
                 snapshot.as_ref().and_then(|cached| {
-                    (cached.source_key == source
-                        && cached.source_generation == expected_generation)
+                    (cached.source_key == source && cached.source_generation == expected_generation)
                         .then(|| cached.dashboard.clone())
                         .flatten()
                 })
@@ -422,7 +419,10 @@ mod tests {
         }
 
         let value = state.get_usage(60).await.unwrap().unwrap();
-        assert_eq!(value.messages, vec!["Cached dashboard snapshot".to_string()]);
+        assert_eq!(
+            value.messages,
+            vec!["Cached dashboard snapshot".to_string()]
+        );
         assert_eq!(value.refreshed_at, now - Duration::seconds(5));
     }
 
@@ -601,7 +601,12 @@ mod tests {
 
         let value = state.get_usage(600).await.unwrap();
         assert!(value.is_none());
-        let cached = state.snapshot.read().await.clone().expect("cache refreshed");
+        let cached = state
+            .snapshot
+            .read()
+            .await
+            .clone()
+            .expect("cache refreshed");
         assert_eq!(cached.source_generation, 2);
         assert_eq!(cached.source_key.codex_root, source_a);
     }
@@ -619,12 +624,9 @@ mod tests {
 
         let value = state.refresh_usage().await;
         assert!(value.is_err());
-        assert!(
-            value
-                .unwrap_err()
-                .to_string()
-                .contains("Failed to refresh dashboard snapshot due to concurrent config source changes")
-        );
+        assert!(value.unwrap_err().to_string().contains(
+            "Failed to refresh dashboard snapshot due to concurrent config source changes"
+        ));
         assert_eq!(state.refresh_call_count.load(Ordering::SeqCst), 2);
     }
 }

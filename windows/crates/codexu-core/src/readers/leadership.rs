@@ -1,15 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use chrono::{
-    offset::LocalResult,
-    DateTime,
-    Duration,
-    Local,
-    NaiveDate,
-    NaiveTime,
-    TimeZone,
-    Utc,
-};
+use chrono::{offset::LocalResult, DateTime, Duration, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 
 use crate::models::*;
 use crate::readers::common::{CodexTaskInterval, SessionSummary};
@@ -64,7 +55,10 @@ fn make_worker(session: &SessionSummary) -> LeadershipWorker {
         kind,
         project_id: project_id(&session.project_path),
         project_name: project_name(&session.project_path),
-        parent_id: session.parent_thread_id.as_ref().map(|id| format!("codex:main:{id}")),
+        parent_id: session
+            .parent_thread_id
+            .as_ref()
+            .map(|id| format!("codex:main:{id}")),
     }
 }
 
@@ -82,7 +76,8 @@ fn build_intervals(
         .iter()
         .flat_map(|session| {
             let (kind, automation_id, has_factual_source) = classify_worker_kind(session);
-            let worker_id = build_worker_id("codex", kind, &session.session_id, automation_id.as_deref());
+            let worker_id =
+                build_worker_id("codex", kind, &session.session_id, automation_id.as_deref());
             let worker = worker_map
                 .get(&worker_id)
                 .cloned()
@@ -94,7 +89,9 @@ fn build_intervals(
                     return None;
                 }
                 let mut quality = interval.quality;
-                if !interval_has_factual_timing(session.created_at, interval, now) || !has_factual_source {
+                if !interval_has_factual_timing(session.created_at, interval, now)
+                    || !has_factual_source
+                {
                     quality = LeadershipEvidenceQuality::Estimated;
                 } else if kind == LeadershipWorkerKind::Automation && automation_id.is_none() {
                     quality = LeadershipEvidenceQuality::Derived;
@@ -137,7 +134,9 @@ fn build_report(
 
     let mut period_intervals = intervals
         .iter()
-        .filter(|interval| interval.quality.is_scorable() && interval.end_at > start && interval.start_at < now)
+        .filter(|interval| {
+            interval.quality.is_scorable() && interval.end_at > start && interval.start_at < now
+        })
         .filter_map(|interval| clip_interval(interval, start, now))
         .collect::<Vec<_>>();
 
@@ -389,12 +388,14 @@ fn clip_interval(
 }
 
 fn merge_intervals(mut intervals: Vec<LeadershipInterval>) -> Vec<LeadershipInterval> {
-    let by_worker = intervals.drain(..).fold(HashMap::new(), |mut acc, interval| {
-        acc.entry(interval.worker_id.clone())
-            .or_insert_with(Vec::new)
-            .push(interval);
-        acc
-    });
+    let by_worker = intervals
+        .drain(..)
+        .fold(HashMap::new(), |mut acc, interval| {
+            acc.entry(interval.worker_id.clone())
+                .or_insert_with(Vec::new)
+                .push(interval);
+            acc
+        });
 
     let mut merged: Vec<LeadershipInterval> = Vec::new();
     for mut group in by_worker.into_values() {
@@ -529,9 +530,12 @@ fn build_daily_points(
         let metrics = timeline_metrics(&clipped);
         points.push(LeadershipDayPoint {
             day,
-            agent_count: clipped.iter().map(|interval| interval.worker_id.clone()).collect::<HashSet<_>>().len()
-                as i64,
-                ai_hours: clipped.iter().map(duration_seconds).sum::<f64>() / 3600.0,
+            agent_count: clipped
+                .iter()
+                .map(|interval| interval.worker_id.clone())
+                .collect::<HashSet<_>>()
+                .len() as i64,
+            ai_hours: clipped.iter().map(duration_seconds).sum::<f64>() / 3600.0,
             peak_concurrency: metrics.peak_concurrency,
         });
         if next <= day {
@@ -548,9 +552,9 @@ fn day_has_autonomous(
     statistics_tz: LeadershipStatisticsTimezone,
 ) -> bool {
     let next = statistics_tz.next_day_start(day);
-    intervals.iter().any(|interval| {
-        interval.is_autonomous && interval.start_at < next && interval.end_at > day
-    })
+    intervals
+        .iter()
+        .any(|interval| interval.is_autonomous && interval.start_at < next && interval.end_at > day)
 }
 
 fn active_workers_effective_hours(intervals: &[LeadershipInterval]) -> f64 {
@@ -570,7 +574,10 @@ fn project_contributions(
     workers: &[LeadershipWorker],
     intervals: &[LeadershipInterval],
 ) -> Vec<LeadershipProjectContribution> {
-    let worker_by_id = workers.iter().map(|worker| (worker.id.clone(), worker)).collect::<HashMap<_, _>>();
+    let worker_by_id = workers
+        .iter()
+        .map(|worker| (worker.id.clone(), worker))
+        .collect::<HashMap<_, _>>();
     let mut by_project = HashMap::<String, Vec<&LeadershipInterval>>::new();
     for interval in intervals {
         by_project
@@ -634,9 +641,11 @@ fn build_dimensions(
     confidence: f64,
 ) -> Vec<LeadershipDimension> {
     let span = 100.0
-        * (0.70 * normalize_log(effective_workers, 12.0) + 0.30 * normalize_log(peak_concurrency as f64, 6.0));
+        * (0.70 * normalize_log(effective_workers, 12.0)
+            + 0.30 * normalize_log(peak_concurrency as f64, 6.0));
     let leverage = 100.0
-        * (0.70 * normalize_log(daily_ai_hours, 8.0) + 0.30 * normalize_log(average_parallelism, 3.0));
+        * (0.70 * normalize_log(daily_ai_hours, 8.0)
+            + 0.30 * normalize_log(average_parallelism, 3.0));
     let orchestration = 100.0
         * (0.45 * normalize_linear(delegated_share, 0.60)
             + 0.35 * normalize_linear(parallel_share, 0.50)
@@ -684,9 +693,7 @@ fn finalize_score(
     }
     let core = dimensions
         .iter()
-        .map(|dimension| {
-            (dimension.score.max(1.0) / 100.0).ln() * dimension.kind.weight()
-        })
+        .map(|dimension| (dimension.score.max(1.0) / 100.0).ln() * dimension.kind.weight())
         .sum::<f64>();
     let core_score = (100.0 * core.exp()).clamp(0.0, 100.0);
     let mut score = (core_score * maturity(active_days)).round() as i32;
@@ -841,7 +848,8 @@ impl LeadershipStatisticsTimezone {
                     .unwrap_or_else(|| self.day_start(date))
             }
             Self::Named(timezone) => {
-                let local_day = date.with_timezone(timezone).date_naive() - Duration::days(day_count);
+                let local_day =
+                    date.with_timezone(timezone).date_naive() - Duration::days(day_count);
                 to_midnight_utc_from_date(local_day, timezone)
                     .or_else(|| to_midnight_utc_from_date(local_day + Duration::days(1), timezone))
                     .unwrap_or_else(|| self.day_start(date))
@@ -852,15 +860,21 @@ impl LeadershipStatisticsTimezone {
     fn next_day_start(&self, date: DateTime<Utc>) -> DateTime<Utc> {
         match self {
             Self::Local => {
-                let next_local_day: NaiveDate = date.with_timezone(&Local).date_naive() + Duration::days(1);
+                let next_local_day: NaiveDate =
+                    date.with_timezone(&Local).date_naive() + Duration::days(1);
                 to_midnight_utc_from_date(next_local_day, &Local)
-                    .or_else(|| to_midnight_utc_from_date(next_local_day + Duration::days(1), &Local))
+                    .or_else(|| {
+                        to_midnight_utc_from_date(next_local_day + Duration::days(1), &Local)
+                    })
                     .unwrap_or(date)
             }
             Self::Named(timezone) => {
-                let next_local_day: NaiveDate = date.with_timezone(timezone).date_naive() + Duration::days(1);
+                let next_local_day: NaiveDate =
+                    date.with_timezone(timezone).date_naive() + Duration::days(1);
                 to_midnight_utc_from_date(next_local_day, timezone)
-                    .or_else(|| to_midnight_utc_from_date(next_local_day + Duration::days(1), timezone))
+                    .or_else(|| {
+                        to_midnight_utc_from_date(next_local_day + Duration::days(1), timezone)
+                    })
                     .unwrap_or(date)
             }
         }
@@ -872,7 +886,10 @@ fn day_start_in_timezone<Tz: TimeZone>(date: DateTime<Utc>, timezone: &Tz) -> Da
     to_midnight_utc_from_date(local.date_naive(), timezone).unwrap_or(date)
 }
 
-fn to_midnight_utc_from_date<Tz: TimeZone>(date: NaiveDate, timezone: &Tz) -> Option<DateTime<Utc>> {
+fn to_midnight_utc_from_date<Tz: TimeZone>(
+    date: NaiveDate,
+    timezone: &Tz,
+) -> Option<DateTime<Utc>> {
     resolve_midnight_utc(timezone, date)
 }
 
@@ -900,10 +917,10 @@ fn duration_seconds(interval: &LeadershipInterval) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::readers::CodexTranscriptReader;
     use crate::readers::codex_state::CodexThreadMetadata;
     use crate::readers::codex_transcript::CodexTranscriptSummary;
     use crate::readers::common::CodexTaskInterval;
+    use crate::readers::CodexTranscriptReader;
     use std::collections::HashMap;
     use tempfile::tempdir;
 
@@ -918,7 +935,8 @@ mod tests {
         title: Option<&str>,
         created_at: Option<DateTime<Utc>>,
     ) -> SessionSummary {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
+        let now = Utc
+            .with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
         SessionSummary {
@@ -947,7 +965,8 @@ mod tests {
 
     #[test]
     fn unscored_when_all_intervals_are_estimated() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
+        let now = Utc
+            .with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
         let session = mock_session(
@@ -975,7 +994,8 @@ mod tests {
 
     #[test]
     fn score_and_title_for_fact_intervals() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
+        let now = Utc
+            .with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
         let session = mock_session(
@@ -1014,7 +1034,8 @@ mod tests {
 
     #[test]
     fn missing_legacy_task_intervals_do_not_break_parse() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
+        let now = Utc
+            .with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
         let legacy = r#"{
@@ -1058,7 +1079,8 @@ mod tests {
 
     #[test]
     fn merge_intervals_does_not_merge_between_workers() {
-        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
+        let now = Utc
+            .with_ymd_and_hms(2026, 7, 28, 12, 0, 0)
             .single()
             .unwrap();
         let intervals = vec![
@@ -1108,7 +1130,12 @@ mod tests {
     #[test]
     fn build_worker_id_uses_session_id_for_automation_without_marker() {
         assert_eq!(
-            build_worker_id("codex", LeadershipWorkerKind::Automation, "automation-session", None),
+            build_worker_id(
+                "codex",
+                LeadershipWorkerKind::Automation,
+                "automation-session",
+                None
+            ),
             "codex:automation:automation-session"
         );
     }

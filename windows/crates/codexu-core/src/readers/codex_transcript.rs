@@ -219,7 +219,7 @@ impl CodexTranscriptReader {
             summaries.push(summary);
         }
 
-            write_cache(&self.cache_dir, &cache).await;
+        write_cache(&self.cache_dir, &cache).await;
         Ok(Some(summaries))
     }
 
@@ -292,8 +292,8 @@ fn combine_session_metadata(
                         model: d.model,
                         project_path: project_path.clone(),
                         session_id: d.session_id,
-                })
-                .collect(),
+                    })
+                    .collect(),
                 tool_calls: s.tool_calls,
                 title: meta.and_then(|m| m.title.clone()),
                 archived: meta.map(|m| m.archived).unwrap_or(false),
@@ -455,9 +455,7 @@ async fn parse_transcript(
                 }
 
                 let duration_ms = codex_f64_value(payload.get("duration_ms"));
-                if let Some(started_at) =
-                    parse_derived_task_started_at(completed_at, duration_ms)
-                {
+                if let Some(started_at) = parse_derived_task_started_at(completed_at, duration_ms) {
                     if started_at < completed_at {
                         summary.task_intervals.push(CodexTaskInterval {
                             turn_id,
@@ -975,13 +973,11 @@ mod tests {
         let completed = Utc.with_ymd_and_hms(2026, 3, 26, 12, 10, 0).unwrap();
 
         let session = archived.join("rollout-task-derived.jsonl");
-        let lines = vec![
-            format!(
-                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":5000}}}}"#,
-                completed.to_rfc3339(),
-                completed.to_rfc3339()
-            ),
-        ];
+        let lines = vec![format!(
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"task_complete","turn_id":"turn-1","completed_at":"{}","duration_ms":5000}}}}"#,
+            completed.to_rfc3339(),
+            completed.to_rfc3339()
+        )];
         tokio::fs::write(&session, lines.join("\n")).await.unwrap();
 
         let cache = temp.path().join("cache");
@@ -1061,7 +1057,10 @@ mod tests {
 
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].task_intervals.len(), 1);
-        assert_eq!(summaries[0].task_intervals[0].quality, LeadershipEvidenceQuality::Derived);
+        assert_eq!(
+            summaries[0].task_intervals[0].quality,
+            LeadershipEvidenceQuality::Derived
+        );
         assert_eq!(
             summaries[0].task_intervals[0].started_at,
             completed - Duration::milliseconds(long_ms)
@@ -1183,7 +1182,9 @@ mod tests {
 
         let cache = temp.path().join("cache");
         let cache_path = cache.join("codex").join("session-usage-v1.json");
-        tokio::fs::create_dir_all(cache_path.parent().unwrap()).await.unwrap();
+        tokio::fs::create_dir_all(cache_path.parent().unwrap())
+            .await
+            .unwrap();
         let key = session.to_string_lossy().to_string();
         let v1_cache = serde_json::json!({
             "version": 1,
@@ -1203,7 +1204,9 @@ mod tests {
                 }
             }
         });
-        tokio::fs::write(&cache_path, serde_json::to_vec(&v1_cache).unwrap()).await.unwrap();
+        tokio::fs::write(&cache_path, serde_json::to_vec(&v1_cache).unwrap())
+            .await
+            .unwrap();
 
         let reader = CodexTranscriptReader::new(&cache);
         let summaries = reader
@@ -1214,7 +1217,10 @@ mod tests {
 
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].task_intervals.len(), 1);
-        assert_eq!(summaries[0].task_intervals[0].quality, LeadershipEvidenceQuality::Fact);
+        assert_eq!(
+            summaries[0].task_intervals[0].quality,
+            LeadershipEvidenceQuality::Fact
+        );
     }
 
     #[test]

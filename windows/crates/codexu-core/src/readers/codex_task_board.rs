@@ -182,7 +182,10 @@ fn build_task_board(
     for record in records {
         if record.archived {
             done.push(thread_task_item(record, "done", "archived", "archive"));
-        } else if record.activity_at.is_some_and(|activity| activity >= now - ACTIVE_WINDOW) {
+        } else if record
+            .activity_at
+            .is_some_and(|activity| activity >= now - ACTIVE_WINDOW)
+        {
             active.push(thread_task_item(
                 record,
                 "active",
@@ -223,7 +226,11 @@ fn build_task_board(
             next_run_at: None,
         })
         .collect();
-    scheduled.sort_by(|left, right| left.title.cmp(&right.title).then_with(|| left.id.cmp(&right.id)));
+    scheduled.sort_by(|left, right| {
+        left.title
+            .cmp(&right.title)
+            .then_with(|| left.id.cmp(&right.id))
+    });
 
     TaskBoard {
         refreshed_at: now,
@@ -307,7 +314,11 @@ fn find_automation_files(directory: &Path, depth: usize, files: &mut Vec<PathBuf
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_file() && path.file_name().is_some_and(|name| name == "automation.toml") {
+        if path.is_file()
+            && path
+                .file_name()
+                .is_some_and(|name| name == "automation.toml")
+        {
             files.push(path);
         } else if path.is_dir() {
             find_automation_files(&path, depth + 1, files);
@@ -394,8 +405,18 @@ fn non_empty(value: &str) -> Option<&str> {
 }
 
 fn display_code(prefix: &str, id: &str) -> String {
-    let compact: String = id.chars().filter(|character| character.is_ascii_alphanumeric()).collect();
-    let suffix: String = compact.chars().rev().take(4).collect::<String>().chars().rev().collect();
+    let compact: String = id
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect();
+    let suffix: String = compact
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     format!("{prefix}-{}", suffix.to_ascii_uppercase())
 }
 

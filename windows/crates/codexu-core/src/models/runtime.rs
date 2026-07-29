@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::models::leadership::LeadershipDashboardSnapshot;
+use serde::{Deserialize, Serialize};
 
 /// Supported AI runtimes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
