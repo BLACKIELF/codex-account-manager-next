@@ -5,35 +5,37 @@ import test from 'node:test';
 const componentPath = new URL('../src/components/LeadershipPanel.tsx', import.meta.url);
 const stylesheetPath = new URL('../src/index.css', import.meta.url);
 
-function matchingDivEnd(source, start) {
-  const tagPattern = /<\/?div\b[^>]*>/g;
-  tagPattern.lastIndex = start;
-  let depth = 0;
-
-  for (let match = tagPattern.exec(source); match; match = tagPattern.exec(source)) {
-    depth += match[0].startsWith('</') ? -1 : 1;
-    if (depth === 0) return match.index + match[0].length;
-  }
-
-  throw new Error('Unclosed div in LeadershipCommandRail');
-}
-
-test('keeps the score pin and threshold dots in the exact same rail coordinate frame', async () => {
+test('uses one shared coordinate domain for seven stage lockups and the score track', async () => {
   const [component, stylesheet] = await Promise.all([
     readFile(componentPath, 'utf8'),
     readFile(stylesheetPath, 'utf8'),
   ]);
-  const thresholdStart = component.indexOf('<div className="leadership-threshold-points">');
-  const scoreMarker = component.indexOf('<div className="leadership-rail-score-marker"');
 
-  assert.notEqual(thresholdStart, -1, 'threshold frame should be rendered');
-  assert.notEqual(scoreMarker, -1, 'score marker should be rendered');
-  assert.ok(
-    scoreMarker < matchingDivEnd(component, thresholdStart),
-    'score marker must be inside the threshold frame so it shares the rail width with the dots',
+  assert.match(component, /className="leadership-rail-stage-layer"/, 'stages should render in their own layer');
+  assert.match(component, /className="leadership-rail-track-layer"/, 'track should render in its own layer');
+  assert.match(component, /className="leadership-rail-stage"/, 'each band should render a fixed stage lockup');
+
+  assert.match(stylesheet, /--leadership-rail-inset:\s*38px/, 'both layers need the macOS safe inset');
+  const sharedCoordinateRule =
+    stylesheet.match(
+      /\.leadership-rail-stage-layer,\s*\.leadership-rail-track-layer\s*\{([\s\S]*?)\n\s*\}/,
+    )?.[1] ?? '';
+  assert.match(
+    sharedCoordinateRule,
+    /margin-inline:\s*var\(--leadership-rail-inset\)/,
+    'stage and track coordinates should start and end at the shared inset',
+  );
+  assert.match(
+    stylesheet,
+    /\.leadership-rail-stage\s*\{[\s\S]*?width:\s*62px/,
+    'each stage should reserve the fixed macOS lockup width',
+  );
+  assert.match(
+    stylesheet,
+    /\.leadership-rail-stage-badge-slot\s*\{[\s\S]*?width:\s*33px[\s\S]*?height:\s*33px/,
+    'active and inactive badges should share one fixed baseline slot',
   );
 
-  const thresholdRule = stylesheet.match(/\.leadership-threshold-points\s*\{([\s\S]*?)\n\s*\}/)?.[1] ?? '';
-  assert.match(thresholdRule, /left:\s*0\.6rem;/, 'threshold frame must use the track start inset');
-  assert.match(thresholdRule, /right:\s*0\.6rem;/, 'threshold frame must use the track end inset');
+  assert.doesNotMatch(component, /leadership-threshold-points|leadership-rail-score-stem|leadership-rail-score-pin/);
+  assert.doesNotMatch(stylesheet, /leadership-rail-badge-(large|left-edge)|leadership-rail-node-left-edge/);
 });

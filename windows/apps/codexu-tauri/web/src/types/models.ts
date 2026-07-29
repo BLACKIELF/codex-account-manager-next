@@ -61,6 +61,15 @@ export interface ToolUsage {
   estimated_cost_usd: number | null;
 }
 
+export interface SkillUsage {
+  id: string;
+  name: string;
+  source_label: string;
+  load_count: number;
+  thread_count: number;
+  last_loaded_at: number | null;
+}
+
 export interface UsageDayBucket {
   id: string;
   date: number;
@@ -101,6 +110,36 @@ export interface UsageTrend {
   projected_month_cost_usd: number | null;
   active_day_count: number;
   source_quality: 'detailed' | 'approximate';
+}
+
+export interface TaskItem {
+  id: string;
+  code: string;
+  title: string;
+  detail: string;
+  chip: string;
+  updated_at: number | null;
+  tokens: number | null;
+  kind: string;
+  thread_id: string | null;
+  runtime_state: string;
+  source_kind: string;
+  display_state: string;
+  state_basis: string;
+  raw_status: string | null;
+  next_run_at: number | null;
+}
+
+export interface TaskColumn {
+  id: string;
+  title: string;
+  count: number;
+  items: TaskItem[];
+}
+
+export interface TaskBoard {
+  refreshed_at: number;
+  columns: TaskColumn[];
 }
 
 export interface LeadershipWorker {
@@ -179,6 +218,15 @@ export interface LeadershipDashboardSnapshot {
   reports: LeadershipReport[];
 }
 
+export interface CodexLeadershipSignal {
+  score: number | null;
+  evidence_coverage: number;
+  active_day_count: number;
+  period: string;
+  model_version: string;
+  report: LeadershipDashboardSnapshot | null;
+}
+
 export interface LocalUsage {
   lifetime_tokens: number;
   today_tokens: number;
@@ -191,6 +239,50 @@ export interface LocalUsage {
   usage_trend: UsageTrend | null;
   project_board: ProjectBoard | null;
   tool_usages: ToolUsage[];
-  skill_usages: unknown[];
-  leadership: LeadershipDashboardSnapshot | null;
+  skill_usages: SkillUsage[];
+}
+
+export interface RateWindow {
+  used_percent: number;
+  window_duration_mins: number | null;
+  resets_at: number | null;
+}
+
+export interface AccountInfo {
+  type: string;
+  plan_type: string | null;
+  email_present: boolean;
+}
+
+export interface UsageSnapshot {
+  refreshed_at: number;
+  account: AccountInfo;
+  limit_id: string;
+  limit_name: string;
+  quota_read_succeeded: boolean;
+  five_hour_quota: RateWindow | null;
+  seven_day_quota: RateWindow | null;
+  monthly_quota: RateWindow | null;
+  local: LocalUsage | null;
+  task_board: TaskBoard | null;
+  messages: string[];
+}
+
+export type RuntimeScope = 'codex';
+
+export type RuntimeMenuStatus = 'available' | 'local_only' | 'snapshot_needed' | 'stale' | 'unavailable';
+
+export interface RuntimeUsageSnapshot {
+  scope: RuntimeScope;
+  snapshot: UsageSnapshot;
+  status: RuntimeMenuStatus;
+  quota_source_label: string;
+  usage_source_label: string;
+}
+
+export interface CodexDashboardSnapshot {
+  codex: RuntimeUsageSnapshot;
+  leadership: CodexLeadershipSignal;
+  refreshed_at: number;
+  messages: string[];
 }

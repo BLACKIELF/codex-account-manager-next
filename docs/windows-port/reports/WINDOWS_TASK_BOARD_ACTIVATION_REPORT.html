@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Task Board Activation Report</title>
+  <style>
+    :root { color-scheme: light dark; font-family: Inter, "Segoe UI", sans-serif; background: #f4f7fb; color: #172033; }
+    body { margin: 0; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 40px 24px 56px; }
+    header, section { background: color-mix(in srgb, canvas 92%, #dbe7ff); border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 18px; padding: 22px 24px; margin-top: 18px; }
+    h1, h2 { margin: 0 0 12px; line-height: 1.2; }
+    h1 { font-size: 2rem; } h2 { font-size: 1.2rem; }
+    .meta { color: color-mix(in srgb, currentColor 68%, transparent); margin: 0; }
+    .verdict { display: inline-block; margin-top: 14px; padding: 5px 10px; border-radius: 999px; background: #f4b74022; border: 1px solid #d9870080; color: #9b5d00; font-weight: 700; }
+    ul { margin: 0; padding-left: 1.25rem; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 12px; }
+    th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent); }
+    th { font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; color: color-mix(in srgb, currentColor 68%, transparent); }
+    code { font-family: "Cascadia Code", Consolas, monospace; font-size: .92em; }
+    .pass { color: #167c3c; font-weight: 700; } .blocked { color: #b45309; font-weight: 700; } .not-run { color: #64748b; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Windows Task Board Activation</h1>
+      <p class="meta">2026-07-29 · Windows Tauri / Codex-only</p>
+      <p class="verdict">Implemented; final native acceptance is blocked by an unrelated dirty-worktree compilation failure.</p>
+    </header>
+
+    <section>
+      <h2>Trust boundary</h2>
+      <ul>
+        <li>Reads only local state-database task metadata and active automation metadata.</li>
+        <li>Excludes <code>subagent</code> records and never relabels arbitrary threads as asserted work.</li>
+        <li>Uses Recent activity, To continue, Scheduled, and Archived today; archive is not presented as completion or success.</li>
+        <li>Does not read session JSONL, previews, raw prompts, replies, tool arguments, raw logs, or full workspace paths for the board.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Delivered</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td>Core reader</td><td>Added a read-only state/automation reader that supplies the existing four-column task-board payload.</td></tr>
+          <tr><td>Snapshot contract</td><td>Populates the existing <code>UsageSnapshot.task_board</code> field without changing its serialized type.</td></tr>
+          <tr><td>Dashboard</td><td>Replaced the Tasks placeholder with a non-clickable Liquid Glass board showing title, shortened workspace label, factual time, and textual state.</td></tr>
+          <tr><td>Empty states</td><td>Separates unavailable source state from an available source with no trusted records.</td></tr>
+          <tr><td>Regression coverage</td><td>Added sanitized SQLite classification/empty-board tests and a privacy-oriented web source contract.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Validation</h2>
+      <table>
+        <thead><tr><th>Check</th><th>Result</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>Focused Rust task-board tests</td><td class="blocked">Previously passed; currently blocked</td><td>2/2 passed before a later unrelated dirty Skill-model edit. The latest rerun stops before test execution at the unrelated <code>SessionSummary.skill_loads</code> mismatch.</td></tr>
+          <tr><td>Focused web Task-tab contract</td><td class="pass">Pass</td><td>2/2: panel mount, empty state, and no raw-status/technical-ID rendering.</td></tr>
+          <tr><td>Web production build</td><td class="pass">Pass</td><td><code>npm run build</code>; only the existing large-chunk advisory remained.</td></tr>
+          <tr><td>Full Rust workspace tests</td><td class="blocked">Blocked</td><td>35/36 core library tests passed; unrelated dirty Skill-usage work failed in <code>codex_transcript.rs</code>.</td></tr>
+          <tr><td>Rust formatting check</td><td class="blocked">Blocked</td><td>Only pre-existing dirty Tauri app-state/command files differ.</td></tr>
+          <tr><td>Tauri production build</td><td class="blocked">Blocked</td><td>The same unrelated <code>SessionSummary.skill_loads</code> model mismatch stops compilation before a current executable exists.</td></tr>
+          <tr><td>Diff whitespace check</td><td class="pass">Pass</td><td><code>git diff --check</code>.</td></tr>
+          <tr><td>Native UI acceptance</td><td class="not-run">Not run</td><td>No current Tauri binary could be built. A stale binary or historical screenshot was not used as substitute evidence.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Required follow-up</h2>
+      <p>Reconcile the unrelated <code>SessionSummary.skill_loads</code> dirty-worktree change, then rerun the focused Task Board tests, workspace tests, <code>cargo tauri build --no-bundle</code>, and a native Task-tab inspection with sanitized fixtures or a safe local snapshot.</p>
+      <p class="meta">No commit, merge, reset, or overwrite was performed.</p>
+    </section>
+  </main>
+</body>
+</html>

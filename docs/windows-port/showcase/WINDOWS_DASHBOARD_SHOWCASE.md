@@ -1,76 +1,41 @@
-# Windows Dashboard Home Showcase
+# Windows Dashboard Showcase — Codex Snapshot
 
-## What this release validates
+- Evidence date: 2026-07-28
+- Verdict: accepted for the implemented Codex-only snapshot hierarchy and compact native Dashboard surface.
 
-- Native Windows Dashboard Home in final release mode.
-- Native screenshots for the default home and Leadership detail views, with the Leadership image retained as pre-fix structural evidence.
-- Dashboard hierarchy validation without claiming macOS pixel-level parity.
-- Resource reuse is unchanged: existing `LeadershipCommandRail` and L1-L7 badge assets are retained.
-- Canonical mapping thresholds are `0/20/35/50/65/80/93` (L1-L7), so score **84** is rendered as **L6**.
+## What is implemented
 
-## Mapping of hierarchy to captured windows
+The Dashboard consumes one local `CodexDashboardSnapshot`: a nested Codex runtime snapshot plus an independent leadership signal. The visible global tabs are `Dashboard / AI Leadership / Threads`; the Dashboard is not a Claude selector and does not claim an enabled Claude provider.
 
-1. **Top three cards on default home**
-   - Leadership identity card.
-   - 7-day Token mix card.
-   - Today / 7-day / Lifetime summary card.
-2. **Progression rail**
-   - Full-width L1-L7 command rail with native badge + threshold semantics.
-3. **Leadership detail**
-   - Identity + score context.
-   - 2x2 leadership metrics.
-   - Full-domain L1-L7 rail + compact marker.
+- Local usage stays at `snapshot.codex.snapshot.local` and remains local telemetry.
+- The runtime is local-only; official quota, allowance, remaining-balance, and billing values are not fabricated.
+- Leadership has its own evidence-gated report/score branch. A null score remains insufficient/pending rather than becoming a UI-derived rank.
+- The fixed overview contains the three-part Token mix, Today / 7-day / Lifetime summaries, and the full L1-L7 rail. The Month value is a local estimate, not strict macOS Wool parity.
 
-## Screenshot comparison and evidence scope
+## Accepted native evidence
 
-- Reference: `docs/screenshot-v1.2.0-ai-leadership.png` (macOS semantic reference).
-- This release aligns by evidence scope:
-  - Home capture proves top three cards and the start of the progression area.
-  - Full L1-L7 rail and 2x2 metrics are visible in AI Leadership detail capture, but that image predates the final score-pin coordinate correction.
-  - Native short-scroll check confirms the progression area follows the top cards in the same release-home flow.
-- The corrected 84-point geometry was manually reviewed in the rebuilt release. This batch does not include a replacement AI Leadership PNG, so the existing image is not evidence for post-fix point-to-fill alignment.
-- Retained implementation difference from reference is the platform style:
-  - Windows native-light / Liquid Glass rendering
-  - Not a dark macOS pixel clone.
+Capture used HWND-specific `PrintWindow`, not Computer Use. The three valid final images are `1462x1196` physical pixels at DPI 144, approximately `975x797 CSS px`. The lower-tabs frame was reached through pure Win32 `SendInput` PageDown plus wheel scrolling, then captured with `PW_RENDERFULLCONTENT`; it did not use Computer Use, UIA, or Playwright.
 
-## Token model and naming
+| Surface | Current evidence | What it proves |
+| --- | --- | --- |
+| Default Dashboard | [codex-dashboard-snapshot-default-native.png](../reports/assets/codex-dashboard-snapshot-default-native.png) | Exactly three global tabs; full L1-L7 rail; Token mix `1,784,569,471 + 1,706,410,112 + 9,142,958 = 3,500,122,541`; no raw body content. |
+| AI Leadership detail | [codex-dashboard-snapshot-leadership-native.png](../reports/assets/codex-dashboard-snapshot-leadership-native.png) | Identity, evidence-gated score, rail, and metrics in the drill-down hierarchy. |
+| Lower Dashboard navigation | [codex-dashboard-snapshot-lower-tabs-native.png](../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png) | Readable L1-L7, Month value explicitly labelled local API-equivalent estimate / not official quota, and exactly one Tasks / Usage / Projects / Skills tab bar. |
 
-- The Home center value is a **local 7-day Token mix** (`Input`, `Cached input`, `Output`).
-- The UI does not expose official quota/remaining allowance because the current Windows data path has no official quota contract in this scope.
-- No raw prompt / response / tool-arguments / project / thread content is shown on default home.
+The accepted lower-tabs image proves the current navigation hierarchy and its single tab bar only. It does not prove each variable panel's internal content or strict one-to-one macOS feature equivalence.
 
-## Platform interpretation
+## Validation
 
-- Windows stays native-light and Liquid Glass in tone.
-- macOS screenshots remain semantic references only.
-- This is intentional product-local implementation, not a dark promotional mirror.
+| Check | Result |
+| --- | --- |
+| `npm run build` | pass |
+| `cargo test --workspace` | pass: 35 core + 7 Tauri tests |
+| `cargo tauri build --no-bundle` | pass; release EXE built 2026-07-28 04:23:36 Asia/Shanghai |
+| `git diff --check` | pass |
 
-## Evidence
+## Retained limits
 
-- `docs/windows-port/reports/assets/dashboard-home-native.png`
-- `docs/windows-port/reports/assets/dashboard-home-leadership-detail.png`
-
-The Leadership detail image is retained for hierarchy, mapping, and metrics only; it predates the final score-pin coordinate correction.
-
-## Raw verification
-
-- `npm run build` (`windows/apps/codexu-tauri/web`) -> exit `0`
-- `cargo test --workspace` (`windows`) -> exit `0`, result `running 9 tests`, `9 passed`
-- `cargo tauri build --no-bundle` (`windows/apps/codexu-tauri/src-tauri`) -> attempt 1 exit `1` (`os error 5`), then exact-release retry exit `0`
-- Screenshots are from that retry-built `windows/target/release/codexu-tauri.exe` output
-- `node --test tests\leadership-rail-layout.test.mjs` (`windows/apps/codexu-tauri/web`) -> exit `0`; score pin and threshold dots share the exact rail coordinate frame
-- `cargo tauri build --no-bundle` (`windows`) -> final exit `0` after the score-pin coordinate correction
-- `git diff --check` -> exit `0` (no whitespace errors; LF/CRLF conversion notice only if file rewritten by git later)
-
-## Known gaps
-
-- Official quota coverage remains pending until quota backend is intentionally integrated.
-- Native no-signal empty-state artifacts were not collected in this pass.
-- No manual pixel-diff was run for this update.
-- A replacement AI Leadership screenshot after the score-pin coordinate correction was not captured in this batch.
-
-## Aligned items (explicit)
-
-- Canonical L1-L7 threshold mapping and leadership command rail semantics are present in the evidence capture; post-fix point-to-fill alignment is validated by the regression test and manual release review, not by the retained PNG.
-- Identity/score context and 2x2 metric block are present in AI Leadership tab capture.
-- Default home uses `7-day Token mix` local telemetry naming and does not expose raw usage context.
+- No active Claude runtime/provider or runtime selector.
+- No official quota reader or fake quota display.
+- No prompt/response body, raw tool arguments, credentials, or paths in the fixed overview.
+- No strict cross-platform dollar/Wool claim for the local Month estimate.

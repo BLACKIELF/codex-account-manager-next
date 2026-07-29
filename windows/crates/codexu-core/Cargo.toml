@@ -11,9 +11,12 @@ description = "Core domain models and data readers for codexU Windows port"
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
+chrono-tz = "0.10"
 thiserror.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
 tracing.workspace = true
 rusqlite = { workspace = true, features = ["bundled", "chrono"] }
 

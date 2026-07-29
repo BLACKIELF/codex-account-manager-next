@@ -194,12 +194,9 @@ pub struct ToolUsage {
 pub struct SkillUsage {
     pub id: String,
     pub name: String,
-    pub path: String,
     pub source_label: String,
     pub load_count: i64,
     pub thread_count: i64,
-    pub static_token_estimate: Option<i64>,
-    pub static_byte_count: Option<i64>,
     #[serde(with = "chrono::serde::ts_milliseconds_option")]
     pub last_loaded_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -220,8 +217,6 @@ pub struct LocalUsage {
     pub project_board: Option<ProjectBoard>,
     pub tool_usages: Vec<ToolUsage>,
     pub skill_usages: Vec<SkillUsage>,
-    /// Optional leadership snapshot assembled by the Windows leadership pipeline.
-    pub leadership: Option<crate::models::LeadershipDashboardSnapshot>,
 }
 
 /// A bucket for the recent 7-day bar chart.

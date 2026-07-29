@@ -9,17 +9,18 @@ import {
   ShieldQuestion,
   TrendingUp,
 } from 'lucide-react';
-import { Fragment, type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import type {
-  LeadershipDashboardSnapshot,
+  CodexLeadershipSignal,
   LeadershipDayPoint,
   LeadershipDimension,
   LeadershipProjectContribution,
+  LeadershipReport,
 } from '../types/models';
 import { LEADERSHIP_BANDS, type LeadershipBand, resolveLeadershipBand } from '../utils/leadershipTitles';
 
 interface LeadershipPanelProps {
-  snapshot: LeadershipDashboardSnapshot | null;
+  signal: CodexLeadershipSignal | null;
 }
 
 type DimensionKind = LeadershipDimension['kind'];
@@ -55,8 +56,8 @@ const DIMENSION_META: Record<DimensionKind, DimensionMeta> = {
   },
 };
 
-export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
-  if (!snapshot || snapshot.reports.length === 0) {
+export function LeadershipPanel({ signal }: LeadershipPanelProps) {
+  if (!signal) {
     return (
       <section className="glass-panel p-6 sm:p-7 space-y-3">
         <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
@@ -67,16 +68,28 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
     );
   }
 
-  const report = snapshot.reports[0];
-  const score = report.score;
-  const evidenceRatio = Number.isFinite(report.evidence_coverage) ? report.evidence_coverage : 0;
+  const report = getReportFromSignal(signal);
+  if (!report) {
+    return (
+      <section className="glass-panel p-6 sm:p-7 space-y-3">
+        <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
+        <p className="text-sm text-secondary">
+          Leadership report is not ready yet for period {signal.period}. Refresh after more local snapshots are
+          collected.
+        </p>
+      </section>
+    );
+  }
+
+  const score = signal.score;
+  const evidenceRatio = Number.isFinite(signal.evidence_coverage) ? signal.evidence_coverage : 0;
   const activeBand = resolveLeadershipBand(score, evidenceRatio, report.active_day_count);
-  const hasSignal = activeBand !== null;
+  const hasSignal = score !== null && activeBand !== null;
   const confidence = Math.max(0, Math.min(100, Math.round(evidenceRatio * 100)));
   const trend = buildTrendSummary(report.daily_points);
   const sortedProjects = sortProjects(report.projects, 'ai_hours');
   const latest = report.daily_points.length > 0 ? report.daily_points[report.daily_points.length - 1] : null;
-  const isStub = snapshot.model_version.toLowerCase().includes('stub');
+  const isStub = signal.model_version.toLowerCase().includes('stub');
   const scoreForVisual = hasSignal ? Math.max(0, Math.min(100, Math.round(score ?? 0))) : 0;
 
   return (
@@ -88,7 +101,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <div>
               <p className="font-semibold text-primary">Fallback snapshot mode</p>
               <p className="text-xs text-tertiary mt-1">
-                Snapshot source is {snapshot.model_version}; fields may be fallback-approximated.
+                Snapshot source is {signal.model_version}; fields may be fallback-approximated.
               </p>
             </div>
           </div>
@@ -100,9 +113,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
           <div className="leadership-hero-left">
             <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
             <h2 className="text-2xl sm:text-3xl font-semibold mt-1 text-primary leading-tight">
-              {hasSignal
-                ? `${activeBand.zhName} / ${activeBand.enName}`
-                : 'Leadership score pending'}
+              {hasSignal ? `${activeBand?.zhName} / ${activeBand?.enName}` : 'Leadership score pending'}
             </h2>
             <p className="text-sm text-secondary mt-1">
               {hasSignal
@@ -113,9 +124,9 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
               {hasSignal ? (
                 <>
                   <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                    L{activeBand.level}
+                    L{activeBand?.level}
                   </span>
-                  <span className="text-tertiary text-xs">Band {activeBand.scoreMin}-{activeBand.scoreMax}</span>
+                  <span className="text-tertiary text-xs">Band {activeBand?.scoreMin}-{activeBand?.scoreMax}</span>
                 </>
               ) : (
                 <>
@@ -190,9 +201,7 @@ export function LeadershipPanel({ snapshot }: LeadershipPanelProps) {
             <BookOpenText size={16} className="text-secondary" />
             <h3 className="text-sm font-semibold text-primary">Score Path</h3>
           </div>
-          <p className="text-sm text-secondary">
-            This score is composed of span, leverage, orchestration, and autonomy.
-          </p>
+          <p className="text-sm text-secondary">This score is composed of span, leverage, orchestration, and autonomy.</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <Pill icon={<Globe size={14} />} label="Core score" value={formatCoreScore(report.core_score)} />
             <Pill icon={<Eye size={14} />} label="Maturity" value={report.maturity.toFixed(1)} />
@@ -347,64 +356,66 @@ export function LeadershipCommandRail({
   const signalLabel = currentBand
     ? `Open AI Leadership detail for score ${safeScore}, L${currentBand.level} ${currentBand.zhName} / ${currentBand.enName}`
     : 'Open AI Leadership detail';
+  const trackStyle = {
+    ['--rail-progress' as keyof CSSProperties]: `${safeScore}%`,
+  } as CSSProperties;
   const railContent = (
     <>
-      <div className="leadership-rail-track" />
-      {hasSignal ? (
-        <div
-          className="leadership-rail-fill"
-          style={{ ['--progress' as keyof CSSProperties]: `${safeScore}%` } as CSSProperties}
-        />
-      ) : null}
+      <div className="leadership-rail-stage-layer" aria-hidden="true">
+        {hasSignal
+          ? bands.map((band) => {
+              const isCurrent = safeScore >= band.scoreMin && safeScore <= band.scoreMax;
+              const thresholdPercent = clampPercent(band.scoreMin);
 
-      {hasSignal ? (
-        <div className="leadership-threshold-points">
-          {bands.map((band) => {
-            const isCurrent = score >= band.scoreMin && score <= band.scoreMax;
-            const thresholdPercent = clampPercent((band.scoreMin / 100) * 100);
-            const isLargeBadge = band.level === 6;
-            const isLeftEdge = band.scoreMin === 0;
-            const nodeClass = [
-              'leadership-rail-node',
-              isCurrent ? 'leadership-rail-node-current' : '',
-              isLeftEdge ? 'leadership-rail-node-left-edge' : '',
-            ]
-              .filter(Boolean)
-              .join(' ');
-
-            return (
-              <Fragment key={band.id}>
-                <div
-                  className={nodeClass}
-                  style={{ left: `${thresholdPercent}%` }}
-                  aria-label={`Band ${band.level} start at ${band.scoreMin}`}
-                >
-                  <span className="leadership-rail-dot" aria-hidden="true" />
-                  <span className="leadership-rail-node-label">L{band.level}</span>
+              return (
+                <div key={band.id} className="leadership-rail-stage" style={{ left: `${thresholdPercent}%` }}>
+                  <span className="leadership-rail-stage-badge-slot">
+                    <img
+                      src={band.badge}
+                      alt=""
+                      className={`leadership-rail-badge ${isCurrent ? 'leadership-rail-badge-current' : ''}`}
+                    />
+                  </span>
+                  <span className={`leadership-rail-stage-label ${isCurrent ? 'leadership-rail-stage-label-current' : ''}`}>
+                    L{band.level}
+                  </span>
                 </div>
-                <img
-                  src={band.badge}
-                  alt=""
-                  style={{ left: `${thresholdPercent}%` }}
+              );
+            })
+          : null}
+      </div>
+
+      <div className="leadership-rail-track-layer" style={trackStyle}>
+        <div className="leadership-rail-track" />
+        {hasSignal ? <div className="leadership-rail-fill" /> : null}
+        {hasSignal
+          ? bands.map((band) => {
+              const isCurrent = safeScore >= band.scoreMin && safeScore <= band.scoreMax;
+              const isReached = safeScore >= band.scoreMin;
+              const thresholdPercent = clampPercent(band.scoreMin);
+
+              return (
+                <span
+                  key={band.id}
                   className={[
-                    'leadership-rail-badge',
-                    isCurrent ? 'leadership-rail-badge-current' : '',
-                    isLeftEdge ? 'leadership-rail-badge-left-edge' : '',
-                    isLargeBadge ? 'leadership-rail-badge-large' : '',
+                    'leadership-rail-dot',
+                    isReached ? 'leadership-rail-dot-reached' : '',
+                    isCurrent ? 'leadership-rail-dot-current' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
+                  style={{ left: `${thresholdPercent}%` }}
+                  aria-hidden="true"
                 />
-              </Fragment>
-            );
-          })}
-          <div className="leadership-rail-score-marker" style={{ left: `${safeScore}%` }}>
-            <span className="leadership-rail-score-text">{`${safeScore} / 100`}</span>
-            <span className="leadership-rail-score-stem" aria-hidden="true" />
-            <span className="leadership-rail-score-pin" aria-hidden="true" />
-          </div>
-        </div>
-      ) : null}
+              );
+            })
+          : null}
+        {hasSignal ? (
+          <span className={`leadership-rail-score-text ${safeScore < 9 ? 'leadership-rail-score-text-low' : ''}`}>
+            {`${safeScore} / 100`}
+          </span>
+        ) : null}
+      </div>
     </>
   );
 
@@ -412,7 +423,7 @@ export function LeadershipCommandRail({
     return (
       <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
         {railContent}
-        <span className="sr-only">Leadership details unavailable</span>
+        <span className="sr-only">AI Leadership details currently shown</span>
       </div>
     );
   }
@@ -427,7 +438,12 @@ export function LeadershipCommandRail({
       {railContent}
     </button>
   );
+}
 
+function getReportFromSignal(signal: CodexLeadershipSignal): LeadershipReport | null {
+  if (!signal.report) return null;
+  const byPeriod = signal.report.reports.find((item) => item.period === signal.period);
+  return byPeriod ?? signal.report.reports[0] ?? null;
 }
 
 function Pill({

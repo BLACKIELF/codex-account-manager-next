@@ -1,93 +1,47 @@
-# macOS / Windows Dashboard 功能对照（非像素复刻）
+# macOS / Windows Dashboard Feature Comparison
 
-该文档按 macOS `README` 截图顺序组织：AI Leadership、Today、Usage、Projects、Skills。
-仅重排信息架构与状态标签，不做像素级对齐。
+- Evidence date: 2026-07-28
+- Rule: hierarchy and evidence comparison only; not pixel, price, quota, or capture-time value parity.
 
-结论标签：`fixed overview`、`variable panel`、`partial`、`not implemented`、`outside Dashboard + partial`。
+## Current Windows boundary
 
-## 1. 信息结构（非 Mermaid）
+Windows is an implemented **Codex-only** snapshot surface:
 
-```
-[ 固定总览区 ]
-macOS: Leadership + 配额/用量卡片 + 月度 Wool 进度
-Windows: DashboardHome（Leadership + Token mix + Today/7-Day/Lifetime + rail）
-
-          │ 结构上可对照
-          ▼
-
-[ 下层可变内容槽 ]
-Tasks | Usage | Projects | Skills（macOS）
-Windows: 当前 Leadership 为详情化独立页面，不并入四个下层可变项
+```text
+local Codex sources -> CodexDashboardProvider -> CodexDashboardSnapshot
+-> source-safe AppState / Tauri IPC -> web Dashboard
 ```
 
-## 2. 固定总览映射（fixed overview）
+There is no active Claude provider or runtime selector. `RuntimeUsageSnapshot` is nested inside the Codex snapshot, local usage stays at `codex.snapshot.local`, and official quotas remain unavailable rather than simulated.
 
-### 2.1 AI Leadership / Dashboard Overview
+## Fixed overview and Leadership
 
-**状态：`fixed overview`**
-
-| macOS | Windows |
+| macOS reference | Current Windows evidence |
 | --- | --- |
-| ![macOS AI Leadership](../../screenshot-v1.2.0-ai-leadership.png) | ![Windows Dashboard Home](../reports/assets/dashboard-home-native.png) |
+| ![macOS AI Leadership hierarchy reference](../../screenshot-v1.2.0-ai-leadership.png) | ![Windows Dashboard](../reports/assets/codex-dashboard-snapshot-default-native.png) |
 
-- **差异边界**：Windows 采用 DashboardHome 总览，包含 Leadership、Token mix 与多类用量指标。
-- **缺口说明**：Monthly Wool 在 Windows 当前无直接对应；Token mix 不能替代该指标。
+- **AI Leadership** corresponds to a `fixed overview` hierarchy; its detail is a drill-down, not one of the lower variable panels.
+- The current default image is `1462x1196` physical / DPI 144, about `975x797 CSS px`, and shows exactly three global tabs plus a complete L1-L7 rail.
+- Token mix values are local telemetry: `1,784,569,471` input + `1,706,410,112` cached input + `9,142,958` output = `3,500,122,541`. They appear once each, with no raw body content.
+- Windows has a local Month estimate surface, but it is not strict evidence for macOS monthly Wool: source semantics, pricing, and Token mix meaning differ.
 
-## 3. 下层可变内容槽（按 README 顺序）
-
-### 3.1 Tasks（variable panel + not implemented）
-
-| macOS | Windows |
+| macOS Leadership detail | Windows Leadership detail |
 | --- | --- |
-| ![macOS Today](../../screenshot-v0.3.0-today.png) | ![Windows Dashboard Home（Today 用量度量）](../reports/assets/dashboard-home-native.png) |
+| ![macOS AI Leadership detail hierarchy reference](../../screenshot-v1.2.0-ai-leadership.png) | ![Windows Leadership](../reports/assets/codex-dashboard-snapshot-leadership-native.png) |
 
-**状态：`variable panel` + `not implemented`**
+The Windows drill-down shows identity, score, rail, and metrics. Its score is an independent evidence-gated signal; absent evidence remains null/pending rather than becoming a guessed label.
 
-Windows 仅提供 Today 用量度量，未提供独立任务面板。
+## Lower panels: evidence boundary
 
-### 3.2 Usage（variable panel + partial）
+The current native lower-navigation evidence is ![Windows lower Dashboard navigation](../reports/assets/codex-dashboard-snapshot-lower-tabs-native.png). At `1462x1196` physical pixels / DPI 144, it shows readable L1-L7, Month value explicitly labelled local API-equivalent estimate / not official quota, and one Tasks / Usage / Projects / Skills tab bar. It establishes that current navigation hierarchy only; it does not establish each variable panel's internal content or strict one-to-one macOS equivalence.
 
-| macOS | Windows |
+For strict cross-platform comparison, Tasks and Skills remain `variable panel + not implemented`: this label describes missing strict equivalence evidence only. It is not a conclusion about the full product area, source code, Reader, IPC, or roadmap. Tool usage is not relabelled as Skills.
+
+## Validation
+
+| Check | Result |
 | --- | --- |
-| ![macOS Usage](../../screenshot-v0.3.0-usage.png) | ![Windows Usage](assets/dashboard-usage-home.png) |
-
-**状态：`variable panel` + `partial`**
-
-Windows 与 macOS 均有用量信息，但展示口径和布局不完全同构，只能作为部分对应。
-
-### 3.3 Projects（variable panel + partial）
-
-| macOS | Windows |
-| --- | --- |
-| ![macOS Projects](../../screenshot-v0.3.0-projects.png) | ![Windows Projects](assets/dashboard-projects-native.png) |
-
-**状态：`variable panel` + `partial`**
-
-Windows 内容偏项目排行/邻近映射，存在语义重叠但非同一页面结构。
-
-### 3.4 Skills（variable panel + not implemented）
-
-| macOS | Windows |
-| --- | --- |
-| ![macOS Skills](../../screenshot-v0.3.0-skills.png) | ![Windows Tool usage](assets/dashboard-tools-nearest-skills.png) |
-
-**状态：`variable panel` + `not implemented`**
-
-Windows 目前仅有 Tool usage 近似证据，独立 Skills 页面缺失。
-
-## 4. 设置/配置（Dashboard 外层）`outside Dashboard + partial`
-
-**状态：`outside Dashboard + partial`**
-
-| macOS | Windows |
-| --- | --- |
-| ![macOS Palette gallery](../../screenshot-v1.1.0-palette-gallery.png) | ![Windows Settings](assets/settings-dashboard-native.png) |
-
-两端都存在配置相关入口，但不在 Dashboard 结构内一一同构；Windows Settings 存在且对得上“配置功能”，macOS 为 palette gallery，故标记为部分对应且在 Dashboard 外层。
-
-## 5. 结论
-
-- `AI Leadership` 为固定总览层级对应：有对应关系，但信息边界不同。
-- `Tasks` 与 `Skills` 是 `variable panel + not implemented`（仅近似证据）。
-- `Usage` 与 `Projects` 是 `variable panel + partial`。
-- `Settings / Palette` 为 Dashboard 外层的 `outside Dashboard + partial`。
+| `npm run build` | pass |
+| `cargo test --workspace` | pass: 35 core + 7 Tauri tests |
+| `cargo tauri build --no-bundle` | pass; release EXE built 2026-07-28 04:23:36 Asia/Shanghai |
+| `git diff --check` | pass |

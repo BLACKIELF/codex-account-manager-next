@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>macOS / Windows 架构对齐审查 · codexU</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1120; --surface:#121b2d; --surface-2:#17233a; --line:#2a3b58; --text:#edf3ff; --muted:#aab9d2; --blue:#6eb5ff; --green:#7de2ae; --amber:#f4bd65; --red:#ff918b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:linear-gradient(145deg,#0b1120,#111a2b 60%,#0c1725); color:var(--text); font:15px/1.65 ui-sans-serif,system-ui,"Segoe UI","Microsoft YaHei",sans-serif; }
+    main { max-width:1180px; margin:auto; padding:44px 24px 72px; }
+    h1 { margin:0 0 4px; font-size:clamp(28px,4vw,44px); line-height:1.15; }
+    h2 { margin:40px 0 14px; font-size:24px; } h3 { margin:0 0 8px; font-size:17px; }
+    p, li { color:var(--muted); } strong { color:var(--text); } code { color:#dbeafe; background:#17233a; padding:1px 5px; border-radius:4px; }
+    .eyebrow { color:var(--blue); font-weight:700; letter-spacing:.08em; text-transform:uppercase; font-size:12px; }
+    .meta { color:var(--muted); margin:8px 0 24px; }
+    .verdict { border:1px solid rgba(255,145,139,.42); background:linear-gradient(135deg,rgba(113,38,45,.45),rgba(25,32,52,.78)); padding:22px; border-radius:16px; }
+    .verdict h2 { margin:0 0 8px; color:#ffd4d1; }
+    .flow-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    .flow { background:rgba(18,27,45,.9); border:1px solid var(--line); border-radius:16px; padding:18px; }
+    .flow.mac { border-color:rgba(125,226,174,.45); } .flow.windows { border-color:rgba(255,145,139,.45); }
+    .box { border:1px solid var(--line); border-radius:10px; margin:8px 0; padding:9px 12px; background:var(--surface-2); color:var(--text); font-weight:600; }
+    .mac .box { border-left:4px solid var(--green); } .windows .box { border-left:4px solid var(--red); }
+    .arrow { color:var(--muted); text-align:center; height:15px; line-height:15px; }
+    table { width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:rgba(18,27,45,.85); }
+    th,td { padding:12px 14px; vertical-align:top; border-bottom:1px solid var(--line); text-align:left; } th { color:var(--text); background:#17233a; font-size:13px; } tr:last-child td { border-bottom:0; } td { color:var(--muted); }
+    .p0 { color:var(--red); font-weight:700; } .p1 { color:var(--amber); font-weight:700; } .ok { color:var(--green); font-weight:700; }
+    .target { border:1px solid rgba(110,181,255,.4); background:rgba(19,38,68,.56); border-radius:16px; padding:20px; } .target pre { margin:12px 0 0; white-space:pre-wrap; color:#dbeafe; font:13px/1.6 ui-monospace,Consolas,monospace; }
+    a { color:#9ecbff; } .note { border-left:3px solid var(--amber); padding:8px 14px; background:rgba(107,74,24,.18); border-radius:0 8px 8px 0; }
+    @media (max-width:800px) { main { padding:30px 16px 48px; } .flow-grid { grid-template-columns:1fr; } table { display:block; overflow-x:auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">codexU · Architecture Review</div>
+    <h1>macOS / Windows 架构对齐审查</h1>
+    <p class="meta">2026-07-28 · 只读代码与架构文档审查 · 非运行时或视觉验收</p>
+
+    <section class="verdict">
+      <h2>结论：Windows 目前是 Codex-first 的局部重建，不是 macOS 架构的等价实现。</h2>
+      <p>Claude Code 暂不在 Windows 范围内；本审查不要求补做它。macOS 的核心是保留 runtime 输入边界，再统一编排、任务归一与领导力证据评分。Windows 当前可以只做 Codex，但它把结果压成一个 <code>LocalUsage</code>，并在同一聚合函数中推导 leadership，再经 Tauri 交给 React。复制了同名模型和页面，却没有接通相同的责任边界。</p>
+    </section>
+
+    <h2>两条真实数据流</h2>
+    <section class="flow-grid" aria-label="macOS 与 Windows 数据流对比">
+      <article class="flow mac">
+        <h3>macOS：按责任编排</h3>
+        <div class="box">Codex / Claude 本地与官方来源</div><div class="arrow">↓</div>
+        <div class="box">各自的 RuntimeUsageProvider</div><div class="arrow">↓</div>
+        <div class="box">RuntimeProviderRegistry → MultiRuntimeUsageReader</div><div class="arrow">↓</div>
+        <div class="box">Usage Aggregator ｜ Leadership evidence reader / scorer ｜ Task normalizer</div><div class="arrow">↓</div>
+        <div class="box">主窗口与 runtime-aware 的状态栏</div>
+      </article>
+      <article class="flow windows">
+        <h3>Windows：当前接线路径（Codex-only 范围）</h3>
+        <div class="box">state_5.sqlite + Codex JSONL</div><div class="arrow">↓</div>
+        <div class="box">CodexStateReader + CodexTranscriptReader</div><div class="arrow">↓</div>
+        <div class="box">make_local_usage（同时 build_leadership_snapshot）</div><div class="arrow">↓</div>
+        <div class="box">AppState 缓存 LocalUsage → Tauri IPC</div><div class="arrow">↓</div>
+        <div class="box">React Dashboard；tray 仅菜单入口</div>
+      </article>
+    </section>
+
+    <h2>macOS 中真正值得迁移的块</h2>
+    <table>
+      <thead><tr><th>块</th><th>责任</th><th>为何可迁移</th></tr></thead>
+      <tbody>
+        <tr><td>Runtime Provider</td><td>每个 runtime 输出独立的 snapshot、状态与来源。</td><td>是平台无关的产品语义边界，不是 SwiftUI 细节。</td></tr>
+        <tr><td>Multi-runtime 编排</td><td>先取得每个 runtime，再产生 aggregate。</td><td>避免合并后丢失 Codex / Claude 的可用性与错误信息。</td></tr>
+        <tr><td>领导力 evidence pipeline</td><td>从 worker / interval / quality 形成评分输入，并带缓存。</td><td>使“缺证据”可表达为未评分，而不是伪造分数。</td></tr>
+        <tr><td>消费者分离</td><td>主窗口与状态栏消费各自需要的 snapshot。</td><td>Windows tray 可以有自己的原生实现，但应消费同一合同。</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Windows 的关键偏离</h2>
+    <table>
+      <thead><tr><th>优先级</th><th>事实</th><th>架构后果</th></tr></thead>
+      <tbody>
+        <tr><td class="p0">P0</td><td>Tauri <code>AppState</code> 只装配 Codex reader，并缓存 / 返回 <code>LocalUsage</code>。</td><td>Codex-only 是当前范围；问题是顶层合同仍丢失 runtime 可用性、来源标签、配额与 task-board 等 Codex 自身语义。</td></tr>
+        <tr><td class="p0">P0</td><td>用量聚合与 leadership snapshot 在 <code>make_local_usage</code> 同时生成。</td><td>Reader、聚合器和评分器坍缩；即使只做 Codex，也难以独立测试、校准或说明语义。</td></tr>
+        <tr><td class="p0">P0</td><td>Windows leadership 从 token event、tool-call 比率与固定启发式推导，并总是返回 score。</td><td>与 macOS 的 interval / evidence-quality / null-score 门槛不同；不能把相同等级标签视为同义。</td></tr>
+        <tr><td class="p1">P1</td><td>Rust 定义了 MultiRuntime 类型，Claude reader 也存在，但 Tauri app 未接线。</td><td>Claude 未接线是有意的范围控制；即使只启用 Codex，也应先接入单 runtime snapshot，而不是误称已经对齐。</td></tr>
+        <tr><td class="p1">P1</td><td>Dashboard 标注 Local only，Tasks 与 Skills 显示无合同的空态。</td><td>降级文案是诚实的，但说明页面外观不能代表功能 parity。</td></tr>
+        <tr><td class="p1">P1</td><td>Windows tray 只提供 Open / Settings / Refresh / Quit。</td><td>它是窗口入口，尚非 macOS status-item 的快速扫描 consumer。</td></tr>
+      </tbody>
+    </table>
+
+    <h2>推荐的 Windows 目标边界</h2>
+    <section class="target">
+      <strong>不要继续翻译 macOS UI；让 Windows 重回同一套责任顺序。</strong>
+      <pre>Windows Codex local sources / app-server
+  → Codex platform adapter (only enabled provider)
+  → RuntimeUsageSnapshot boundary
+  → local usage | task normalization | quota continuity
+  → leadership evidence reader/cache → macOS-aligned scoring semantics
+  → CodexDashboardSnapshot IPC → Tauri state → React dashboard / tray</pre>
+      <p><code>LocalUsage</code> 应退回为单一 runtime 的本地用量子对象；当前顶层 IPC 至少需要 Codex snapshot、leadership、刷新时间与可解释的降级状态。不要为 Claude 提前实现聚合或 UI。</p>
+    </section>
+
+    <h2>建议的重建顺序</h2>
+    <ol>
+      <li>更正 Windows 蓝图：将当前“从 macOS 直接迁移”的图标为目标草案，而非实现真值。</li>
+      <li>先接 Codex provider seam：输出明确的 runtime snapshot 与状态，不接入 Claude reader。</li>
+      <li>从 usage 聚合中拆出 leadership evidence / scoring；未完成语义移植前，结果必须标作估算，不可复用权威等级文案。</li>
+      <li>把 Tauri IPC 与缓存升级为 Codex dashboard contract。</li>
+      <li>最后绑定 Dashboard、空态和 tray，再做 Windows 原生视觉验收。</li>
+    </ol>
+
+    <p class="note"><strong>审查边界：</strong>已检查 macOS Provider、MultiRuntime、聚合、领导力与状态栏消费者；已检查 Windows reader、Tauri state / IPC / tray 与 React 调用链。未运行 build、probe、Tauri app 或新截图，因此不声称运行时、性能或视觉验收通过。生成本报告时保留了用户正在进行的 Dashboard 与截图改动。</p>
+  </main>
+</body>
+</html>

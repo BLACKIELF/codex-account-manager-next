@@ -1,5 +1,7 @@
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -7,8 +9,11 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info, warn};
 
-use codexu_core::models::LocalUsage;
-use codexu_core::readers::{CodexStateReader, CodexThreadMetadata, CodexTranscriptReader};
+use codexu_core::models::CodexDashboardSnapshot;
+use codexu_core::readers::{
+    apply_official_quota, read_installed_codex_quota, retain_last_verified_quota,
+    CodexAppServerQuotaSnapshot, CodexDashboardProvider,
+};
 
 /// User-configurable app settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,11 +94,28 @@ impl AppConfig {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct DashboardSourceKey {
+    codex_root: PathBuf,
+    cache_dir: PathBuf,
+}
+
+impl DashboardSourceKey {
+    fn from_config(config: &AppConfig) -> Self {
+        Self {
+            codex_root: config.codex_root.clone(),
+            cache_dir: config.cache_dir.clone(),
+        }
+    }
+}
+
 /// Cached usage snapshot plus metadata.
 #[derive(Debug, Clone)]
 pub struct CachedSnapshot {
-    pub usage: LocalUsage,
+    pub dashboard: Option<CodexDashboardSnapshot>,
     pub refreshed_at: DateTime<Utc>,
+    pub source_key: DashboardSourceKey,
+    pub source_generation: u64,
 }
 
 /// Shared application state.
@@ -102,6 +124,12 @@ pub struct AppState {
     pub snapshot: RwLock<Option<CachedSnapshot>>,
     pub refresh_lock: Mutex<()>,
     pub app_data_dir: PathBuf,
+    source_generation: AtomicU64,
+    #[cfg(test)]
+    pub(crate) refresh_call_count: Arc<AtomicUsize>,
+    #[cfg(test)]
+    refresh_attempt_hook:
+        Arc<tokio::sync::Mutex<Option<std::sync::Arc<dyn Fn(Arc<Self>, usize) + Send + Sync>>>>,
 }
 
 impl AppState {
@@ -112,72 +140,159 @@ impl AppState {
             snapshot: RwLock::new(None),
             refresh_lock: Mutex::new(()),
             app_data_dir,
+            source_generation: AtomicU64::new(0),
+            #[cfg(test)]
+            refresh_call_count: Arc::new(AtomicUsize::new(0)),
+            #[cfg(test)]
+            refresh_attempt_hook: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    async fn current_source_key(&self) -> DashboardSourceKey {
+        let config = self.config.read().await;
+        DashboardSourceKey::from_config(&config)
+    }
+
+    fn is_fresh(snapshot: &CachedSnapshot, max_age_secs: u64) -> bool {
+        let age_secs = (Utc::now() - snapshot.refreshed_at).num_seconds().max(0) as u64;
+        age_secs < max_age_secs
     }
 
     /// Get the cached usage, refreshing if the cache is missing or older than `max_age_secs`.
     pub async fn get_usage(
         self: &Arc<Self>,
         max_age_secs: u64,
-    ) -> anyhow::Result<Option<LocalUsage>> {
+    ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
+        let current_source = self.current_source_key().await;
+
         {
             let snapshot = self.snapshot.read().await;
-            if let Some(ref s) = *snapshot {
-                let age_secs = (Utc::now() - s.refreshed_at).num_seconds().max(0) as u64;
-                if age_secs < max_age_secs {
-                    return Ok(Some(s.usage.clone()));
+            if let Some(ref cached) = *snapshot {
+                if cached.source_key == current_source
+                    && cached.source_generation == self.source_generation.load(Ordering::SeqCst)
+                    && Self::is_fresh(cached, max_age_secs)
+                {
+                    return Ok(cached.dashboard.clone());
                 }
             }
         }
-        self.refresh_usage().await
+
+        let _guard = self.refresh_lock.lock().await;
+        let current_source = self.current_source_key().await;
+
+        {
+            let snapshot = self.snapshot.read().await;
+            if let Some(ref cached) = *snapshot {
+                if cached.source_key == current_source
+                    && cached.source_generation == self.source_generation.load(Ordering::SeqCst)
+                    && Self::is_fresh(cached, max_age_secs)
+                {
+                    return Ok(cached.dashboard.clone());
+                }
+            }
+        }
+
+        self.refresh_usage_from_source(
+            current_source,
+            self.source_generation.load(Ordering::SeqCst),
+        )
+        .await
     }
 
     /// Force a refresh of the usage snapshot.
-    pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<LocalUsage>> {
+    pub async fn refresh_usage(self: &Arc<Self>) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
         let _guard = self.refresh_lock.lock().await;
-        info!("Refreshing usage snapshot");
+        let source = self.current_source_key().await;
+        self.refresh_usage_from_source(source, self.source_generation.load(Ordering::SeqCst))
+            .await
+    }
 
-        let config = self.config.read().await.clone();
-        let state_db_path = config.codex_root.join("state_5.sqlite");
+    async fn refresh_usage_from_source(
+        self: &Arc<Self>,
+        source: DashboardSourceKey,
+        expected_generation: u64,
+    ) -> anyhow::Result<Option<CodexDashboardSnapshot>> {
+        let mut source = source;
+        let mut expected_generation = expected_generation;
 
-        let metadata: HashMap<String, CodexThreadMetadata> =
-            if tokio::fs::try_exists(&state_db_path).await.unwrap_or(false) {
-                match CodexStateReader::new(&state_db_path).load_metadata().await {
-                    Ok(m) => {
-                        info!("Loaded metadata for {} threads from state DB", m.len());
-                        m
-                    }
-                    Err(e) => {
-                        warn!("Failed to load Codex state metadata: {}", e);
-                        HashMap::new()
-                    }
+        for _attempt in 0..2 {
+            let previous_dashboard = {
+                let snapshot = self.snapshot.read().await;
+                snapshot.as_ref().and_then(|cached| {
+                    (cached.source_key == source && cached.source_generation == expected_generation)
+                        .then(|| cached.dashboard.clone())
+                        .flatten()
+                })
+            };
+            let provider = CodexDashboardProvider::new(&source.codex_root, &source.cache_dir);
+            let now = Utc::now();
+            let snapshot = match provider.load_dashboard_snapshot(now).await? {
+                Some(dashboard) => {
+                    let quota = read_installed_codex_quota()
+                        .await
+                        .unwrap_or_else(|_| CodexAppServerQuotaSnapshot::unavailable());
+                    Some(retain_last_verified_quota(
+                        previous_dashboard.as_ref(),
+                        apply_official_quota(dashboard, quota),
+                    ))
                 }
-            } else {
-                info!("Codex state DB not found; continuing without metadata enrichment");
-                HashMap::new()
+                None => None,
             };
 
-        let reader = CodexTranscriptReader::new(&config.cache_dir);
-        let usage = reader
-            .load_local_usage_with_metadata(&config.codex_root, metadata, Utc::now())
-            .await?;
+            #[cfg(test)]
+            self.refresh_call_count.fetch_add(1, Ordering::SeqCst);
 
-        let snapshot = usage.clone().map(|u| CachedSnapshot {
-            usage: u,
-            refreshed_at: Utc::now(),
-        });
+            #[cfg(test)]
+            {
+                let hook = self.refresh_attempt_hook.lock().await.clone();
+                if let Some(hook) = hook {
+                    hook(self.clone(), _attempt);
+                }
+            }
 
-        {
-            let mut guard = self.snapshot.write().await;
-            *guard = snapshot;
+            let cache = Some(CachedSnapshot {
+                dashboard: snapshot.clone(),
+                refreshed_at: now,
+                source_key: source.clone(),
+                source_generation: expected_generation,
+            });
+            {
+                let mut guard = self.snapshot.write().await;
+                let config = self.config.read().await;
+                if DashboardSourceKey::from_config(&config) == source
+                    && self.source_generation.load(Ordering::SeqCst) == expected_generation
+                {
+                    *guard = cache;
+                    if snapshot.is_some() {
+                        info!("Usage snapshot refreshed");
+                    } else {
+                        warn!("No Codex usage data found");
+                    }
+                    return Ok(snapshot);
+                }
+            }
+
+            if self.source_generation.load(Ordering::SeqCst) != expected_generation {
+                warn!(
+                    "Config source changed while refreshing dashboard snapshot; retrying with latest config"
+                );
+            } else {
+                warn!("Could not refresh dashboard snapshot with stable source; retrying");
+            }
+
+            let latest_source = {
+                let config = self.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            let latest_generation = self.source_generation.load(Ordering::SeqCst);
+            source = latest_source;
+            expected_generation = latest_generation;
         }
 
-        if usage.is_some() {
-            info!("Usage snapshot refreshed");
-        } else {
-            warn!("No Codex usage data found");
-        }
-        Ok(usage)
+        warn!("Could not refresh usage snapshot with stable source config");
+        anyhow::bail!(
+            "Failed to refresh dashboard snapshot due to concurrent config source changes"
+        );
     }
 
     /// Update config and persist to disk.
@@ -186,7 +301,12 @@ impl AppState {
         F: FnOnce(&mut AppConfig),
     {
         let mut config = self.config.write().await;
+        let previous_source = DashboardSourceKey::from_config(&config);
         f(&mut config);
+        let current_source = DashboardSourceKey::from_config(&config);
+        if current_source != previous_source {
+            self.source_generation.fetch_add(1, Ordering::SeqCst);
+        }
         let cloned = config.clone();
         drop(config);
         cloned.save(&self.app_data_dir)?;
@@ -213,5 +333,300 @@ pub async fn clear_cache(state: &Arc<AppState>) {
         let mut guard = state.snapshot.write().await;
         *guard = None;
     }
+    state.source_generation.fetch_add(1, Ordering::SeqCst);
     info!("Cleared codexU cache");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use chrono::Duration;
+    use codexu_core::models::{
+        AccountInfo, CodexDashboardSnapshot, CodexLeadershipSignal, LeadershipDashboardSnapshot,
+        RuntimeMenuStatus, RuntimeScope, RuntimeUsageSnapshot, UsageSnapshot,
+    };
+
+    fn unique_temp_path(prefix: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        std::env::temp_dir().join(format!("{}-{}", prefix, stamp))
+    }
+
+    fn create_snapshot(now: DateTime<Utc>) -> CodexDashboardSnapshot {
+        CodexDashboardSnapshot {
+            codex: RuntimeUsageSnapshot {
+                scope: RuntimeScope::Codex,
+                snapshot: UsageSnapshot {
+                    refreshed_at: now,
+                    account: AccountInfo {
+                        r#type: "codex-local".to_string(),
+                        plan_type: None,
+                        email_present: false,
+                    },
+                    limit_id: "codex-local".to_string(),
+                    limit_name: "Codex local".to_string(),
+                    quota_read_succeeded: false,
+                    five_hour_quota: None,
+                    seven_day_quota: None,
+                    monthly_quota: None,
+                    local: None,
+                    task_board: None,
+                    messages: vec![],
+                },
+                status: RuntimeMenuStatus::LocalOnly,
+                quota_source_label: "Official quota unavailable on Windows".to_string(),
+                usage_source_label: "Local Codex transcript data".to_string(),
+            },
+            leadership: CodexLeadershipSignal {
+                score: None,
+                evidence_coverage: 0.0,
+                active_day_count: 0,
+                period: "twentyEightDays".to_string(),
+                model_version: "1.3-codex-interval".to_string(),
+                report: Some(LeadershipDashboardSnapshot {
+                    model_version: "1.3-codex-interval".to_string(),
+                    refreshed_at: now,
+                    reports: vec![],
+                }),
+            },
+            refreshed_at: now,
+            messages: vec!["Cached dashboard snapshot".to_string()],
+        }
+    }
+
+    #[tokio::test]
+    async fn get_usage_uses_cached_snapshot_before_ttl() {
+        let app_data_dir = unique_temp_path("codexu-tauri-cache-test");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let now = Utc::now();
+
+        {
+            let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            *snapshot = Some(CachedSnapshot {
+                dashboard: Some(create_snapshot(now - Duration::seconds(5))),
+                refreshed_at: now,
+                source_key: source,
+                source_generation: 0,
+            });
+        }
+
+        let value = state.get_usage(60).await.unwrap().unwrap();
+        assert_eq!(
+            value.messages,
+            vec!["Cached dashboard snapshot".to_string()]
+        );
+        assert_eq!(value.refreshed_at, now - Duration::seconds(5));
+    }
+
+    #[tokio::test]
+    async fn get_usage_uses_cached_none_and_respects_ttl() {
+        let app_data_dir = unique_temp_path("codexu-tauri-cache-none-ttl");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let now = Utc::now();
+        {
+            let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            *snapshot = Some(CachedSnapshot {
+                dashboard: None,
+                refreshed_at: now,
+                source_key: source,
+                source_generation: 0,
+            });
+        }
+
+        let value = state.get_usage(120).await.unwrap();
+        assert!(value.is_none());
+        assert_eq!(0, state.refresh_call_count.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn refresh_usage_stores_none_snapshot_and_keeps_ttl_entry() {
+        let app_data_dir = unique_temp_path("codexu-tauri-refresh-none");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let codex_root = unique_temp_path("codexu-tauri-codex-root-none");
+        let cache_dir = unique_temp_path("codexu-tauri-cache-root-none");
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = codex_root;
+            config.cache_dir = cache_dir;
+        }
+
+        let snapshot = state.refresh_usage().await.unwrap();
+        assert!(snapshot.is_none());
+
+        let cached = state.snapshot.read().await.clone();
+        assert!(cached.is_some());
+        assert!(cached.unwrap().dashboard.is_none());
+    }
+
+    #[tokio::test]
+    async fn get_usage_uses_latest_source_when_cached_source_is_stale() {
+        let app_data_dir = unique_temp_path("codexu-tauri-source-change");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let old_root = unique_temp_path("codexu-tauri-old-root");
+        let new_root = unique_temp_path("codexu-tauri-new-root");
+        let cache_dir = unique_temp_path("codexu-tauri-source-cache");
+        std::fs::create_dir_all(&old_root).unwrap();
+        std::fs::create_dir_all(&new_root).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::create_dir_all(old_root.join("archived_sessions")).unwrap();
+        std::fs::create_dir_all(new_root.join("archived_sessions")).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = old_root.clone();
+            config.cache_dir = cache_dir.clone();
+        }
+        {
+            let mut snapshot = state.snapshot.write().await;
+            *snapshot = Some(CachedSnapshot {
+                dashboard: None,
+                refreshed_at: Utc::now() - Duration::seconds(120),
+                source_key: DashboardSourceKey::from_config(&AppConfig {
+                    codex_root: old_root.clone(),
+                    cache_dir: cache_dir.clone(),
+                    theme: ThemeMode::System,
+                    refresh_interval_secs: 60,
+                    tray_density: TrayDensity::Classic,
+                }),
+                source_generation: 0,
+            });
+        }
+
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = new_root.clone();
+        }
+
+        let _ = state.get_usage(0).await.unwrap();
+
+        let cached = state.snapshot.read().await.clone().expect("cache exists");
+        assert_eq!(cached.source_key.codex_root, new_root);
+    }
+
+    #[tokio::test]
+    async fn get_usage_only_refreshes_once_for_concurrent_readers() {
+        let app_data_dir = unique_temp_path("codexu-tauri-single-flight");
+        let state = Arc::new(AppState::new(app_data_dir));
+        {
+            let mut snapshot = state.snapshot.write().await;
+            let source = {
+                let config = state.config.read().await;
+                DashboardSourceKey::from_config(&config)
+            };
+            *snapshot = Some(CachedSnapshot {
+                dashboard: None,
+                refreshed_at: Utc::now() - Duration::seconds(120),
+                source_key: source,
+                source_generation: 0,
+            });
+        }
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = unique_temp_path("codexu-tauri-single-flight-root");
+            let cache_dir = unique_temp_path("codexu-tauri-single-flight-cache");
+            std::fs::create_dir_all(&config.codex_root.join("archived_sessions")).unwrap();
+            std::fs::create_dir_all(&cache_dir).unwrap();
+            config.cache_dir = cache_dir;
+        }
+
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let state = state.clone();
+            handles.push(tokio::spawn(async move { state.get_usage(60).await }));
+        }
+
+        for handle in handles {
+            handle.await.unwrap().unwrap();
+        }
+
+        let value = state.get_usage(60).await.unwrap();
+        assert!(value.is_none());
+        assert_eq!(1, state.refresh_call_count.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn get_usage_rejects_stale_snapshot_after_source_generation_cycle() {
+        let app_data_dir = unique_temp_path("codexu-tauri-generation-cycle");
+        let state = Arc::new(AppState::new(app_data_dir));
+        let source_a = unique_temp_path("codexu-tauri-generation-root-a");
+        let source_b = unique_temp_path("codexu-tauri-generation-root-b");
+        let cache_dir = unique_temp_path("codexu-tauri-generation-cache");
+        std::fs::create_dir_all(&source_a).unwrap();
+        std::fs::create_dir_all(&source_b).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        {
+            let mut config = state.config.write().await;
+            config.codex_root = source_a.clone();
+            config.cache_dir = cache_dir;
+        }
+
+        let stale_source = {
+            let config = state.config.read().await;
+            DashboardSourceKey::from_config(&config)
+        };
+        {
+            let mut snapshot = state.snapshot.write().await;
+            *snapshot = Some(CachedSnapshot {
+                dashboard: Some(create_snapshot(Utc::now())),
+                refreshed_at: Utc::now(),
+                source_key: stale_source,
+                source_generation: 0,
+            });
+        }
+
+        let _ = state
+            .update_config(|config| {
+                config.codex_root = source_b.clone();
+            })
+            .await
+            .unwrap();
+        let _ = state
+            .update_config(|config| {
+                config.codex_root = source_a.clone();
+            })
+            .await
+            .unwrap();
+
+        let value = state.get_usage(600).await.unwrap();
+        assert!(value.is_none());
+        let cached = state
+            .snapshot
+            .read()
+            .await
+            .clone()
+            .expect("cache refreshed");
+        assert_eq!(cached.source_generation, 2);
+        assert_eq!(cached.source_key.codex_root, source_a);
+    }
+
+    #[tokio::test]
+    async fn refresh_usage_returns_error_after_retry_exhaustion_with_generation_toggles() {
+        let app_data_dir = unique_temp_path("codexu-tauri-retry-exhaustion");
+        let state = Arc::new(AppState::new(app_data_dir));
+        {
+            let mut hook = state.refresh_attempt_hook.lock().await;
+            *hook = Some(std::sync::Arc::new(|state, _attempt| {
+                state.source_generation.fetch_add(1, Ordering::SeqCst);
+            }));
+        }
+
+        let value = state.refresh_usage().await;
+        assert!(value.is_err());
+        assert!(value.unwrap_err().to_string().contains(
+            "Failed to refresh dashboard snapshot due to concurrent config source changes"
+        ));
+        assert_eq!(state.refresh_call_count.load(Ordering::SeqCst), 2);
+    }
 }
