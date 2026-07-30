@@ -35,3 +35,6 @@ jobs:
       - name: Check Windows Rust formatting
         working-directory: windows
         run: cargo fmt --all -- --check
+      - name: Test Windows Rust workspace
+        working-directory: windows
+        run: cargo test --workspace
