@@ -58,14 +58,21 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
                 <div className="space-y-2">
                   {column.items.map((item) => (
                     <article key={item.id} className="rounded-xl border border-theme bg-surface-elevated p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-primary leading-snug">{item.title}</p>
-                        <span className="shrink-0 rounded-full border border-theme bg-surface-inset px-2 py-0.5 text-[11px] text-secondary">
-                          {stateLabel(item)}
-                        </span>
+                      <div className="min-w-0">
+                        <p
+                          className="task-card-title text-sm font-medium text-primary leading-snug min-w-0 break-words min-h-10"
+                          title={item.title}
+                        >
+                          {item.title}
+                        </p>
                       </div>
                       {item.detail ? <p className="text-xs text-secondary mt-2 truncate">{item.detail}</p> : null}
-                      {factualTime(item) ? <p className="text-xs text-tertiary mt-1">{factualTime(item)}</p> : null}
+                      {factualTime(item) ? <p className="text-xs text-tertiary mt-1 truncate">{factualTime(item)}</p> : null}
+                      <footer className="task-card-footer mt-2 pt-2 border-t border-theme/30">
+                        <span className="inline-flex items-center rounded-full border border-theme bg-surface-inset px-2 py-0.5 text-[11px] text-secondary">
+                          {stateLabel(item)}
+                        </span>
+                      </footer>
                     </article>
                   ))}
                 </div>

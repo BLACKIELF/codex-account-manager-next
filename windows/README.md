@@ -8,6 +8,17 @@
 
 ## 快速开始
 
+Windows 工作区使用 MSVC ABI。首次在当前检出目录开发时，安装并设置项目级 toolchain override：
+
+```powershell
+rustup toolchain install 1.97.1-x86_64-pc-windows-msvc --profile minimal --component rustfmt
+rustup override set 1.97.1-x86_64-pc-windows-msvc
+```
+
+该 override 只作用于当前 `windows/` 目录，不修改全局默认 toolchain。仓库不提交
+`rust-toolchain.toml`，因为只写版本号时，rustup 会沿用用户的 default host，在配置为
+GNU 的 Windows 环境中意外选择 GNU ABI，并额外要求系统提供 `dlltool.exe`。
+
 ```powershell
 cd windows
 cargo build --release
@@ -23,8 +34,23 @@ $env:RUST_LOG="info"
 ## 验证
 
 ```powershell
-cargo test -p codexu-core
+cargo test --workspace
 ```
+
+### 原生视觉验收
+
+Dashboard 的正式 Windows 本机采集入口会构建真实 Tauri release 应用，在
+960×760 与 720×540 下通过 Windows Graphics Capture 按精确 HWND 采集
+Overview、Tasks、AI Leadership、Usage、Projects 与 Skills，并把截图、日志和
+WebView2 临时数据只写入 Git 忽略的 `.local-artifacts/`。
+
+```powershell
+cd ..
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1
+```
+
+运行边界、DPI 说明、精确 PID 清理规则和人工验收清单见
+[`docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md`](../docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md)。
 
 ## 工程结构
 

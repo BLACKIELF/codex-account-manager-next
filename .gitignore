@@ -33,3 +33,6 @@ xcuserdata/
 # dev context
 requirements/
 explore/
+
+# Private local visual-acceptance artifacts (screenshots, logs, and capture helpers)
+/.local-artifacts/
