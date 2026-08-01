@@ -37,6 +37,21 @@ $env:RUST_LOG="info"
 cargo test --workspace
 ```
 
+### 原生视觉验收
+
+Dashboard 的正式 Windows 本机采集入口会构建真实 Tauri release 应用，在
+960×760 与 720×540 下通过 Windows Graphics Capture 按精确 HWND 采集
+Overview、Tasks、AI Leadership、Usage、Projects 与 Skills，并把截图、日志和
+WebView2 临时数据只写入 Git 忽略的 `.local-artifacts/`。
+
+```powershell
+cd ..
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1
+```
+
+运行边界、DPI 说明、精确 PID 清理规则和人工验收清单见
+[`docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md`](../docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md)。
+
 ## 工程结构
 
 ```text

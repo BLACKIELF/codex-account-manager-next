@@ -18,3 +18,50 @@ test('Task board panel does not render raw status or technical task identifiers'
   assert.doesNotMatch(panel, /item\.code/);
   assert.doesNotMatch(panel, /item\.thread_id/);
 });
+
+test('Task board cards reserve stable title height and keep state in card footer', () => {
+  const cardMatch = panel.match(/<article key=\{item\.id\}[\s\S]*?<\/article>/);
+  assert.ok(cardMatch, 'Expected an article card block in component source');
+  const cardBody = cardMatch[0];
+  const normalizedCard = cardBody.replace(/\s+/g, ' ');
+
+  assert.match(cardBody, /task-card-title/);
+  assert.match(cardBody, /task-card-footer/);
+  assert.doesNotMatch(normalizedCard, /flex items-start justify-between gap-2/);
+
+  const titleStart = cardBody.indexOf('task-card-title');
+  assert.ok(titleStart >= 0, 'Expected task-card-title in card');
+  const titleClose = cardBody.indexOf('</p>', titleStart);
+  assert.ok(titleClose > titleStart, 'Expected closing title paragraph');
+  const titleSegment = cardBody.slice(titleStart - 80, titleClose + 4);
+
+  assert.match(titleSegment, /break-words/);
+  assert.match(titleSegment, /min-h-10/);
+  assert.match(titleSegment, /min-w-0/);
+  assert.doesNotMatch(titleSegment, /line-clamp/);
+  assert.doesNotMatch(titleSegment, /truncate/);
+  assert.doesNotMatch(titleSegment, /text-ellipsis/);
+  assert.ok(!titleSegment.includes('{stateLabel(item)}'), 'Title block should not include stateLabel');
+  assert.ok(titleSegment.includes('{item.title}'), 'Title segment should include item.title');
+
+  const stateCount = (cardBody.match(/stateLabel\(item\)/g) || []).length;
+  assert.equal(stateCount, 1, 'stateLabel should appear once in each card');
+
+  const footerStart = cardBody.indexOf('task-card-footer');
+  assert.ok(footerStart > titleStart, 'Footer should follow title');
+  const footerClose = cardBody.indexOf('</footer>', footerStart);
+  assert.ok(footerClose > footerStart, 'Expected closing footer tag');
+  const footerSegment = cardBody.slice(footerStart - 80, footerClose + 9);
+  assert.ok(footerSegment.includes('{stateLabel(item)}'), 'State label should be in footer');
+  assert.match(footerSegment, /task-card-footer/);
+
+  assert.match(
+    normalizedCard,
+    /item\.detail \? <p className=\"text-xs text-secondary mt-2 truncate\">\s*\{item\.detail\}<\/p> : null/,
+  );
+  assert.match(
+    normalizedCard,
+    /factualTime\(item\) \? <p className=\"text-xs text-tertiary mt-1 truncate\">\s*\{factualTime\(item\)\}<\/p> : null/,
+  );
+  assert.match(normalizedCard, /<footer className=\"[^\"]*\">[\s\S]*{stateLabel\(item\)}[\s\S]*<\/footer>/);
+});
