@@ -14,7 +14,7 @@
 - [`diagram.png`](./diagram.png)：完成语义与视觉复核后的选定视图。
 - [`render.py`](./render.py)：项目本地确定性 renderer。
 
-> 当前语义源与确定性维护视图已经重建。生成式候选和最终选图状态会在本次重做的下一阶段更新。
+> Windows Blueprint 已完成双轨重建。`schema.yaml` 与确定性 SVG 是维护事实；`diagram.png` 选用经过语义修正和复核的生成式候选作为人类阅读主图。
 
 ## 定位与边界
 
@@ -89,7 +89,7 @@ Screenshot Workflow Preflight
 - 确定性图：项目本地 `render.py` 已从 schema 生成 SVG/HTML；`diagram.render.png` 由 Microsoft Edge headless 浏览器 fallback 从 HTML 截取，未声称使用 CairoSVG。
 - Geometry gate：0 error；保留 7 个可解释 warning，其中 5 个是已经绘出弧形线桥的验证/额度旁路交叉，2 个是同一 Probe/Build 来源的共享线干。
 - 生成式候选：使用内置 image generation，从同一五块、测试映射与 composition 约束生成；一次定向编辑只修正 Probe/Build 的四个箭头方向。人工语义复核确认五块完整、测试均在 Runtime 外、截图链和本地证据链正确、没有新增架构节点。
-- 最终 `diagram.png`：待比较两个候选后选择。
+- 最终 `diagram.png`：选择 `diagram.generated.png`。它比确定性候选拥有更强的整体层级、更少的视觉穿线和更清晰的截图证据链；两者 SHA-256 相同，证明选图是候选的逐字节复制。
 
 本阶段没有重新运行 Windows 产品代码、Rust/Web 测试或 native capture；上述结果只覆盖 Blueprint schema、渲染和几何检查。
 
