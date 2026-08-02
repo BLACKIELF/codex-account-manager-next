@@ -131,7 +131,7 @@ async fn classifies_non_subagent_state_records_without_claiming_completion() {
 
     let scheduled = column(&board, "scheduled");
     assert_eq!(scheduled.count, 1);
-    assert_eq!(scheduled.items[0].title, "Daily check");
+    assert_eq!(scheduled.items[0].title, "Local Codex automation");
     assert_eq!(scheduled.items[0].display_state, "scheduled");
     assert_eq!(scheduled.items[0].state_basis, "scheduleConfig");
 }
@@ -248,4 +248,56 @@ async fn does_not_expose_prompt_shaped_thread_titles_without_title_provenance() 
     assert_eq!(item.display_state, "recentlyActive");
     assert_eq!(item.source_kind, "codexThread");
     assert_eq!(item.state_basis, "activityWindow");
+}
+
+#[tokio::test]
+async fn does_not_expose_workspace_or_automation_names_in_task_snapshot() {
+    let root = tempfile::tempdir().unwrap();
+    create_task_state_db(root.path());
+    let now = Utc.with_ymd_and_hms(2026, 7, 29, 12, 0, 0).unwrap();
+    let connection = Connection::open(root.path().join("state_5.sqlite")).unwrap();
+
+    connection
+        .execute(
+            "INSERT INTO threads (
+                id, title, cwd, archived, thread_source, created_at, updated_at, recency_at, archived_at
+            ) VALUES (?1, ?2, ?3, 0, 'main', ?4, ?4, ?4, NULL)",
+            params![
+                "private-thread-id",
+                "根据 customer-notes 研究并总结",
+                "C:\\Users\\ADMIN\\private\\customer-notes",
+                now.timestamp(),
+            ],
+        )
+        .unwrap();
+    drop(connection);
+
+    let automation_dir = root.path().join("automations").join("private-automation");
+    std::fs::create_dir_all(&automation_dir).unwrap();
+    std::fs::write(
+        automation_dir.join("automation.toml"),
+        "id = \"private-automation-id\"\nname = \"/goal upload customer-notes\"\nstatus = \"ACTIVE\"\nkind = \"cron\"\nrrule = \"FREQ=DAILY\"\n",
+    )
+    .unwrap();
+
+    let board = CodexTaskBoardReader::new(root.path())
+        .load(now)
+        .await
+        .unwrap()
+        .expect("state database should produce a board");
+    let serialized = serde_json::to_string(&board).unwrap();
+
+    for forbidden in [
+        "根据 customer-notes 研究并总结",
+        "C:\\Users\\ADMIN\\private\\customer-notes",
+        "customer-notes",
+        "private-thread-id",
+        "/goal upload customer-notes",
+        "private-automation-id",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "task-board response leaked {forbidden}"
+        );
+    }
 }

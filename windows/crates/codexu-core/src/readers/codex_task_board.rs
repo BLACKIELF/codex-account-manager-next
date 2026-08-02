@@ -4,8 +4,9 @@
 //! `state_5.sqlite` and enabled automation metadata. It never opens session
 //! JSONL files, previews, prompts, replies, tool arguments, or raw logs.
 
-use std::collections::HashSet;
+use std::collections::{hash_map::DefaultHasher, HashSet};
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
@@ -44,7 +45,6 @@ impl CodexTaskBoardReader {
 #[derive(Debug)]
 struct ThreadRecord {
     id: String,
-    workspace: String,
     activity_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
     archived: bool,
@@ -53,7 +53,6 @@ struct ThreadRecord {
 #[derive(Debug, Default)]
 struct AutomationRecord {
     id: String,
-    title: String,
     detail: String,
     chip: String,
 }
@@ -83,7 +82,7 @@ fn load_task_board(codex_root: &Path, now: DateTime<Utc>) -> Result<Option<TaskB
 fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadRecord>> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let columns = table_columns(&connection, "threads")?;
-    if !["id", "title", "archived", "created_at", "updated_at"]
+    if !["id", "archived", "created_at", "updated_at"]
         .iter()
         .all(|column| columns.contains(*column))
     {
@@ -96,7 +95,6 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     } else {
         ""
     };
-    let cwd_expr = if columns.contains("cwd") { "cwd" } else { "''" };
     let recency_expr = if columns.contains("recency_at") {
         "recency_at"
     } else {
@@ -109,19 +107,17 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     };
 
     let active_query = format!(
-        "SELECT id, {cwd_expr}, updated_at, {recency_expr}, created_at
+        "SELECT id, updated_at, {recency_expr}, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 0
-           AND TRIM(COALESCE(title, '')) <> ''
            {source_clause}
            AND MAX(COALESCE(updated_at, 0), COALESCE({recency_expr}, 0), COALESCE(created_at, 0)) >= ?1
          ORDER BY MAX(COALESCE({recency_expr}, 0), COALESCE(updated_at, 0), COALESCE(created_at, 0)) DESC"
     );
     let archived_query = format!(
-        "SELECT id, {cwd_expr}, {archived_at_expr}, updated_at, created_at
+        "SELECT id, {archived_at_expr}, updated_at, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 1
-           AND TRIM(COALESCE(title, '')) <> ''
            {source_clause}
            AND MAX(COALESCE({archived_at_expr}, 0), COALESCE(updated_at, 0), COALESCE(created_at, 0)) >= ?1
          ORDER BY MAX(COALESCE({archived_at_expr}, 0), COALESCE(updated_at, 0), COALESCE(created_at, 0)) DESC"
@@ -132,11 +128,10 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let active_rows = active_statement.query_map([day_start], |row| {
         Ok(ThreadRecord {
             id: row.get(0)?,
-            workspace: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             activity_at: latest_timestamp([
+                row.get::<_, Option<i64>>(1)?,
                 row.get::<_, Option<i64>>(2)?,
                 row.get::<_, Option<i64>>(3)?,
-                row.get::<_, Option<i64>>(4)?,
             ]),
             archived_at: None,
             archived: false,
@@ -149,13 +144,12 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let mut archived_statement = connection.prepare(&archived_query)?;
     let archived_rows = archived_statement.query_map([day_start], |row| {
         let archived_at = latest_timestamp([
+            row.get::<_, Option<i64>>(1)?,
             row.get::<_, Option<i64>>(2)?,
             row.get::<_, Option<i64>>(3)?,
-            row.get::<_, Option<i64>>(4)?,
         ]);
         Ok(ThreadRecord {
             id: row.get(0)?,
-            workspace: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             activity_at: archived_at,
             archived_at,
             archived: true,
@@ -207,9 +201,9 @@ fn build_task_board(
     let mut scheduled: Vec<TaskItem> = automations
         .into_iter()
         .map(|automation| TaskItem {
-            id: format!("automation-{}", automation.id),
-            code: display_code("AUTO", &automation.id),
-            title: automation.title,
+            id: opaque_task_id("automation", &automation.id),
+            code: "LOCAL-AUTOMATION".to_string(),
+            title: "Local Codex automation".to_string(),
             detail: automation.detail,
             chip: automation.chip,
             updated_at: None,
@@ -253,22 +247,18 @@ fn thread_task_item(
         record.activity_at
     };
     TaskItem {
-        id: format!("{}-{kind}", record.id),
-        code: display_code("COD", &record.id),
+        id: opaque_task_id(kind, &record.id),
+        code: "LOCAL-THREAD".to_string(),
         // `threads.title` is a user/session label and has no provenance that
         // proves it is safe agent-generated task text. Keep the activity card
         // and its factual state while using a non-content label at this boundary.
         title: THREAD_ACTIVITY_TITLE.to_string(),
-        detail: if record.workspace.trim().is_empty() {
-            String::new()
-        } else {
-            short_workspace_name(&record.workspace)
-        },
+        detail: String::new(),
         chip: display_state.to_string(),
         updated_at: factual_time,
         tokens: None,
         kind: kind.to_string(),
-        thread_id: Some(record.id),
+        thread_id: None,
         runtime_state: "recorded".to_string(),
         source_kind: "codexThread".to_string(),
         display_state: display_state.to_string(),
@@ -329,7 +319,6 @@ fn find_automation_files(directory: &Path, depth: usize, files: &mut Vec<PathBuf
 
 fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
     let mut id = None;
-    let mut name = None;
     let mut status = None;
     let mut kind = None;
     let mut rrule = None;
@@ -343,7 +332,6 @@ fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
         let value = value.trim().trim_matches('"').trim_matches('\'').trim();
         match key.trim() {
             "id" => id = non_empty(value),
-            "name" => name = non_empty(value),
             "status" => status = non_empty(value),
             "kind" => kind = non_empty(value),
             "rrule" => rrule = non_empty(value),
@@ -362,12 +350,8 @@ fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
     }
 
     let id = id.map(str::to_owned).unwrap_or_else(|| "local".to_string());
-    let title = name
-        .map(str::to_owned)
-        .unwrap_or_else(|| "Codex automation".to_string());
     Some(AutomationRecord {
         id,
-        title: display_title(&title),
         detail: if is_heartbeat {
             "Active heartbeat".to_string()
         } else {
@@ -405,61 +389,11 @@ fn non_empty(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
-fn display_code(prefix: &str, id: &str) -> String {
-    let compact: String = id
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .collect();
-    let suffix: String = compact
-        .chars()
-        .rev()
-        .take(4)
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    format!("{prefix}-{}", suffix.to_ascii_uppercase())
-}
-
-fn display_title(title: &str) -> String {
-    const MAX_SAFE_TITLE_CHARS: usize = 160;
-    const SAFE_FALLBACK_TITLE: &str = "Local activity record";
-    let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
-    let has_control_character = title.chars().any(char::is_control);
-    let is_untrusted = normalized.is_empty()
-        || has_control_character
-        || normalized.chars().count() > MAX_SAFE_TITLE_CHARS
-        || contains_private_path(&normalized)
-        || contains_sensitive_value_marker(&normalized);
-
-    if is_untrusted {
-        SAFE_FALLBACK_TITLE.to_string()
-    } else {
-        normalized
-    }
-}
-
-fn contains_private_path(title: &str) -> bool {
-    let lowercase = title.to_ascii_lowercase();
-    title.contains("\\")
-        || title.contains(":/")
-        || lowercase.contains("/users/")
-        || lowercase.contains("/home/")
-        || lowercase.contains(".codex")
-        || lowercase.contains(".claude")
-}
-
-fn contains_sensitive_value_marker(title: &str) -> bool {
-    title.contains('$') || title.contains('%') || title.contains('¥') || title.contains('￥')
-}
-
-fn short_workspace_name(path: &str) -> String {
-    let trimmed = path.trim_matches(|character| character == '/' || character == '\\');
-    trimmed
-        .split(['/', '\\'])
-        .next_back()
-        .unwrap_or_default()
-        .to_string()
+fn opaque_task_id(kind: &str, source_id: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    kind.hash(&mut hasher);
+    source_id.hash(&mut hasher);
+    format!("{kind}-{:016x}", hasher.finish())
 }
 
 fn latest_timestamp(values: [Option<i64>; 3]) -> Option<DateTime<Utc>> {
