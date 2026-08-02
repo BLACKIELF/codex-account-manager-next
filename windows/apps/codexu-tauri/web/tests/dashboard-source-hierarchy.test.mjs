@@ -33,7 +33,7 @@ test('keeps one macOS-ordered Dashboard tab system and relegates Leadership to i
   assert.doesNotMatch(home, /Leadership facts/);
 
   assert.match(home, /className="dashboard-home-overview"/);
-  assert.match(home, /dashboard-home-command/);
+  assert.match(home, /<LeadershipOverviewCard/);
   assert.match(home, /className="dashboard-home-monthly"/);
   assert.match(
     stylesheet,

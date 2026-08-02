@@ -1,8 +1,7 @@
 import { Activity, Calendar, TrendingUp } from 'lucide-react';
 import { useRef, useState, type KeyboardEvent } from 'react';
 import type { CodexLeadershipSignal, UsageSnapshot } from '../types/models';
-import { resolveLeadershipBand } from '../utils/leadershipTitles';
-import { LeadershipOrbit, LeadershipPanel } from './LeadershipPanel';
+import { LeadershipOverviewCard, LeadershipPanel } from './LeadershipPanel';
 import { MonthlyValueProgress } from './MonthlyValueProgress';
 import { ProjectsPanel } from './ProjectsPanel';
 import { QuotaOverview } from './QuotaOverview';
@@ -38,12 +37,6 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
   const signal = leadershipSignal ?? null;
   const detailed = usage?.detailed_usage ?? null;
   const hasUsage = usage !== null;
-
-  const score = signal?.score ?? null;
-  const evidenceRatio = signal?.evidence_coverage ?? 0;
-  const activeBand = resolveLeadershipBand(score, evidenceRatio, signal?.active_day_count ?? 0);
-  const hasSignal = score !== null && activeBand !== null;
-  const scoreForVisual = hasSignal && score !== null ? Math.max(0, Math.min(100, Math.round(score))) : 0;
 
   const [activeDashboardTab, setActiveDashboardTab] = useState<DashboardContentTab>('tasks');
   const tabRefs = useRef<Record<DashboardContentTab, HTMLButtonElement | null>>({
@@ -84,24 +77,11 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
   return (
     <div className="space-y-4 dashboard-home">
       <div className="dashboard-home-overview">
-        <button
-          className="dashboard-home-command glass-panel p-4"
-          type="button"
-          onClick={() => setActiveDashboardTab('leadership')}
-          aria-controls="dashboard-home-panel-leadership"
-        >
-          <div className="flex flex-col gap-2 items-center text-center">
-            <LeadershipOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
-            <h3 className="text-sm font-semibold text-primary">AI Leadership</h3>
-            <p className="text-xs text-tertiary">
-              {hasSignal
-                ? `Period ${signal?.period ?? '28d'} · ${signal?.active_day_count ?? 0} active days`
-                : hasUsage
-                  ? 'Record insufficient for authoritative title'
-                  : 'No usage snapshot yet'}
-            </p>
-          </div>
-        </button>
+        <LeadershipOverviewCard
+          signal={signal}
+          hasUsage={hasUsage}
+          onOpen={() => setActiveDashboardTab('leadership')}
+        />
 
         <QuotaOverview snapshot={snapshot} sourceLabel={quotaSourceLabel} onRefresh={onQuotaRefresh} />
 

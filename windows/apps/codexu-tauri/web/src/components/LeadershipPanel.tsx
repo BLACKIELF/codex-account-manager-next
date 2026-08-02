@@ -56,6 +56,62 @@ const DIMENSION_META: Record<DimensionKind, DimensionMeta> = {
   },
 };
 
+export function LeadershipOverviewCard({
+  signal,
+  hasUsage,
+  onOpen,
+}: {
+  signal: CodexLeadershipSignal | null;
+  hasUsage: boolean;
+  onOpen: () => void;
+}) {
+  const report = signal ? getReportFromSignal(signal) : null;
+  const score = signal?.score ?? null;
+  const evidenceRatio = signal?.evidence_coverage ?? 0;
+  const activeBand = resolveLeadershipBand(score, evidenceRatio, signal?.active_day_count ?? 0);
+  const hasSignal = score !== null && activeBand !== null;
+  const scoreForVisual = hasSignal ? Math.max(0, Math.min(100, Math.round(score ?? 0))) : 0;
+  const title = hasSignal && activeBand ? `L${activeBand.level} · ${activeBand.zhName}` : 'Record building';
+  const accessibilityLabel = hasSignal && activeBand
+    ? `AI Leadership, score ${scoreForVisual}, ${title}, ${formatNumberish(report?.agent_count)} agents over 28 days, ${formatHours(report?.ai_hours)} AI hours over 28 days`
+    : hasUsage
+      ? 'AI Leadership, leadership record insufficient'
+      : 'AI Leadership, no usage snapshot yet';
+
+  return (
+    <button
+      className="dashboard-home-command glass-panel p-4 leadership-overview-card"
+      type="button"
+      onClick={onOpen}
+      aria-controls="dashboard-home-panel-leadership"
+      aria-label={accessibilityLabel}
+    >
+      <div className="leadership-overview-header">
+        <span>AI Leadership</span>
+        <span className="leadership-period-badge">28D</span>
+      </div>
+      <div className="leadership-overview-lockup">
+        <LeadershipOrbit
+          score={scoreForVisual}
+          activeBand={activeBand}
+          hasSignal={hasSignal}
+          showScore={false}
+        />
+        <div className="leadership-overview-identity">
+          <strong>{title}</strong>
+          <span>{hasSignal && activeBand ? activeBand.enName : hasUsage ? 'Record insufficient' : 'No snapshot yet'}</span>
+        </div>
+      </div>
+      <div className="leadership-overview-facts">
+        <OverviewFact icon={<Brain size={13} />} label="Score" value={formatScore(hasSignal ? scoreForVisual : null)} />
+        <OverviewFact icon={<Calendar size={13} />} label="Led agents" value={formatNumberish(report?.agent_count)} />
+        <OverviewFact icon={<Globe size={13} />} label="AI hours" value={formatHours(report?.ai_hours)} />
+        <OverviewFact icon={<TrendingUp size={13} />} label="Peak" value={formatNumberish(report?.peak_concurrency)} />
+      </div>
+    </button>
+  );
+}
+
 export function LeadershipPanel({ signal }: LeadershipPanelProps) {
   if (!signal) {
     return (
@@ -74,7 +130,7 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
       <section className="glass-panel p-6 sm:p-7 space-y-3">
         <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
         <p className="text-sm text-secondary">
-          Leadership report is not ready yet for period {signal.period}. Refresh after more local snapshots are
+          Leadership report is not ready yet for {formatPeriod(signal.period)}. Refresh after more local snapshots are
           collected.
         </p>
       </section>
@@ -108,38 +164,34 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
         </section>
       ) : null}
 
-      <section className="glass-panel p-5 space-y-5">
-        <div className="leadership-hero">
-          <div className="leadership-hero-left">
-            <div className="text-xs text-tertiary uppercase tracking-wide">AI Leadership</div>
-            <h2 className="text-2xl sm:text-3xl font-semibold mt-1 text-primary leading-tight">
-              {hasSignal ? `${activeBand?.zhName} / ${activeBand?.enName}` : 'Leadership score pending'}
-            </h2>
-            <p className="text-sm text-secondary mt-1">
-              {hasSignal
-                ? `Period ${report.period} | ${report.active_day_count} active days | Evidence ${confidence}%`
-                : `Record insufficient for authoritative title | Period ${report.period}`}
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              {hasSignal ? (
-                <>
-                  <span className="px-2 py-1 rounded-full border border-accent/45 bg-accent/12 text-accent text-xs font-medium">
-                    L{activeBand?.level}
-                  </span>
-                  <span className="text-tertiary text-xs">Band {activeBand?.scoreMin}-{activeBand?.scoreMax}</span>
-                </>
-              ) : (
-                <>
-                  <span className="px-2 py-1 rounded-full border border-status-warn/45 bg-status-warn/12 text-status-warn text-xs font-medium">
-                    Record insufficient
-                  </span>
-                  <span className="text-tertiary text-xs">Record insufficient</span>
-                </>
-              )}
+      <section className="glass-panel leadership-panel-primary p-5">
+        <div className="leadership-panel-identity">
+          <div className="leadership-identity-card">
+            <LeadershipOrbit
+              score={scoreForVisual}
+              activeBand={activeBand}
+              hasSignal={hasSignal}
+              showScore={false}
+            />
+            <div className="leadership-identity-copy">
+              <div className="leadership-identity-eyebrow">
+                <span>AI Leadership</span>
+                <span className="leadership-period-badge">28D</span>
+              </div>
+              <h2 className="leadership-identity-title">
+                {hasSignal ? `L${activeBand?.level} · ${activeBand?.zhName}` : 'Leadership score pending'}
+              </h2>
+              <p className="leadership-identity-subtitle">
+                {hasSignal ? activeBand?.enName : 'Record insufficient for authoritative title'}
+              </p>
+              <p className="leadership-identity-meta">
+                Period {formatPeriod(report.period)} · {report.active_day_count} active days · Evidence {confidence}%
+              </p>
             </div>
           </div>
-          <div className="leadership-hero-right">
-                <LeadershipOrbit score={scoreForVisual} activeBand={activeBand} hasSignal={hasSignal} />
+          <div className="leadership-identity-score">
+            <span>Leadership score</span>
+            <strong>{formatScore(hasSignal ? scoreForVisual : null)}</strong>
           </div>
         </div>
 
@@ -149,7 +201,7 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
           score={hasSignal ? scoreForVisual : 0}
         />
 
-        <div className="leadership-hero-metrics-grid">
+        <div className="leadership-panel-facts">
           <Pill icon={<Brain size={14} />} label="Leadership Score" value={formatScore(hasSignal ? scoreForVisual : null)} />
           <Pill icon={<Calendar size={14} />} label="28-day Agents" value={formatNumberish(report.agent_count)} />
           <Pill icon={<Globe size={14} />} label="AI Hours" value={formatHours(report.ai_hours)} />
@@ -300,10 +352,12 @@ export function LeadershipOrbit({
   score,
   hasSignal,
   activeBand,
+  showScore = true,
 }: {
   score: number;
   hasSignal: boolean;
   activeBand: LeadershipBand | null;
+  showScore?: boolean;
 }) {
   const radius = 56;
   const circumference = Math.round(2 * Math.PI * radius);
@@ -332,9 +386,11 @@ export function LeadershipOrbit({
           ) : null}
         </svg>
       </div>
-      <div className={`leadership-orbit-score ${!hasSignal ? 'leadership-orbit-score-empty' : ''}`}>
-        {hasSignal ? `${safeScore}` : '--'}
-      </div>
+      {showScore ? (
+        <div className={`leadership-orbit-score ${!hasSignal ? 'leadership-orbit-score-empty' : ''}`}>
+          {hasSignal ? `${safeScore}` : '--'}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -376,8 +432,12 @@ export function LeadershipCommandRail({
                       className={`leadership-rail-badge ${isCurrent ? 'leadership-rail-badge-current' : ''}`}
                     />
                   </span>
-                  <span className={`leadership-rail-stage-label ${isCurrent ? 'leadership-rail-stage-label-current' : ''}`}>
-                    L{band.level}
+                  <span
+                    className={`leadership-rail-stage-title ${isCurrent ? 'leadership-rail-stage-title-current' : ''}`}
+                    title={`${band.zhName} / ${band.enName}`}
+                    aria-label={`${band.zhName} / ${band.enName}`}
+                  >
+                    L{band.level} · {band.zhName}
                   </span>
                 </div>
               );
@@ -446,6 +506,26 @@ function getReportFromSignal(signal: CodexLeadershipSignal): LeadershipReport | 
   return byPeriod ?? signal.report.reports[0] ?? null;
 }
 
+function OverviewFact({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="leadership-overview-fact">
+      <p>
+        <span>{icon}</span>
+        {label}
+      </p>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
 function Pill({
   icon,
   label,
@@ -507,6 +587,13 @@ function buildTrendSummary(
 function formatPointDate(ms: number): string {
   const d = new Date(ms);
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function formatPeriod(period: string): string {
+  if (period === 'today') return 'today';
+  if (period === 'sevenDays') return '7 days';
+  if (period === 'twentyEightDays') return '28 days';
+  return 'the selected period';
 }
 
 function formatCoreScore(value: number | null | undefined): string {
