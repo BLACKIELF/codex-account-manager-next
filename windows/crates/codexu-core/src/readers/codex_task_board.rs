@@ -421,14 +421,35 @@ fn display_code(prefix: &str, id: &str) -> String {
 }
 
 fn display_title(title: &str) -> String {
-    const MAX_TITLE_CHARS: usize = 200;
-    if title.chars().count() <= MAX_TITLE_CHARS {
-        title.to_string()
+    const MAX_SAFE_TITLE_CHARS: usize = 160;
+    const SAFE_FALLBACK_TITLE: &str = "Local activity record";
+    let normalized = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    let has_control_character = title.chars().any(char::is_control);
+    let is_untrusted = normalized.is_empty()
+        || has_control_character
+        || normalized.chars().count() > MAX_SAFE_TITLE_CHARS
+        || contains_private_path(&normalized)
+        || contains_sensitive_value_marker(&normalized);
+
+    if is_untrusted {
+        SAFE_FALLBACK_TITLE.to_string()
     } else {
-        let mut truncated: String = title.chars().take(MAX_TITLE_CHARS).collect();
-        truncated.push('…');
-        truncated
+        normalized
     }
+}
+
+fn contains_private_path(title: &str) -> bool {
+    let lowercase = title.to_ascii_lowercase();
+    title.contains("\\")
+        || title.contains(":/")
+        || lowercase.contains("/users/")
+        || lowercase.contains("/home/")
+        || lowercase.contains(".codex")
+        || lowercase.contains(".claude")
+}
+
+fn contains_sensitive_value_marker(title: &str) -> bool {
+    title.contains('$') || title.contains('%') || title.contains('¥') || title.contains('￥')
 }
 
 fn short_workspace_name(path: &str) -> String {

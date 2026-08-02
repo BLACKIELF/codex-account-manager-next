@@ -19,6 +19,27 @@ test('Task board panel does not render raw status or technical task identifiers'
   assert.doesNotMatch(panel, /item\.thread_id/);
 });
 
+test('Task board keeps the status columns visible for an available but empty board', () => {
+  assert.match(panel, /task-board-empty/);
+  assert.match(panel, /task-column-empty/);
+  assert.match(panel, /CircleDashed/);
+  assert.doesNotMatch(panel, /if \(itemCount === 0\) \{[\s\S]*?return \(/);
+});
+
+test('Task cards use a compact metadata row and an icon-backed state badge', () => {
+  assert.match(panel, /task-card-meta/);
+  assert.match(panel, /<time className="[^"]*shrink-0/);
+  assert.match(panel, /state-badge/);
+  assert.match(panel, /stateIcon/);
+  assert.match(panel, /aria-hidden="true"/);
+});
+
+test('Task board heading exposes a safe aggregate refresh summary', () => {
+  assert.match(panel, /task-board-summary/);
+  assert.match(panel, /itemCount/);
+  assert.match(panel, /taskBoard\.refreshed_at/);
+});
+
 test('Task board cards reserve stable title height and keep state in card footer', () => {
   const cardMatch = panel.match(/<article key=\{item\.id\}[\s\S]*?<\/article>/);
   assert.ok(cardMatch, 'Expected an article card block in component source');
@@ -55,13 +76,8 @@ test('Task board cards reserve stable title height and keep state in card footer
   assert.ok(footerSegment.includes('{stateLabel(item)}'), 'State label should be in footer');
   assert.match(footerSegment, /task-card-footer/);
 
-  assert.match(
-    normalizedCard,
-    /item\.detail \? <p className=\"text-xs text-secondary mt-2 truncate\">\s*\{item\.detail\}<\/p> : null/,
-  );
-  assert.match(
-    normalizedCard,
-    /factualTime\(item\) \? <p className=\"text-xs text-tertiary mt-1 truncate\">\s*\{factualTime\(item\)\}<\/p> : null/,
-  );
+  assert.match(normalizedCard, /task-card-meta mt-2 flex min-w-0 items-center gap-2 text-xs/);
+  assert.match(normalizedCard, /item\.detail \? <span className=\"min-w-0 truncate text-secondary\">\{item\.detail\}<\/span> : null/);
+  assert.match(normalizedCard, /factualTime\(item\) \? \( <time className=\"shrink-0 text-tertiary\">\{factualTime\(item\)\}<\/time> \) : null/);
   assert.match(normalizedCard, /<footer className=\"[^\"]*\">[\s\S]*{stateLabel\(item\)}[\s\S]*<\/footer>/);
 });

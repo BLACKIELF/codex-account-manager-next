@@ -161,3 +161,56 @@ async fn returns_an_explicit_empty_board_when_state_records_are_empty() {
         .iter()
         .all(|column| column.count == 0 && column.items.is_empty()));
 }
+
+#[tokio::test]
+async fn replaces_untrusted_titles_before_they_reach_the_task_snapshot() {
+    let root = tempfile::tempdir().unwrap();
+    create_task_state_db(root.path());
+    let now = Utc.with_ymd_and_hms(2026, 7, 29, 12, 0, 0).unwrap();
+    let connection = Connection::open(root.path().join("state_5.sqlite")).unwrap();
+
+    for (id, title) in [
+        ("safe", "Review task board layout"),
+        (
+            "path",
+            "[build] C:\\Users\\Example\\Documents\\draft.md review",
+        ),
+        (
+            "sensitive",
+            "Private note: 20% carry and $1000 investment discussion",
+        ),
+    ] {
+        connection
+            .execute(
+                "INSERT INTO threads (
+                    id, title, cwd, archived, thread_source, created_at, updated_at, recency_at, archived_at
+                ) VALUES (?1, ?2, ?3, 0, 'main', ?4, ?4, ?4, NULL)",
+                params![id, title, "C:\\Projects\\Example", now.timestamp(),],
+            )
+            .unwrap();
+    }
+    drop(connection);
+
+    let board = CodexTaskBoardReader::new(root.path())
+        .load(now)
+        .await
+        .unwrap()
+        .expect("state database should produce a board");
+    let titles: Vec<&str> = column(&board, "active")
+        .items
+        .iter()
+        .map(|item| item.title.as_str())
+        .collect();
+
+    assert!(titles.contains(&"Review task board layout"));
+    assert_eq!(
+        titles
+            .iter()
+            .filter(|title| **title == "Local activity record")
+            .count(),
+        2
+    );
+    assert!(titles.iter().all(|title| !title.contains("\\Users\\")));
+    assert!(titles.iter().all(|title| !title.contains('$')));
+    assert!(titles.iter().all(|title| !title.contains('%')));
+}
