@@ -2,10 +2,10 @@
 %% GitHub / Obsidian fallback. The rendered SVG is the maintenance view.
 flowchart LR
     subgraph Runtime["codexU Windows Desktop Runtime"]
-        Evidence["1 · 本地证据与官方额度<br/>SQLite / JSONL / automations / app-server"]:::source
-        Readers["2 · 安全读取与隐私缩减<br/>State / Transcript / Task Board readers"]:::reader
-        Aggregate["3 · 用量、任务与 Leadership 聚合<br/>usage / tasks / Leadership / quota merge"]:::aggregate
-        State["4 · Snapshot 与 AppState / IPC<br/>cache / single-flight / Tauri commands"]:::contract
+        Evidence["1 · 本地证据 / 官方额度<br/>SQLite / JSONL / automations / app-server"]:::source
+        Readers["2 · 安全 Readers / 隐私缩减<br/>State / Transcript / Task Board readers"]:::reader
+        Aggregate["3 · 用量 / 任务 / Leadership<br/>usage / tasks / Leadership / quota merge"]:::aggregate
+        State["4 · Snapshot / AppState / IPC<br/>cache / single-flight / Tauri commands"]:::contract
         UI["5 · Windows Desktop UI<br/>Overview / Tasks / Leadership / Usage / Projects / Skills"]:::ui
 
         Evidence -->|"reads local evidence"| Readers
@@ -15,14 +15,14 @@ flowchart LR
         State -->|"Tauri commands + events"| UI
     end
 
-    QuotaTests["Quota Protocol / Continuity Tests"]:::validation
-    CoreTests["Reader & Aggregation Rust Tests"]:::validation
+    QuotaTests["Quota Protocol + Continuity"]:::validation
+    CoreTests["Core Rust Tests"]:::validation
     StateTests["AppState Tests"]:::validation
     WebTests["Web Contract Tests"]:::validation
     Probe["codexu-probe"]:::operations
     Build["Release Build & Package<br/>Tauri / MSI / NSIS"]:::operations
     Capture["Native Screenshot Demo<br/>Windows.Graphics.Capture · exact HWND"]:::validation
-    Preflight["Screenshot Workflow Preflight"]:::validation
+    Preflight["Capture Workflow Preflight"]:::validation
     VisualEvidence["Local Visual Evidence<br/>manifest + 12 PNGs · Git ignored"]:::evidence
 
     QuotaTests -. "verifies quota protocol" .-> Evidence

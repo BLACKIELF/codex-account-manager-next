@@ -52,7 +52,7 @@ categories:
 
 nodes:
   - id: local_evidence
-    label: "1 · 本地证据与官方额度"
+    label: "1 · 本地证据 / 官方额度"
     category: source
     signature: "state_5.sqlite · sessions · automations · app-server"
     note: "本机只读输入；官方额度不伪造"
@@ -62,7 +62,7 @@ nodes:
     insets: ["SQLite / JSONL", "Official quota"]
 
   - id: safe_readers
-    label: "2 · 安全读取与隐私缩减"
+    label: "2 · 安全 Readers / 隐私缩减"
     category: reader
     signature: "State · Transcript · Task Board readers"
     note: "reader 边界丢弃正文、参数与敏感路径"
@@ -72,7 +72,7 @@ nodes:
     insets: ["Usage summaries", "Safe skill metadata"]
 
   - id: dashboard_aggregation
-    label: "3 · 用量、任务与 Leadership 聚合"
+    label: "3 · 用量 / 任务 / Leadership"
     category: aggregate
     signature: "make_local_usage · Leadership 1.4-real · quota merge"
     note: "汇总安全观察；应用并保留已验证额度"
@@ -82,7 +82,7 @@ nodes:
     insets: ["Usage + Tasks", "Leadership + Quota"]
 
   - id: snapshot_app_state
-    label: "4 · Snapshot 与 AppState / IPC"
+    label: "4 · Snapshot / AppState / IPC"
     category: contract
     signature: "CodexDashboardSnapshot · cache · single-flight"
     note: "generation 防陈旧覆盖；Tauri commands / events"
@@ -102,24 +102,24 @@ nodes:
     insets: ["Dashboard surfaces", "Tray + Settings"]
 
   - id: quota_tests
-    label: "Quota Protocol / Continuity Tests"
+    label: "Quota Protocol + Continuity"
     category: validation
     signature: "app-server parser · apply / retain"
     note: "验证输入协议与额度连续性"
     style: dashed
     icon: test
     layer: verification_top
-    layout: {x: 185, y: 160, w: 270, h: 118}
+    layout: {x: 185, y: 160, w: 270, h: 136}
 
   - id: core_tests
-    label: "Reader & Aggregation Rust Tests"
+    label: "Core Rust Tests"
     category: validation
     signature: "state · transcript · task · skill · Leadership"
     note: "验证安全缩减与聚合结果"
     style: dashed
     icon: test
     layer: verification_top
-    layout: {x: 570, y: 160, w: 285, h: 118}
+    layout: {x: 570, y: 160, w: 285, h: 136}
 
   - id: app_state_tests
     label: "AppState Tests"
@@ -129,7 +129,7 @@ nodes:
     style: dashed
     icon: test
     layer: verification_top
-    layout: {x: 1045, y: 160, w: 275, h: 118}
+    layout: {x: 1045, y: 160, w: 275, h: 136}
 
   - id: web_contract_tests
     label: "Web Contract Tests"
@@ -139,7 +139,7 @@ nodes:
     style: dashed
     icon: test
     layer: verification_top
-    layout: {x: 1405, y: 160, w: 275, h: 118}
+    layout: {x: 1405, y: 160, w: 275, h: 136}
 
   - id: codexu_probe
     label: "codexu-probe"
@@ -148,7 +148,7 @@ nodes:
     note: "读取安全观察并输出诊断快照"
     icon: terminal
     layer: operations_bottom
-    layout: {x: 455, y: 885, w: 275, h: 118}
+    layout: {x: 455, y: 885, w: 275, h: 136}
 
   - id: build_package
     label: "Release Build & Package"
@@ -157,7 +157,7 @@ nodes:
     note: "生成精确 executable 并提供截图入口"
     icon: package
     layer: operations_bottom
-    layout: {x: 1010, y: 885, w: 285, h: 118}
+    layout: {x: 1010, y: 885, w: 285, h: 136}
 
   - id: native_capture_demo
     label: "Native Screenshot Demo"
@@ -166,17 +166,17 @@ nodes:
     note: "6 surfaces × 2 client sizes"
     icon: camera
     layer: capture_bottom
-    layout: {x: 1410, y: 845, w: 285, h: 128}
+    layout: {x: 1410, y: 845, w: 285, h: 136}
 
   - id: capture_preflight
-    label: "Screenshot Workflow Preflight"
+    label: "Capture Workflow Preflight"
     category: validation
     signature: "engine · target · surfaces · output guard"
     note: "测试截图工具，而不是越级测试 UI"
     style: dashed
     icon: test
     layer: capture_bottom
-    layout: {x: 1410, y: 1045, w: 285, h: 118}
+    layout: {x: 1410, y: 1045, w: 285, h: 136}
 
   - id: local_visual_evidence
     label: "Local Visual Evidence"
@@ -185,11 +185,11 @@ nodes:
     note: ".local-artifacts only · Git ignored"
     icon: image
     layer: evidence_bottom
-    layout: {x: 1030, y: 1195, w: 300, h: 118}
+    layout: {x: 1030, y: 1195, w: 300, h: 136}
 
 groups:
   - id: windows_runtime
-    label: "codexU Windows Desktop Runtime"
+    label: "Windows Desktop Runtime"
     nodes: [local_evidence, safe_readers, dashboard_aggregation, snapshot_app_state, windows_desktop_ui]
     fill: "#0c1528"
     stroke: "#5f7192"
@@ -218,14 +218,14 @@ callouts:
 edges:
   - {from: local_evidence, to: safe_readers, kind: data_flow, label: "reads local evidence"}
   - {from: safe_readers, to: dashboard_aggregation, kind: data_flow, label: "safe observations"}
-  - {from: local_evidence, to: dashboard_aggregation, kind: read_only, label: "official quota bypass", route: [[242, 405], [902, 405]]}
+  - {from: local_evidence, to: dashboard_aggregation, kind: read_only, label: "official quota bypass", from_side: top, from_ratio: 0.95, to_side: top, to_ratio: 0.80, route: [[371, 365], [988, 365]], crossing_style: bridge, bridge_points: [[379, 365], [530, 365], [807, 365]]}
   - {from: dashboard_aggregation, to: snapshot_app_state, kind: contract, label: "CodexDashboardSnapshot"}
   - {from: snapshot_app_state, to: windows_desktop_ui, kind: contract, label: "Tauri commands + events"}
 
-  - {from: quota_tests, to: local_evidence, kind: verifies, label: "verifies quota protocol"}
-  - {from: quota_tests, to: dashboard_aggregation, kind: verifies, label: "verifies apply + retain", route: [[320, 320], [902, 320]]}
-  - {from: core_tests, to: safe_readers, kind: verifies, label: "verifies reduction"}
-  - {from: core_tests, to: dashboard_aggregation, kind: verifies, label: "verifies aggregation"}
+  - {from: quota_tests, to: local_evidence, kind: verifies, label: "verifies quota protocol", from_ratio: 0.25, to_ratio: 0.98}
+  - {from: quota_tests, to: dashboard_aggregation, kind: verifies, label: "verifies apply + retain", from_ratio: 0.75, to_ratio: 0.15, route: [[388, 320], [803, 320]], crossing_style: bridge, bridge_points: [[613, 320]]}
+  - {from: core_tests, to: safe_readers, kind: verifies, label: "verifies reduction", from_ratio: 0.15, to_ratio: 0.35}
+  - {from: core_tests, to: dashboard_aggregation, kind: verifies, label: "verifies aggregation", from_ratio: 0.85, to_ratio: 0.58}
   - {from: app_state_tests, to: snapshot_app_state, kind: verifies, label: "verifies state behavior"}
   - {from: web_contract_tests, to: windows_desktop_ui, kind: verifies, label: "verifies component contracts"}
 
@@ -237,7 +237,7 @@ edges:
   - {from: codexu_probe, to: dashboard_aggregation, kind: consumes, label: "emits diagnostic snapshot"}
   - {from: build_package, to: snapshot_app_state, kind: builds, label: "bundles Tauri backend"}
   - {from: build_package, to: windows_desktop_ui, kind: builds, label: "bundles WebView UI", route: [[1152, 815], [1562, 815]]}
-  - {from: build_package, to: native_capture_demo, kind: builds, label: "provides release executable"}
+  - {from: build_package, to: native_capture_demo, kind: builds, label: "provides release executable", from_side: right, from_ratio: 0.50, to_side: left, to_ratio: 0.15, route: [[1350, 953], [1350, 865]]}
 
 composition:
   paths:

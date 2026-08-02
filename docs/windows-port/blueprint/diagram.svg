@@ -1,405 +1,321 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1577" viewBox="0 0 1800 1577">
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1400" viewBox="0 0 1800 1400">
 <defs>
-<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
-<path d="M2,2 L10,6 L2,10 Z" fill="#64748b"/>
-</marker>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#07101e"/><stop offset="0.55" stop-color="#0b1424"/><stop offset="1" stop-color="#10172a"/></linearGradient>
+<pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M 32 0 L 0 0 0 32" fill="none" stroke="#9fb3d1" stroke-opacity="0.035" stroke-width="1"/></pattern>
+<filter id="card-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000814" flood-opacity="0.42"/></filter>
+<marker id="arrow-data_flow" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#63b3ff"/></marker>
+<marker id="arrow-read_only" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#82aef5"/></marker>
+<marker id="arrow-contract" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#a99aff"/></marker>
+<marker id="arrow-verifies" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#8395b1"/></marker>
+<marker id="arrow-captures" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#f39bdc"/></marker>
+<marker id="arrow-produces" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#e5b65b"/></marker>
+<marker id="arrow-consumes" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#96a6bb"/></marker>
+<marker id="arrow-builds" markerWidth="10" markerHeight="10" refX="8.5" refY="5" orient="auto" markerUnits="strokeWidth"><path d="M1,1 L9,5 L1,9 Z" fill="#a8b1c0"/></marker>
 </defs>
-<rect width="100%" height="100%" fill="#ffffff"/>
-<text x="620.0" y="62.0" font-size="34" font-weight="800" fill="#0f172a">
-<tspan x="620.0" dy="0">codexU Windows 版本系统架构图</tspan>
-</text>
-<text x="570.0" y="96.0" font-size="17" font-weight="400" fill="#64748b">
-<tspan x="570.0" dy="0">Windows 托盘应用：复用核心 pipeline，替换平台绑定层</tspan>
-</text>
-<text x="1535.0" y="42.0" font-size="12" font-weight="600" fill="#94a3b8">
-<tspan x="1535.0" dy="0">source: schema.yaml · 2026-07-24</tspan>
-</text>
+<rect width="100%" height="100%" fill="url(#bg)"/>
+<rect width="100%" height="100%" fill="url(#grid)"/>
+<text x="72.0" y="72.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="31.0" font-weight="760" fill="#f3f7ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">codexU Windows Desktop Blueprint</text>
+<text x="72.0" y="103.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="450" fill="#91a4c2" text-anchor="start" opacity="1.00" letter-spacing="0.0">五块运行图 · 测试按对象挂接 · 原生截图证据链</text>
+<text x="1734.0" y="68.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.0" font-weight="700" fill="#71829f" text-anchor="end" opacity="1.00" letter-spacing="1.2">SCHEMA 1.0.0 · 2026-08-02</text>
+<text x="1734.0" y="94.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="10.5" font-weight="550" fill="#8191aa" text-anchor="end" opacity="1.00" letter-spacing="0.0">solid = runtime / operational flow</text>
+<text x="1734.0" y="112.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="10.5" font-weight="550" fill="#8191aa" text-anchor="end" opacity="1.00" letter-spacing="0.0">dashed = verifies / read-only context</text>
 <g id="groups">
-<g id="group-external_sources"><rect x="141.2" y="97.0" width="1517.6" height="400.0" rx="26" fill="#eff6ff" fill-opacity="0.38" stroke="#3b82f6" stroke-width="2"/><text x="163.2" y="127.0" font-size="16" font-weight="800" fill="#3b82f6">
-<tspan x="163.2" dy="0">本地与外部数据源</tspan>
-</text></g>
-<g id="group-core_pipeline"><rect x="141.2" y="517.0" width="1517.6" height="588.0" rx="26" fill="#f0fdf4" fill-opacity="0.38" stroke="#10b981" stroke-width="2"/><text x="163.2" y="547.0" font-size="16" font-weight="800" fill="#10b981">
-<tspan x="163.2" dy="0">核心 Pipeline（从 macOS 直接迁移）</tspan>
-</text></g>
-<g id="group-output_layer"><rect x="141.2" y="893.0" width="1262.1" height="444.0" rx="26" fill="#eef2ff" fill-opacity="0.38" stroke="#6366f1" stroke-width="2"/><text x="163.2" y="923.0" font-size="16" font-weight="800" fill="#6366f1">
-<tspan x="163.2" dy="0">Windows UI 层（需重写）</tspan>
-</text></g>
+<g id="group-windows_runtime">
+<rect x="62.0" y="381.0" width="1681.0" height="346.0" rx="30" fill="#0c1528" fill-opacity="0.82" stroke="#5f7192" stroke-width="2"/>
+<rect x="84.0" y="399.0" width="10" height="26" rx="5" fill="#81bcff"/>
+<text x="108.0" y="420.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="20.0" font-weight="700" fill="#eaf2ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Windows Desktop Runtime</text>
+<text x="1721.0" y="418.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.0" font-weight="700" fill="#8191ae" text-anchor="end" opacity="1.00" letter-spacing="1.3">CURRENT WINDOWS RUNTIME</text>
+</g>
 </g>
 <g id="edges">
-<g class="edge edge-codex_app_server-codex_provider"><polyline points="325.2,261.0 325.2,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="253.2" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="261.2" y="403.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="261.2" dy="0">额度 / 账户</tspan>
-</text></g>
-<g class="edge edge-codex_sqlite-codex_provider"><polyline points="708.4,261.0 708.4,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="403.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="452.8" dy="0">线程元数据</tspan>
-</text></g>
-<g class="edge edge-codex_jsonl-codex_provider"><polyline points="1091.6,261.0 1091.6,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="636.4" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="644.4" y="403.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="644.4" dy="0">token 事件</tspan>
-</text></g>
-<g class="edge edge-codex_automation-codex_provider"><polyline points="1474.8,261.0 1474.8,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="403.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="836.0" dy="0">定时任务</tspan>
-</text></g>
-<g class="edge edge-claude_transcript-claude_provider"><polyline points="325.2,449.0 325.2,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="497.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="452.8" dy="0">usage / tools</tspan>
-</text></g>
-<g class="edge edge-claude_tasks-claude_provider"><polyline points="708.4,449.0 708.4,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="636.4" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="644.4" y="497.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="644.4" dy="0">任务状态</tspan>
-</text></g>
-<g class="edge edge-claude_statusline-claude_provider"><polyline points="1091.6,449.0 1091.6,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="497.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="836.0" dy="0">额度快照</tspan>
-</text></g>
-<g class="edge edge-codex_provider-provider_registry"><polyline points="325.2,681.0 325.2,623.0 1091.6,623.0 1091.6,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-claude_provider-provider_registry"><polyline points="708.4,681.0 708.4,623.0 1091.6,623.0 1091.6,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-provider_registry-multi_reader"><polyline points="1091.6,681.0 1091.6,623.0 1474.8,623.0 1474.8,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-multi_reader-aggregator"><polyline points="1474.8,681.0 1474.8,717.0 325.2,717.0 325.2,753.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="691.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="707.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="836.0" dy="0">合并多 runtime</tspan>
-</text></g>
-<g class="edge edge-multi_reader-leadership_reader"><polyline points="1474.8,681.0 1474.8,717.0 708.4,717.0 708.4,753.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1019.6" y="691.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1027.6" y="707.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="1027.6" dy="0">34 天数据</tspan>
-</text></g>
-<g class="edge edge-leadership_reader-leadership_model"><polyline points="708.4,869.0 708.4,811.0 1091.6,811.0 1091.6,753.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="785.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="801.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="836.0" dy="0">workers + intervals</tspan>
-</text></g>
-<g class="edge edge-leadership_model-main_window"><polyline points="1091.6,869.0 1091.6,1021.0 708.4,1021.0 708.4,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="1011.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="836.0" dy="0">AI 领导力报告</tspan>
-</text></g>
-<g class="edge edge-aggregator-main_window"><polyline points="325.2,869.0 325.2,1021.0 708.4,1021.0 708.4,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="1011.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="452.8" dy="0">聚合用量 / 任务</tspan>
-</text></g>
-<g class="edge edge-codex_provider-task_runtime"><polyline points="325.2,681.0 325.2,717.0 1474.8,717.0 1474.8,753.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-claude_provider-task_runtime"><polyline points="708.4,681.0 708.4,717.0 1474.8,717.0 1474.8,753.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-task_runtime-main_window"><polyline points="1474.8,869.0 1474.8,1021.0 708.4,1021.0 708.4,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1019.6" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1027.6" y="1011.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="1027.6" dy="0">统一任务板</tspan>
-</text></g>
-<g class="edge edge-quota_continuity-multi_reader"><polyline points="580.7,941.0 580.7,811.0 1474.8,811.0 1474.8,681.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="8 7"/><rect x="955.7" y="785.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="963.7" y="801.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="963.7" dy="0">防闪烁</tspan>
-</text></g>
-<g class="edge edge-design_system-system_tray"><polyline points="1219.3,1057.0 1219.3,1115.0 325.2,1115.0 325.2,1173.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-design_system-main_window"><polyline points="1219.3,1057.0 1219.3,1115.0 708.4,1115.0 708.4,1173.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-design_system-settings_window"><polyline points="1219.3,1057.0 1219.3,1115.0 1091.6,1115.0 1091.6,1173.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
-<g class="edge edge-aggregator-system_tray"><polyline points="325.2,869.0 325.2,1021.0 325.2,1021.0 325.2,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="253.2" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="261.2" y="1011.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="261.2" dy="0">托盘摘要</tspan>
-</text></g>
-<g class="edge edge-github_releases-installer"><polyline points="1474.8,449.0 1474.8,905.0 900.0,905.0 900.0,1361.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1115.4" y="879.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1123.4" y="895.0" font-size="11" font-weight="600" fill="#475569">
-<tspan x="1123.4" dy="0">版本检查</tspan>
-</text></g>
-<g class="edge edge-build_scripts-installer"><polyline points="1474.8,1289.0 1474.8,1325.0 900.0,1325.0 900.0,1361.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-local_evidence-safe_readers" data-crossing-style="">
+<polyline points="385.0,550.0 430.0,550.0" fill="none" stroke="#63b3ff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-data_flow)"/>
+<g class="edge-label">
+<rect x="337.5" y="533.0" width="140.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="407.5" y="548.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#63b3ff" text-anchor="middle" opacity="1.00" letter-spacing="0.0">reads local evidence</text>
+</g>
+</g>
+<g class="edge edge-safe_readers-dashboard_aggregation" data-crossing-style="">
+<polyline points="715.0,550.0 760.0,550.0" fill="none" stroke="#63b3ff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-data_flow)"/>
+<g class="edge-label">
+<rect x="676.5" y="533.0" width="122.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="737.5" y="548.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#63b3ff" text-anchor="middle" opacity="1.00" letter-spacing="0.0">safe observations</text>
+</g>
+</g>
+<g class="edge edge-local_evidence-dashboard_aggregation" data-crossing-style="bridge">
+<polyline points="370.8,455.0 371.0,365.0 988.0,365.0 988.0,455.0" fill="none" stroke="#82aef5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-read_only)" stroke-dasharray="7 5"/>
+<g class="edge-label">
+<rect x="606.5" y="348.0" width="146.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="679.5" y="363.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#82aef5" text-anchor="middle" opacity="1.00" letter-spacing="0.0">official quota bypass</text>
+</g>
+</g>
+<g class="edge edge-dashboard_aggregation-snapshot_app_state" data-crossing-style="">
+<polyline points="1045.0,550.0 1090.0,550.0" fill="none" stroke="#a99aff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-contract)"/>
+<g class="edge-label">
+<rect x="991.5" y="533.0" width="152.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1067.5" y="548.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#a99aff" text-anchor="middle" opacity="1.00" letter-spacing="0.0">CodexDashboardSnapshot</text>
+</g>
+</g>
+<g class="edge edge-snapshot_app_state-windows_desktop_ui" data-crossing-style="">
+<polyline points="1375.0,550.0 1420.0,550.0" fill="none" stroke="#a99aff" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-contract)"/>
+<g class="edge-label">
+<rect x="1318.5" y="533.0" width="158.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1397.5" y="548.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#a99aff" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Tauri commands + events</text>
+</g>
+</g>
+<g class="edge edge-quota_tests-local_evidence" data-crossing-style="">
+<polyline points="252.5,296.0 252.5,361.5 379.3,361.5 379.3,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="236.9" y="344.5" width="158.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="315.9" y="359.5" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies quota protocol</text>
+</g>
+</g>
+<g class="edge edge-quota_tests-dashboard_aggregation" data-crossing-style="bridge">
+<polyline points="387.5,296.0 388.0,320.0 803.0,320.0 802.8,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="516.5" y="303.0" width="158.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="595.5" y="318.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies apply + retain</text>
+</g>
+</g>
+<g class="edge edge-core_tests-safe_readers" data-crossing-style="">
+<polyline points="612.8,296.0 612.8,361.5 529.8,361.5 529.8,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="465.8" y="391.2" width="128.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="529.8" y="406.2" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies reduction</text>
+</g>
+</g>
+<g class="edge edge-core_tests-dashboard_aggregation" data-crossing-style="">
+<polyline points="812.2,296.0 812.2,389.5 925.3,389.5 925.3,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="798.8" y="372.5" width="140.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="868.8" y="387.5" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies aggregation</text>
+</g>
+</g>
+<g class="edge edge-app_state_tests-snapshot_app_state" data-crossing-style="">
+<polyline points="1182.5,296.0 1182.5,389.5 1232.5,389.5 1232.5,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="1103.5" y="325.8" width="158.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1182.5" y="340.8" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies state behavior</text>
+</g>
+</g>
+<g class="edge edge-web_contract_tests-windows_desktop_ui" data-crossing-style="">
+<polyline points="1542.5,296.0 1542.5,361.5 1562.5,361.5 1562.5,455.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="1468.5" y="391.2" width="188.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1562.5" y="406.2" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies component contracts</text>
+</g>
+</g>
+<g class="edge edge-native_capture_demo-windows_desktop_ui" data-crossing-style="">
+<polyline points="1620.9,845.0 1620.9,745.0 1630.9,745.0 1630.9,645.0" fill="none" stroke="#f39bdc" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-captures)"/>
+<g class="edge-label">
+<rect x="1553.9" y="778.0" width="134.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1620.9" y="793.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#f39bdc" text-anchor="middle" opacity="1.00" letter-spacing="0.0">captures exact HWND</text>
+</g>
+</g>
+<g class="edge edge-capture_preflight-native_capture_demo" data-crossing-style="">
+<polyline points="1552.5,1045.0 1552.5,1041.0 1552.5,1041.0 1552.5,981.0" fill="none" stroke="#8395b1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-verifies)" stroke-dasharray="7 6"/>
+<g class="edge-label">
+<rect x="1491.5" y="994.0" width="122.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1552.5" y="1009.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#8395b1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">verifies workflow</text>
+</g>
+</g>
+<g class="edge edge-native_capture_demo-local_visual_evidence" data-crossing-style="">
+<polyline points="1410.0,940.2 1370.0,940.2 1370.0,1263.0 1330.0,1263.0" fill="none" stroke="#e5b65b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-produces)"/>
+<g class="edge-label">
+<rect x="1279.0" y="1084.6" width="182.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1370.0" y="1099.6" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#e5b65b" text-anchor="middle" opacity="1.00" letter-spacing="0.0">produces manifest + 12 PNGs</text>
+</g>
+</g>
+<g class="edge edge-codexu_probe-safe_readers" data-crossing-style="">
+<polyline points="592.5,885.0 592.5,779.0 532.6,779.0 532.6,645.0" fill="none" stroke="#96a6bb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-consumes)" stroke-dasharray="4 5"/>
+<g class="edge-label">
+<rect x="459.6" y="695.0" width="146.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="532.6" y="710.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#96a6bb" text-anchor="middle" opacity="1.00" letter-spacing="0.0">consumes safe readers</text>
+</g>
+</g>
+<g class="edge edge-codexu_probe-dashboard_aggregation" data-crossing-style="">
+<polyline points="592.5,885.0 592.5,751.0 942.4,751.0 942.4,645.0" fill="none" stroke="#96a6bb" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-consumes)" stroke-dasharray="4 5"/>
+<g class="edge-label">
+<rect x="682.5" y="734.0" width="170.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="767.5" y="749.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#96a6bb" text-anchor="middle" opacity="1.00" letter-spacing="0.0">emits diagnostic snapshot</text>
+</g>
+</g>
+<g class="edge edge-build_package-snapshot_app_state" data-crossing-style="">
+<polyline points="1152.5,885.0 1152.5,765.0 1232.5,765.0 1232.5,645.0" fill="none" stroke="#a8b1c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-builds)" stroke-dasharray="3 5"/>
+<g class="edge-label">
+<rect x="1079.5" y="808.0" width="146.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1152.5" y="823.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#a8b1c0" text-anchor="middle" opacity="1.00" letter-spacing="0.0">bundles Tauri backend</text>
+</g>
+</g>
+<g class="edge edge-build_package-windows_desktop_ui" data-crossing-style="">
+<polyline points="1152.5,885.0 1152.0,815.0 1562.0,815.0 1562.5,645.0" fill="none" stroke="#a8b1c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-builds)" stroke-dasharray="3 5"/>
+<g class="edge-label">
+<rect x="1293.0" y="798.0" width="128.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1357.0" y="813.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#a8b1c0" text-anchor="middle" opacity="1.00" letter-spacing="0.0">bundles WebView UI</text>
+</g>
+</g>
+<g class="edge edge-build_package-native_capture_demo" data-crossing-style="">
+<polyline points="1295.0,953.0 1350.0,953.0 1350.0,865.0 1410.0,865.4" fill="none" stroke="#a8b1c0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-builds)" stroke-dasharray="3 5"/>
+<g class="edge-label">
+<rect x="1259.0" y="892.0" width="182.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1350.0" y="907.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#a8b1c0" text-anchor="middle" opacity="1.00" letter-spacing="0.0">provides release executable</text>
+</g>
+</g>
+<g class="edge-bridges" data-edge="local_evidence-dashboard_aggregation">
+<circle cx="379.0" cy="365.0" r="9.0" fill="#0b1424"/>
+<path d="M 370.0,365.0 Q 379.0,356.0 388.0,365.0" fill="none" stroke="#82aef5" stroke-width="2.2" stroke-linecap="round"/>
+<circle cx="530.0" cy="365.0" r="9.0" fill="#0b1424"/>
+<path d="M 521.0,365.0 Q 530.0,356.0 539.0,365.0" fill="none" stroke="#82aef5" stroke-width="2.2" stroke-linecap="round"/>
+<circle cx="807.0" cy="365.0" r="9.0" fill="#0b1424"/>
+<path d="M 798.0,365.0 Q 807.0,356.0 816.0,365.0" fill="none" stroke="#82aef5" stroke-width="2.2" stroke-linecap="round"/>
+</g>
+<g class="edge-bridges" data-edge="quota_tests-dashboard_aggregation">
+<circle cx="613.0" cy="320.0" r="9.0" fill="#0b1424"/>
+<path d="M 604.0,320.0 Q 613.0,311.0 622.0,320.0" fill="none" stroke="#8395b1" stroke-width="2.2" stroke-linecap="round"/>
+</g>
 </g>
 <g id="nodes">
-<g id="node-codex_app_server">
-<rect x="175.2" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<text x="197.2" y="177.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="197.2" dy="0">Codex app-server /</tspan>
-<tspan x="197.2" dy="25">CLI</tspan>
-</text>
-<text x="197.2" y="232.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="197.2" dy="0">Windows 本地 API 或 CLI 调用</tspan>
-</text>
-<line x1="197.2" y1="254.0" x2="453.2" y2="254.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="197.2" y="276.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="197.2" dy="0">额度、账户、云端 lifetime tokens（待调研）</tspan>
-</text>
+<g id="node-local_evidence">
+<rect x="100.0" y="455.0" width="285.0" height="190.0" rx="20" fill="#12233f" stroke="#5fa8ff" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="101.0" y="456.0" width="5" height="188.0" rx="3" fill="#81bcff"/>
+<text x="120.0" y="491.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="16.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">1 · 本地证据 / 官方额度</text>
+<text x="120.0" y="526.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#81bcff" text-anchor="start" opacity="1.00" letter-spacing="0.0">state_5.sqlite · sessions ·</text>
+<text x="120.0" y="544.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#81bcff" text-anchor="start" opacity="1.00" letter-spacing="0.0">automations · app-server…</text>
+<text x="120.0" y="573.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">本机只读输入；官方额度不伪造</text>
+<rect x="120.0" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="179.2" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">SQLite / JSONL</text>
+<rect x="246.5" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="305.8" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Official quota</text>
 </g>
-<g id="node-codex_sqlite">
-<path d="M 558.4 161.0 C 558.4 140.0, 858.4 140.0, 858.4 161.0 L 858.4 245.0 C 858.4 266.0, 558.4 266.0, 558.4 245.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<ellipse cx="708.4" cy="161.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="580.4" y="177.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="580.4" dy="0">%USERPROFILE%\.codex\state_5.sqlite</tspan>
-</text>
-<text x="580.4" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="580.4" dy="0">本地 SQLite</tspan>
-</text>
-<line x1="580.4" y1="230.0" x2="836.4" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="580.4" y="252.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="580.4" dy="0">线程元数据、rollout 路径、父子关系</tspan>
-</text>
+<g id="node-safe_readers">
+<rect x="430.0" y="455.0" width="285.0" height="190.0" rx="20" fill="#15324a" stroke="#45c8d8" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="431.0" y="456.0" width="5" height="188.0" rx="3" fill="#79e2ed"/>
+<text x="450.0" y="491.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="16.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">2 · 安全 Readers / 隐私缩减</text>
+<text x="450.0" y="526.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#79e2ed" text-anchor="start" opacity="1.00" letter-spacing="0.0">State · Transcript · Task Board</text>
+<text x="450.0" y="544.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#79e2ed" text-anchor="start" opacity="1.00" letter-spacing="0.0">readers…</text>
+<text x="450.0" y="573.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">reader 边界丢弃正文、参数与敏感路径</text>
+<rect x="450.0" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="509.2" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Usage summaries</text>
+<rect x="576.5" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="635.8" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Safe skill metadata</text>
 </g>
-<g id="node-codex_jsonl">
-<path d="M 941.6 161.0 C 941.6 140.0, 1241.6 140.0, 1241.6 161.0 L 1241.6 245.0 C 1241.6 266.0, 941.6 266.0, 941.6 245.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<ellipse cx="1091.6" cy="161.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="963.6" y="177.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="963.6" dy="0">%USERPROFILE%\.codex\sessions\*.jsonl</tspan>
-</text>
-<text x="963.6" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="963.6" dy="0">token_count / task_started /</tspan>
-<tspan x="963.6" dy="19">task_complete</tspan>
-</text>
-<line x1="963.6" y1="249.0" x2="1219.6" y2="249.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="963.6" y="271.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="963.6" dy="0">细粒度 token 事件与任务生命周期</tspan>
-</text>
+<g id="node-dashboard_aggregation">
+<rect x="760.0" y="455.0" width="285.0" height="190.0" rx="20" fill="#173b35" stroke="#4ed0a5" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="761.0" y="456.0" width="5" height="188.0" rx="3" fill="#79e3bf"/>
+<text x="780.0" y="491.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="16.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">3 · 用量 / 任务 / Leadership</text>
+<text x="780.0" y="526.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#79e3bf" text-anchor="start" opacity="1.00" letter-spacing="0.0">make_local_usage · Leadership</text>
+<text x="780.0" y="544.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#79e3bf" text-anchor="start" opacity="1.00" letter-spacing="0.0">1.4-real · quota merge…</text>
+<text x="780.0" y="573.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">汇总安全观察；应用并保留已验证额度</text>
+<rect x="780.0" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="839.2" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Usage + Tasks</text>
+<rect x="906.5" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="965.8" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Leadership + Quota</text>
 </g>
-<g id="node-codex_automation">
-<path d="M 1324.8 145.0 L 1596.8 145.0 L 1624.8 173.0 L 1624.8 261.0 L 1324.8 261.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<path d="M 1596.8 145.0 L 1596.8 173.0 L 1624.8 173.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="1346.8" y="177.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1346.8" dy="0">%USERPROFILE%\.codex\automations</tspan>
-</text>
-<text x="1346.8" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="1346.8" dy="0">automation.toml</tspan>
-</text>
-<line x1="1346.8" y1="230.0" x2="1602.8" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1346.8" y="252.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1346.8" dy="0">定时任务元数据与下次运行时间</tspan>
-</text>
+<g id="node-snapshot_app_state">
+<rect x="1090.0" y="455.0" width="285.0" height="190.0" rx="20" fill="#30294f" stroke="#9b87ff" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="1091.0" y="456.0" width="5" height="188.0" rx="3" fill="#bcadff"/>
+<text x="1110.0" y="491.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="16.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">4 · Snapshot / AppState / IPC</text>
+<text x="1110.0" y="526.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#bcadff" text-anchor="start" opacity="1.00" letter-spacing="0.0">CodexDashboardSnapshot · cache ·</text>
+<text x="1110.0" y="544.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#bcadff" text-anchor="start" opacity="1.00" letter-spacing="0.0">single-flight…</text>
+<text x="1110.0" y="573.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">generation 防陈旧覆盖；Tauri…</text>
+<rect x="1110.0" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="1169.2" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Snapshot contract</text>
+<rect x="1236.5" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="1295.8" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Refresh state</text>
 </g>
-<g id="node-claude_transcript">
-<path d="M 175.2 349.0 C 175.2 328.0, 475.2 328.0, 475.2 349.0 L 475.2 433.0 C 475.2 454.0, 175.2 454.0, 175.2 433.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<ellipse cx="325.2" cy="349.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="197.2" y="365.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="197.2" dy="0">%USERPROFILE%\.claude\projects\*.jsonl</tspan>
-</text>
-<text x="197.2" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="197.2" dy="0">message.usage · tool_use ·</tspan>
-<tspan x="197.2" dy="19">attribution</tspan>
-</text>
-<line x1="197.2" y1="437.0" x2="453.2" y2="437.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="197.2" y="459.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="197.2" dy="0">Claude Code Windows</tspan>
-<tspan x="197.2" dy="18">transcript（待确认路径）</tspan>
-</text>
+<g id="node-windows_desktop_ui">
+<rect x="1420.0" y="455.0" width="285.0" height="190.0" rx="20" fill="#442846" stroke="#e477d5" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="1421.0" y="456.0" width="5" height="188.0" rx="3" fill="#f3a5e7"/>
+<text x="1440.0" y="491.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="16.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">5 · Windows Desktop UI</text>
+<text x="1440.0" y="526.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#f3a5e7" text-anchor="start" opacity="1.00" letter-spacing="0.0">Overview · Tasks · Leadership ·</text>
+<text x="1440.0" y="544.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#f3a5e7" text-anchor="start" opacity="1.00" letter-spacing="0.0">Usage · Projects · Skills…</text>
+<text x="1440.0" y="573.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">真实 Tauri + WebView2 窗口与…</text>
+<rect x="1440.0" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="1499.2" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Dashboard surfaces</text>
+<rect x="1566.5" y="606.0" width="118.5" height="24" rx="8" fill="#07101f" fill-opacity="0.56" stroke="#ffffff" stroke-opacity="0.08"/>
+<text x="1625.8" y="622.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.6" font-weight="600" fill="#c5d0e1" text-anchor="middle" opacity="1.00" letter-spacing="0.0">Tray + Settings</text>
 </g>
-<g id="node-claude_tasks">
-<path d="M 558.4 333.0 L 830.4 333.0 L 858.4 361.0 L 858.4 449.0 L 558.4 449.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<path d="M 830.4 333.0 L 830.4 361.0 L 858.4 361.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="580.4" y="365.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="580.4" dy="0">%USERPROFILE%\.claude\tasks\*.json</tspan>
-</text>
-<text x="580.4" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="580.4" dy="0">task status / subject</tspan>
-</text>
-<line x1="580.4" y1="418.0" x2="836.4" y2="418.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="580.4" y="440.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="580.4" dy="0">Claude Code 任务看板数据</tspan>
-</text>
+<g id="node-quota_tests">
+<rect x="185.0" y="160.0" width="270.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
+<rect x="186.0" y="161.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="203.0" y="191.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Quota Protocol + Continuity</text>
+<text x="203.0" y="232.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">app-server parser · apply / retain</text>
+<text x="203.0" y="271.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">验证输入协议与额度连续性</text>
 </g>
-<g id="node-claude_statusline">
-<path d="M 941.6 333.0 L 1213.6 333.0 L 1241.6 361.0 L 1241.6 449.0 L 941.6 449.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<path d="M 1213.6 333.0 L 1213.6 361.0 L 1241.6 361.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
-<text x="963.6" y="365.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="963.6" dy="0">statusline-</tspan>
-<tspan x="963.6" dy="25">snapshot.json</tspan>
-</text>
-<text x="963.6" y="420.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="963.6" dy="0">%LOCALAPPDATA%\codexU\claude-</tspan>
-<tspan x="963.6" dy="19">code\</tspan>
-</text>
-<line x1="963.6" y1="461.0" x2="1219.6" y2="461.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="963.6" y="483.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="963.6" dy="0">Claude Code 活跃额度快照</tspan>
-</text>
+<g id="node-core_tests">
+<rect x="570.0" y="160.0" width="285.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
+<rect x="571.0" y="161.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="588.0" y="191.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Core Rust Tests</text>
+<text x="588.0" y="232.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">state · transcript · task · skill ·</text>
+<text x="588.0" y="248.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">Leadership…</text>
+<text x="588.0" y="272.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">验证安全缩减与聚合结果</text>
 </g>
-<g id="node-github_releases">
-<rect x="1324.8" y="333.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
-<text x="1346.8" y="365.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1346.8" dy="0">GitHub Releases API</tspan>
-</text>
-<text x="1346.8" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
-<tspan x="1346.8" dy="0">shanggqm/codexU 或 codexU-windows</tspan>
-</text>
-<line x1="1346.8" y1="418.0" x2="1602.8" y2="418.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1346.8" y="440.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1346.8" dy="0">版本检查与更新元数据</tspan>
-</text>
+<g id="node-app_state_tests">
+<rect x="1045.0" y="160.0" width="275.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
+<rect x="1046.0" y="161.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="1063.0" y="191.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">AppState Tests</text>
+<text x="1063.0" y="232.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">cache · single-flight · generation ·</text>
+<text x="1063.0" y="248.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">retry…</text>
+<text x="1063.0" y="272.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">验证运行时状态行为</text>
 </g>
-<g id="node-codex_provider">
-<rect x="175.2" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
-<text x="197.2" y="597.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="197.2" dy="0">CodexRuntimeProvider</tspan>
-</text>
-<text x="197.2" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
-<tspan x="197.2" dy="0">RuntimeUsageProvider trait</tspan>
-</text>
-<line x1="197.2" y1="650.0" x2="453.2" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="197.2" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="197.2" dy="0">读取 SQLite + JSONL + automations</tspan>
-</text>
+<g id="node-web_contract_tests">
+<rect x="1405.0" y="160.0" width="275.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
+<rect x="1406.0" y="161.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="1423.0" y="191.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Web Contract Tests</text>
+<text x="1423.0" y="232.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">hierarchy · quota · tasks · skills ·</text>
+<text x="1423.0" y="248.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">rail…</text>
+<text x="1423.0" y="272.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">验证 React / CSS 组件契约</text>
 </g>
-<g id="node-claude_provider">
-<rect x="558.4" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
-<text x="580.4" y="597.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="580.4" dy="0">ClaudeCodeRuntimeProvider</tspan>
-</text>
-<text x="580.4" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
-<tspan x="580.4" dy="0">RuntimeUsageProvider trait</tspan>
-</text>
-<line x1="580.4" y1="650.0" x2="836.4" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="580.4" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="580.4" dy="0">读取 transcript + tasks + statusLine</tspan>
-</text>
+<g id="node-codexu_probe">
+<rect x="455.0" y="885.0" width="275.0" height="136.0" rx="20" fill="#2d3038" stroke="#8d98aa" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="456.0" y="886.0" width="5" height="134.0" rx="3" fill="#bec7d5"/>
+<text x="473.0" y="916.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">codexu-probe</text>
+<text x="473.0" y="957.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#bec7d5" text-anchor="start" opacity="1.00" letter-spacing="0.0">read-only CLI diagnostic consumer</text>
+<text x="473.0" y="996.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">读取安全观察并输出诊断快照</text>
 </g>
-<g id="node-provider_registry">
-<rect x="941.6" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
-<text x="963.6" y="597.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="963.6" dy="0">RuntimeProviderRegistry</tspan>
-</text>
-<text x="963.6" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
-<tspan x="963.6" dy="0">注册表</tspan>
-</text>
-<line x1="963.6" y1="650.0" x2="1219.6" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="963.6" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="963.6" dy="0">聚合 Codex / Claude Code 两个 provider</tspan>
-</text>
+<g id="node-build_package">
+<rect x="1010.0" y="885.0" width="285.0" height="136.0" rx="20" fill="#2d3038" stroke="#8d98aa" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="1011.0" y="886.0" width="5" height="134.0" rx="3" fill="#bec7d5"/>
+<text x="1028.0" y="916.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Release Build &amp; Package</text>
+<text x="1028.0" y="957.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#bec7d5" text-anchor="start" opacity="1.00" letter-spacing="0.0">Tauri release · MSI · NSIS</text>
+<text x="1028.0" y="996.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">生成精确 executable 并提供截图入口</text>
 </g>
-<g id="node-multi_reader">
-<rect x="1324.8" y="565.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="1346.8" y="597.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1346.8" dy="0">MultiRuntimeUsageReader</tspan>
-</text>
-<text x="1346.8" y="628.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="1346.8" dy="0">load() · load_task_board()</tspan>
-</text>
-<line x1="1346.8" y1="650.0" x2="1602.8" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1346.8" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1346.8" dy="0">统一入口；性能测时</tspan>
-</text>
+<g id="node-native_capture_demo">
+<rect x="1410.0" y="845.0" width="285.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="1411.0" y="846.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="1428.0" y="876.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Native Screenshot Demo</text>
+<text x="1428.0" y="917.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">Windows.Graphics.Capture · exact HWND</text>
+<text x="1428.0" y="956.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">6 surfaces × 2 client sizes</text>
 </g>
-<g id="node-aggregator">
-<rect x="175.2" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="197.2" y="785.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="197.2" dy="0">AgentUsageAggregator</tspan>
-</text>
-<text x="197.2" y="816.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="197.2" dy="0">aggregate(runtimes)</tspan>
-</text>
-<line x1="197.2" y1="838.0" x2="453.2" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="197.2" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="197.2" dy="0">跨 runtime 合并用量与任务</tspan>
-</text>
+<g id="node-capture_preflight">
+<rect x="1410.0" y="1045.0" width="285.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
+<rect x="1411.0" y="1046.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
+<text x="1428.0" y="1076.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Capture Workflow Preflight</text>
+<text x="1428.0" y="1117.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">engine · target · surfaces · output</text>
+<text x="1428.0" y="1133.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">guard…</text>
+<text x="1428.0" y="1157.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">测试截图工具，而不是越级测试 UI</text>
 </g>
-<g id="node-leadership_reader">
-<rect x="558.4" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="580.4" y="785.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="580.4" dy="0">LeadershipDataReader</tspan>
-</text>
-<text x="580.4" y="816.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="580.4" dy="0">load(context)</tspan>
-</text>
-<line x1="580.4" y1="838.0" x2="836.4" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="580.4" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="580.4" dy="0">文件指纹缓存；增量解析 34 天数据</tspan>
-</text>
+<g id="node-local_visual_evidence">
+<rect x="1030.0" y="1195.0" width="300.0" height="136.0" rx="20" fill="#3d3424" stroke="#d8a74d" stroke-width="1.8" filter="url(#card-shadow)"/>
+<rect x="1031.0" y="1196.0" width="5" height="134.0" rx="3" fill="#f0c978"/>
+<text x="1048.0" y="1226.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Local Visual Evidence</text>
+<text x="1048.0" y="1267.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#f0c978" text-anchor="start" opacity="1.00" letter-spacing="0.0">manifest · logs · 12 PNGs</text>
+<text x="1048.0" y="1306.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">.local-artifacts only · Git ignored</text>
 </g>
-<g id="node-leadership_model">
-<rect x="941.6" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="963.6" y="785.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="963.6" dy="0">LeadershipScoreModel</tspan>
-<tspan x="963.6" dy="25">v1.3</tspan>
-</text>
-<text x="963.6" y="840.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="963.6" dy="0">四维加权几何平均</tspan>
-</text>
-<line x1="963.6" y1="862.0" x2="1219.6" y2="862.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="963.6" y="884.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="963.6" dy="0">span · leverage · orchestration ·</tspan>
-<tspan x="963.6" dy="18">autonomy</tspan>
-</text>
 </g>
-<g id="node-task_runtime">
-<rect x="1324.8" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="1346.8" y="785.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1346.8" dy="0">TaskRuntime</tspan>
-</text>
-<text x="1346.8" y="816.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="1346.8" dy="0">Codex / Claude 任务状态归一</tspan>
-</text>
-<line x1="1346.8" y1="838.0" x2="1602.8" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1346.8" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1346.8" dy="0">统一列：active / pending / scheduled /</tspan>
-<tspan x="1346.8" dy="18">done</tspan>
-</text>
+<g id="callouts">
+<g id="callout-local_first">
+<rect x="100.0" y="690.0" width="250.0" height="34.0" rx="17.0" fill="#10213b" stroke="#426a9b"/>
+<text x="225.0" y="711.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="10.0" font-weight="700" fill="#cad5e7" text-anchor="middle" opacity="1.00" letter-spacing="0.7">LOCAL-FIRST · READ-ONLY INPUT</text>
 </g>
-<g id="node-quota_continuity">
-<rect x="430.7" y="941.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
-<text x="452.7" y="973.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="452.7" dy="0">RuntimeQuotaContinuity</tspan>
-</text>
-<text x="452.7" y="1004.0" font-size="13" font-weight="700" fill="#10b981">
-<tspan x="452.7" dy="0">reconcile(previous, incoming)</tspan>
-</text>
-<line x1="452.7" y1="1026.0" x2="708.7" y2="1026.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="452.7" y="1048.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="452.7" dy="0">配额读取失败时复用旧值，避免界面闪烁</tspan>
-</text>
+<g id="callout-safe_contract">
+<rect x="1390.0" y="690.0" width="315.0" height="34.0" rx="17.0" fill="#31223b" stroke="#8f5d91"/>
+<text x="1547.5" y="711.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="10.0" font-weight="700" fill="#cad5e7" text-anchor="middle" opacity="1.00" letter-spacing="0.7">UI CONSUMES SANITIZED SNAPSHOT ONLY</text>
 </g>
-<g id="node-design_system">
-<rect x="1069.3" y="941.0" width="300.0" height="116.0" rx="18" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
-<text x="1091.3" y="973.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1091.3" dy="0">DesignSystem /</tspan>
-<tspan x="1091.3" dy="25">Palettes</tspan>
-</text>
-<text x="1091.3" y="1028.0" font-size="13" font-weight="700" fill="#f59e0b">
-<tspan x="1091.3" dy="0">青花瓷 · 故宫红 · 敦煌飞天 · 兰亭晨曦</tspan>
-</text>
-<line x1="1091.3" y1="1050.0" x2="1347.3" y2="1050.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1091.3" y="1072.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1091.3" dy="0">复用 codexU 配色 token</tspan>
-</text>
-</g>
-<g id="node-system_tray">
-<rect x="175.2" y="1173.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
-<text x="197.2" y="1205.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="197.2" dy="0">Windows System Tray</tspan>
-</text>
-<text x="197.2" y="1236.0" font-size="13" font-weight="700" fill="#6366f1">
-<tspan x="197.2" dy="0">NotifyIcon / Tauri Tray</tspan>
-</text>
-<line x1="197.2" y1="1258.0" x2="453.2" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="197.2" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="197.2" dy="0">实时额度环、今日 token、Runtime 菜单</tspan>
-</text>
-</g>
-<g id="node-main_window">
-<rect x="558.4" y="1173.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
-<text x="580.4" y="1205.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="580.4" dy="0">Main Window</tspan>
-</text>
-<text x="580.4" y="1236.0" font-size="13" font-weight="700" fill="#6366f1">
-<tspan x="580.4" dy="0">WinUI 3 / Tauri WebView</tspan>
-</text>
-<line x1="580.4" y1="1258.0" x2="836.4" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="580.4" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="580.4" dy="0">主窗口仪表盘</tspan>
-</text>
-</g>
-<g id="node-settings_window">
-<rect x="941.6" y="1173.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
-<text x="963.6" y="1205.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="963.6" dy="0">Settings Window</tspan>
-</text>
-<text x="963.6" y="1236.0" font-size="13" font-weight="700" fill="#6366f1">
-<tspan x="963.6" dy="0">语言 · 外观 · 状态栏配置</tspan>
-</text>
-<line x1="963.6" y1="1258.0" x2="1219.6" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="963.6" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="963.6" dy="0">设置窗口</tspan>
-</text>
-</g>
-<g id="node-build_scripts">
-<rect x="1324.8" y="1173.0" width="300.0" height="116.0" rx="18" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
-<text x="1346.8" y="1205.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="1346.8" dy="0">Build Scripts / CI</tspan>
-</text>
-<text x="1346.8" y="1236.0" font-size="13" font-weight="700" fill="#6b7280">
-<tspan x="1346.8" dy="0">cargo tauri build / msbuild</tspan>
-</text>
-<line x1="1346.8" y1="1258.0" x2="1602.8" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="1346.8" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="1346.8" dy="0">构建、打包、测试</tspan>
-</text>
-</g>
-<g id="node-installer">
-<rect x="750.0" y="1361.0" width="300.0" height="116.0" rx="18" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
-<text x="772.0" y="1393.0" font-size="19" font-weight="700" fill="#111827">
-<tspan x="772.0" dy="0">Installer / Updater</tspan>
-</text>
-<text x="772.0" y="1424.0" font-size="13" font-weight="700" fill="#6b7280">
-<tspan x="772.0" dy="0">MSI / MSIX / NSIS</tspan>
-</text>
-<line x1="772.0" y1="1446.0" x2="1028.0" y2="1446.0" stroke="#e5e7eb" stroke-width="1"/>
-<text x="772.0" y="1468.0" font-size="12" font-weight="400" fill="#4b5563">
-<tspan x="772.0" dy="0">安装包与自动更新</tspan>
-</text>
+<g id="callout-evidence_limit">
+<rect x="990.0" y="1335.0" width="355.0" height="34.0" rx="17.0" fill="#3b2f1d" stroke="#9f7837"/>
+<text x="1167.5" y="1356.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="10.0" font-weight="700" fill="#cad5e7" text-anchor="middle" opacity="1.00" letter-spacing="0.7">LOCAL EVIDENCE · NOT A COMMITTED BASELINE</text>
 </g>
 </g>
 </svg>

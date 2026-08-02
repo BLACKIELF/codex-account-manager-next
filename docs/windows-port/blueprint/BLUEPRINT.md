@@ -14,7 +14,7 @@
 - [`diagram.png`](./diagram.png)：完成语义与视觉复核后的选定视图。
 - [`render.py`](./render.py)：项目本地确定性 renderer。
 
-> 当前文件先固化 Windows 语义源。图像候选、几何结果与最终选图状态会在本次重做的渲染阶段更新。
+> 当前语义源与确定性维护视图已经重建。生成式候选和最终选图状态会在本次重做的下一阶段更新。
 
 ## 定位与边界
 
@@ -85,7 +85,10 @@ Screenshot Workflow Preflight
 
 ## 当前验证状态
 
-- 语义源：待本次 `validate_blueprint.py` 复核。
-- 确定性图：待从新 schema 生成并运行 geometry gate。
+- 语义源：`validate_blueprint.py` 已通过，14 个节点和 19 条关系与 Mermaid fallback 一致。
+- 确定性图：项目本地 `render.py` 已从 schema 生成 SVG/HTML；`diagram.render.png` 由 Microsoft Edge headless 浏览器 fallback 从 HTML 截取，未声称使用 CairoSVG。
+- Geometry gate：0 error；保留 7 个可解释 warning，其中 5 个是已经绘出弧形线桥的验证/额度旁路交叉，2 个是同一 Probe/Build 来源的共享线干。
 - 生成式候选：待从同一语义与 composition 生成并复核忠实度。
 - 最终 `diagram.png`：待比较两个候选后选择。
+
+本阶段没有重新运行 Windows 产品代码、Rust/Web 测试或 native capture；上述结果只覆盖 Blueprint schema、渲染和几何检查。
