@@ -113,18 +113,18 @@ async fn classifies_non_subagent_state_records_without_claiming_completion() {
 
     let active = column(&board, "active");
     assert_eq!(active.count, 1);
-    assert_eq!(active.items[0].title, "Active work");
+    assert_eq!(active.items[0].title, "Codex activity");
     assert_eq!(active.items[0].display_state, "recentlyActive");
     assert_eq!(active.items[0].state_basis, "activityWindow");
 
     let pending = column(&board, "pending");
     assert_eq!(pending.count, 1);
-    assert_eq!(pending.items[0].title, "Pending work");
+    assert_eq!(pending.items[0].title, "Codex activity");
     assert_eq!(pending.items[0].display_state, "continueLater");
 
     let done = column(&board, "done");
     assert_eq!(done.count, 1);
-    assert_eq!(done.items[0].title, "Archived work");
+    assert_eq!(done.items[0].title, "Codex activity");
     assert_eq!(done.items[0].display_state, "archived");
     assert_eq!(done.items[0].state_basis, "archive");
     assert_ne!(done.items[0].display_state, "completed");
@@ -163,7 +163,7 @@ async fn returns_an_explicit_empty_board_when_state_records_are_empty() {
 }
 
 #[tokio::test]
-async fn replaces_untrusted_titles_before_they_reach_the_task_snapshot() {
+async fn keeps_state_db_thread_titles_out_of_the_task_snapshot() {
     let root = tempfile::tempdir().unwrap();
     create_task_state_db(root.path());
     let now = Utc.with_ymd_and_hms(2026, 7, 29, 12, 0, 0).unwrap();
@@ -202,15 +202,50 @@ async fn replaces_untrusted_titles_before_they_reach_the_task_snapshot() {
         .map(|item| item.title.as_str())
         .collect();
 
-    assert!(titles.contains(&"Review task board layout"));
     assert_eq!(
         titles
             .iter()
-            .filter(|title| **title == "Local activity record")
+            .filter(|title| **title == "Codex activity")
             .count(),
-        2
+        3
     );
+    assert!(titles.iter().all(|title| *title == "Codex activity"));
     assert!(titles.iter().all(|title| !title.contains("\\Users\\")));
     assert!(titles.iter().all(|title| !title.contains('$')));
     assert!(titles.iter().all(|title| !title.contains('%')));
+}
+
+#[tokio::test]
+async fn does_not_expose_prompt_shaped_thread_titles_without_title_provenance() {
+    let root = tempfile::tempdir().unwrap();
+    create_task_state_db(root.path());
+    let now = Utc.with_ymd_and_hms(2026, 7, 29, 12, 0, 0).unwrap();
+    let connection = Connection::open(root.path().join("state_5.sqlite")).unwrap();
+
+    connection
+        .execute(
+            "INSERT INTO threads (
+                id, title, cwd, archived, thread_source, created_at, updated_at, recency_at, archived_at
+            ) VALUES (?1, ?2, ?3, 0, 'main', ?4, ?4, ?4, NULL)",
+            params![
+                "prompt-derived",
+                "/goal 你负责把 skills 部分做好",
+                "C:\\Projects\\Example",
+                now.timestamp(),
+            ],
+        )
+        .unwrap();
+    drop(connection);
+
+    let board = CodexTaskBoardReader::new(root.path())
+        .load(now)
+        .await
+        .unwrap()
+        .expect("state database should produce a board");
+    let item = &column(&board, "active").items[0];
+
+    assert_eq!(item.title, "Codex activity");
+    assert_eq!(item.display_state, "recentlyActive");
+    assert_eq!(item.source_kind, "codexThread");
+    assert_eq!(item.state_basis, "activityWindow");
 }

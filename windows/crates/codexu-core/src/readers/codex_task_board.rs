@@ -16,6 +16,7 @@ use crate::models::{TaskBoard, TaskColumn, TaskItem};
 
 const ACTIVE_WINDOW: Duration = Duration::hours(2);
 const MAX_AUTOMATION_SCAN_DEPTH: usize = 3;
+const THREAD_ACTIVITY_TITLE: &str = "Codex activity";
 
 /// Reads only local Codex task state appropriate for presentation.
 pub struct CodexTaskBoardReader {
@@ -43,7 +44,6 @@ impl CodexTaskBoardReader {
 #[derive(Debug)]
 struct ThreadRecord {
     id: String,
-    title: String,
     workspace: String,
     activity_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
@@ -109,7 +109,7 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     };
 
     let active_query = format!(
-        "SELECT id, title, {cwd_expr}, updated_at, {recency_expr}, created_at
+        "SELECT id, {cwd_expr}, updated_at, {recency_expr}, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 0
            AND TRIM(COALESCE(title, '')) <> ''
@@ -118,7 +118,7 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
          ORDER BY MAX(COALESCE({recency_expr}, 0), COALESCE(updated_at, 0), COALESCE(created_at, 0)) DESC"
     );
     let archived_query = format!(
-        "SELECT id, title, {cwd_expr}, {archived_at_expr}, updated_at, created_at
+        "SELECT id, {cwd_expr}, {archived_at_expr}, updated_at, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 1
            AND TRIM(COALESCE(title, '')) <> ''
@@ -132,12 +132,11 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let active_rows = active_statement.query_map([day_start], |row| {
         Ok(ThreadRecord {
             id: row.get(0)?,
-            title: row.get(1)?,
-            workspace: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            workspace: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             activity_at: latest_timestamp([
+                row.get::<_, Option<i64>>(2)?,
                 row.get::<_, Option<i64>>(3)?,
                 row.get::<_, Option<i64>>(4)?,
-                row.get::<_, Option<i64>>(5)?,
             ]),
             archived_at: None,
             archived: false,
@@ -150,14 +149,13 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let mut archived_statement = connection.prepare(&archived_query)?;
     let archived_rows = archived_statement.query_map([day_start], |row| {
         let archived_at = latest_timestamp([
+            row.get::<_, Option<i64>>(2)?,
             row.get::<_, Option<i64>>(3)?,
             row.get::<_, Option<i64>>(4)?,
-            row.get::<_, Option<i64>>(5)?,
         ]);
         Ok(ThreadRecord {
             id: row.get(0)?,
-            title: row.get(1)?,
-            workspace: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            workspace: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
             activity_at: archived_at,
             archived_at,
             archived: true,
@@ -257,7 +255,10 @@ fn thread_task_item(
     TaskItem {
         id: format!("{}-{kind}", record.id),
         code: display_code("COD", &record.id),
-        title: display_title(record.title.trim()),
+        // `threads.title` is a user/session label and has no provenance that
+        // proves it is safe agent-generated task text. Keep the activity card
+        // and its factual state while using a non-content label at this boundary.
+        title: THREAD_ACTIVITY_TITLE.to_string(),
         detail: if record.workspace.trim().is_empty() {
             String::new()
         } else {
