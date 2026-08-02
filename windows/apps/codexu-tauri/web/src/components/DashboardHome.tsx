@@ -207,7 +207,7 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
           aria-labelledby="dashboard-home-tab-projects"
         >
           <ProjectsPanel
-            projects={usage?.project_board?.recent_projects ?? []}
+            projectBoard={usage?.project_board ?? null}
             tools={usage?.tool_usages ?? []}
           />
         </section>
