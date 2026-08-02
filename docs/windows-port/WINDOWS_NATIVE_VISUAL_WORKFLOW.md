@@ -12,7 +12,7 @@
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1
 ```
 
-只检查依赖、尺寸/表面合同和本地产物边界，不构建、不启动 app、不创建输出目录：
+只检查依赖、最大化运行/表面合同和本地产物边界，不构建、不启动 app、不创建输出目录：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1 -PreflightOnly
@@ -35,12 +35,12 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 3. 将仓库内的 Windows Graphics Capture helper 源码编译到本次本地产物目录。
 4. 构建真实 Tauri release 应用。
 5. 拒绝接管已经运行的同一精确 release executable。
-6. 依次启动 960×760 和 720×540 两个任务实例；每种尺寸只保留一个实例。
-7. 设置并重新读取 client area，记录 DPI 与原生外框尺寸。
-8. 用 UI Automation 选择 Tasks、AI Leadership、Usage、Projects、Skills；Overview 使用页面顶部状态。
-9. 滚动消息只发送给当前任务 app 的 renderer HWND。每次滚轮后等待 WebView2 平滑滚动落定，再优先把选中 Tab 移到客户区上半部；到达真实页尾时，在 Tab/Panel 仍同帧的前提下停止。Projects 不使用固定深滚动量。
-10. Windows Graphics Capture 按任务 app 的精确主 HWND 采集窗口帧。
-11. 每个尺寸完成或发生失败/中断时，清理并复核本任务记录的精确 app/WebView2 PID 身份。
+6. 只启动一个任务实例，并通过 Win32 最大化该窗口；Overview 与所有子板块都保持这一最大化状态。
+7. 重新读取并记录最大化状态、client area、DPI 与原生外框尺寸。
+8. 先在页面顶部采集一张 Overview，再用 UI Automation 依次选择 Tasks、AI Leadership、Usage、Projects、Skills。
+9. 每个子板块先对齐自身起点，再按约 20% 纵向重叠连续采集原生视口，直到板块底部可见。Projects 是明确例外：只采集最大化窗口下的首个板块视口，不滚动内部项目列表。
+10. 滚动消息只发送给当前任务 app 的 renderer HWND；每次滚轮后等待 WebView2 平滑滚动落定。Windows Graphics Capture 始终按该 app 的精确主 HWND 采集完整原生窗口帧。
+11. 单一运行完成或发生失败/中断时，清理并复核本任务记录的精确 app/WebView2 PID 身份。
 
 ## 本地产物
 
@@ -50,15 +50,13 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 .local-artifacts/windows-visual-captures/<timestamp>-native-workflow/
 ├── manifest.json
 ├── screenshots/
-│   ├── 960x760/
-│   │   ├── overview.png
-│   │   ├── tasks.png
-│   │   ├── ai-leadership.png
-│   │   ├── usage.png
-│   │   ├── projects.png
-│   │   └── skills.png
-│   └── 720x540/
-│       └── 同一组 6 张截图
+│   └── fullscreen/
+│       ├── overview.png
+│       ├── tasks-01.png ... tasks-NN.png
+│       ├── ai-leadership-01.png ... ai-leadership-NN.png
+│       ├── usage-01.png ... usage-NN.png
+│       ├── projects-01.png
+│       └── skills-01.png ... skills-NN.png
 ├── logs/
 ├── runtime/
 └── tools/
@@ -68,12 +66,12 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 
 真实 Codex 输入只读使用。任务 app 的 `APPDATA`、`LOCALAPPDATA` 与 WebView2 user-data folder 指向本次 `runtime/`，但用户目录下的 Codex 数据源不被复制或修改。
 
-## 窗口尺寸与 DPI
+## 最大化窗口与 DPI
 
-- 目标 client area 固定为 960×760 与 720×540。
-- 脚本通过 Win32 client/window rect 设置并复读尺寸；不以截图像素猜测 client area。
-- Windows Graphics Capture 输出包含原生窗口装饰，物理帧会随 DPI scaling 改变，因此通常大于 client area。
-- `manifest.json` 记录 requested client、verified client、outer window、DPI 与每张图的 physical frame；人工验收只比较本次记录，不建立 baseline。
+- 所有截图来自同一个 Win32 最大化窗口，不再创建 960×760 或 720×540 的固定 client-size 运行。
+- 脚本通过 `ShowWindow(SW_MAXIMIZE)` 最大化并用 `IsZoomed` 复核；不以截图像素猜测窗口状态。
+- Windows Graphics Capture 输出包含原生窗口装饰，物理帧会随当前屏幕和 DPI scaling 改变。
+- `manifest.json` 记录 maximized、verified client、outer window、DPI、每张图的 physical frame 与动态截图总数；人工验收只比较本次记录，不建立 baseline。
 
 ## 进程边界与清理
 
@@ -85,15 +83,15 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 
 ## 逐表面人工验收清单
 
-每次正式运行必须逐张打开 12 张新图，不复用旧图。不要在公开记录中抄写真实文本、路径、PID、数值或截图文件名明细。
+每次正式运行必须逐张打开本次动态生成的全部新图，不复用旧图。先检查 Overview，再按编号检查每个子板块从起点到终点的连续性；Projects 只检查 `projects-01.png` 的最大化首屏。不要在公开记录中抄写真实文本、路径、PID、数值或截图文件名明细。
 
-| 表面 | 960×760 与 720×540 必查项 |
+| 表面 | 最大化截图必查项 |
 |---|---|
 | Overview | Header 与主次层级清楚；领导力、额度、本地指标和下方 Tab 导航关系可辨；并列卡片基线、边距与边框一致；缺失/等待值没有伪造成 0；估算口径可辨。 |
 | Tasks | 选中 Tab 与任务内容同帧；列/卡片层级稳定；真实 agent 用量/活动文本在卡片内正常换行；空列或暂无记录状态清楚；没有水平溢出。 |
 | AI Leadership | 选中 Tab 与详情内容同帧；周期、等级进度、四项指标、图表/项目贡献的先后层级可辨；徽章、卡片、轨道与图例不互相遮挡；缺失证据使用明确降级状态。 |
 | Usage | 选中 Tab 与图表同帧；图表标题、轴、图例、tooltip 入口和汇总卡关系清楚；列表/图表不被裁切；本地估算与官方额度语义不混淆。 |
-| Projects | 选中 Tab 与项目列表/详情同帧，尤其检查 720×540；项目行、数值列、相对条形与工具摘要对齐；长名称/尾路径不突破容器；滚动后仍能判断所属 Tab。 |
+| Projects | 只验收最大化首个板块视口；选中 Tab 与项目列表/详情同帧；可见项目行、数值列、相对条形与工具摘要对齐；长名称/尾路径不突破容器。不把内部列表底部覆盖作为本流程的通过条件。 |
 | Skills | 选中 Tab 与列表或无记录状态同帧；列表行层级、图标、名称和辅助信息稳定；空态明确；长名称不会造成卡片或页面横向溢出。 |
 
 每张图还需统一检查：
@@ -103,17 +101,19 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 - 长文本换行、截断与容器边界。
 - 当前真实数据中实际出现的空、等待或错误状态；未出现的状态不得声称已验证。
 - 图表、图例、轴、列表和滚动连续性。
-- 紧凑尺寸下选中 Tab 与对应内容是否同帧可辨。
+- 最大化窗口状态、选中 Tab 与对应内容是否同帧可辨。
 - 官方数据、本地记录、本地估算和记录不足是否使用正确口径。
 
 ## 验证命令
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\tests\Test-NativeVisualCaptureWorkflow.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\tests\Test-NativeVisualCaptureCoverage.ps1
 
 $scripts = @(
   '.\windows\scripts\Capture-NativeVisuals.ps1',
-  '.\windows\scripts\tests\Test-NativeVisualCaptureWorkflow.ps1'
+  '.\windows\scripts\tests\Test-NativeVisualCaptureWorkflow.ps1',
+  '.\windows\scripts\tests\Test-NativeVisualCaptureCoverage.ps1'
 )
 foreach ($script in $scripts) {
   $tokens = $null

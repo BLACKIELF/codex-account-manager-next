@@ -15,10 +15,10 @@ $windowsRoot = Join-Path $repositoryRoot 'windows'
 $artifactBase = Join-Path $repositoryRoot '.local-artifacts\windows-visual-captures'
 $helperSource = Join-Path $PSScriptRoot 'native-visual-capture\GraphicsCaptureSnapshot.cs'
 $appPath = Join-Path $windowsRoot 'target\release\codexu-tauri.exe'
-$clientSizes = @(
-  [ordered]@{ width = 960; height = 760 },
-  [ordered]@{ width = 720; height = 540 }
-)
+$captureRuns = @('fullscreen')
+$segmentOverlapRatio = 0.2
+$maxSegmentsPerSurface = 12
+$surfaceFilePattern = '<surface>-<segment:00>.png'
 $surfaces = @(
   [ordered]@{
     name = 'Tasks'
@@ -160,8 +160,6 @@ using System.Threading;
 
 public static class NativeVisualCaptureDriver
 {
-    private const uint SWP_NOZORDER = 0x0004;
-    private const uint SWP_NOACTIVATE = 0x0010;
     private const uint WM_MOUSEWHEEL = 0x020A;
     private const uint WM_MOUSEHWHEEL = 0x020E;
 
@@ -192,16 +190,11 @@ public static class NativeVisualCaptureDriver
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        IntPtr hwnd,
-        IntPtr insertAfter,
-        int x,
-        int y,
-        int width,
-        int height,
-        uint flags
-    );
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hwnd, int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -251,107 +244,12 @@ public static class NativeVisualCaptureDriver
         return rect;
     }
 
-    private static int ScaleForDpi(int logicalValue, uint dpi)
-    {
-        return checked((int)Math.Round(
-            logicalValue * (double)dpi / 96.0,
-            MidpointRounding.AwayFromZero
-        ));
-    }
-
     private static int UnscaleForDpi(int physicalValue, uint dpi)
     {
         return checked((int)Math.Round(
             physicalValue * 96.0 / dpi,
             MidpointRounding.AwayFromZero
         ));
-    }
-
-    public static string GetPhysicalClientTarget(
-        int logicalWidth,
-        int logicalHeight,
-        uint dpi
-    )
-    {
-        return String.Format(
-            "{0}x{1}",
-            ScaleForDpi(logicalWidth, dpi),
-            ScaleForDpi(logicalHeight, dpi)
-        );
-    }
-
-    public static string SetClientSizeAndDescribe(
-        IntPtr hwnd,
-        int clientWidth,
-        int clientHeight
-    )
-    {
-        IntPtr previousDpiContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
-        try
-        {
-            uint dpi = GetDpiForWindow(hwnd);
-            int targetClientWidth = ScaleForDpi(clientWidth, dpi);
-            int targetClientHeight = ScaleForDpi(clientHeight, dpi);
-
-            for (int attempt = 0; attempt < 4; attempt++)
-            {
-                RECT window = ReadWindowRect(hwnd);
-                RECT client = ReadClientRect(hwnd);
-                int currentClientWidth = client.Right - client.Left;
-                int currentClientHeight = client.Bottom - client.Top;
-                if (
-                    currentClientWidth == targetClientWidth &&
-                    currentClientHeight == targetClientHeight
-                )
-                {
-                    break;
-                }
-
-                int targetWindowWidth =
-                    (window.Right - window.Left) +
-                    targetClientWidth -
-                    currentClientWidth;
-                int targetWindowHeight =
-                    (window.Bottom - window.Top) +
-                    targetClientHeight -
-                    currentClientHeight;
-                if (!SetWindowPos(
-                    hwnd,
-                    IntPtr.Zero,
-                    window.Left,
-                    window.Top,
-                    targetWindowWidth,
-                    targetWindowHeight,
-                    SWP_NOZORDER | SWP_NOACTIVATE
-                ))
-                {
-                    throw new Win32Exception(Marshal.GetLastWin32Error());
-                }
-                Thread.Sleep(250);
-            }
-
-            RECT finalWindow = ReadWindowRect(hwnd);
-            RECT finalClient = ReadClientRect(hwnd);
-            int finalPhysicalWidth = finalClient.Right - finalClient.Left;
-            int finalPhysicalHeight = finalClient.Bottom - finalClient.Top;
-            return String.Format(
-                "client={0}x{1};clientPhysical={2}x{3};outer={4}x{5};dpi={6}",
-                UnscaleForDpi(finalPhysicalWidth, dpi),
-                UnscaleForDpi(finalPhysicalHeight, dpi),
-                finalPhysicalWidth,
-                finalPhysicalHeight,
-                finalWindow.Right - finalWindow.Left,
-                finalWindow.Bottom - finalWindow.Top,
-                dpi
-            );
-        }
-        finally
-        {
-            if (previousDpiContext != IntPtr.Zero)
-            {
-                SetThreadDpiAwarenessContext(previousDpiContext);
-            }
-        }
     }
 
     public static string GetClientScreenBounds(IntPtr hwnd)
@@ -408,6 +306,65 @@ public static class NativeVisualCaptureDriver
         RECT rect = ReadWindowRect(renderer);
         int x = (rect.Left + rect.Right) / 2;
         int y = rect.Top + ((rect.Bottom - rect.Top) * 3 / 4);
+        long lParamValue =
+            ((long)(y & 0xffff) << 16) | (uint)(x & 0xffff);
+        long wParamValue = ((long)(wheelDelta & 0xffff) << 16);
+        bool delivered = true;
+        for (int index = 0; index < count; index++)
+        {
+            delivered =
+                PostMessage(
+                    renderer,
+                    WM_MOUSEWHEEL,
+                    new IntPtr(wParamValue),
+                    new IntPtr(lParamValue)
+                ) && delivered;
+        }
+        return delivered;
+    }
+
+    public static string MaximizeAndDescribe(IntPtr hwnd)
+    {
+        IntPtr previousDpiContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try
+        {
+            ShowWindow(hwnd, 3);
+            Thread.Sleep(750);
+            if (!IsZoomed(hwnd))
+            {
+                throw new InvalidOperationException("The target window did not maximize.");
+            }
+
+            uint dpi = GetDpiForWindow(hwnd);
+            RECT window = ReadWindowRect(hwnd);
+            RECT client = ReadClientRect(hwnd);
+            int physicalWidth = client.Right - client.Left;
+            int physicalHeight = client.Bottom - client.Top;
+            return String.Format(
+                "maximized=true;client={0}x{1};clientPhysical={2}x{3};outer={4}x{5};dpi={6}",
+                UnscaleForDpi(physicalWidth, dpi),
+                UnscaleForDpi(physicalHeight, dpi),
+                physicalWidth,
+                physicalHeight,
+                window.Right - window.Left,
+                window.Bottom - window.Top,
+                dpi
+            );
+        }
+        finally
+        {
+            if (previousDpiContext != IntPtr.Zero)
+            {
+                SetThreadDpiAwarenessContext(previousDpiContext);
+            }
+        }
+    }
+
+    public static bool ScrollRendererPage(IntPtr renderer, int wheelDelta, int count)
+    {
+        RECT rect = ReadWindowRect(renderer);
+        int x = rect.Right - 12;
+        int y = (rect.Top + rect.Bottom) / 2;
         long lParamValue =
             ((long)(y & 0xffff) << 16) | (uint)(x & 0xffff);
         long wParamValue = ((long)(wheelDelta & 0xffff) << 16);
@@ -494,12 +451,16 @@ function Get-PreflightManifest {
   return [ordered]@{
     capture_engine = 'Windows.Graphics.Capture'
     targeting = 'exact HWND'
-    dpi_scaling_probe = (
-      '720x540@144=>' +
-      [NativeVisualCaptureDriver]::GetPhysicalClientTarget(720, 540, 144)
-    )
-    client_sizes = @($clientSizes | ForEach-Object { "$($_.width)x$($_.height)" })
+    capture_runs = @($captureRuns)
+    client_sizes = @()
     surfaces = @('Overview') + @($surfaces | ForEach-Object { $_.name })
+    window_mode = 'maximized exact HWND'
+    overview_file = 'fullscreen/overview.png'
+    surface_capture_mode = 'maximized panel viewport sequence'
+    projects_capture_mode = 'first panel viewport'
+    segment_overlap_ratio = $segmentOverlapRatio
+    max_segments_per_surface = $maxSegmentsPerSurface
+    surface_file_pattern = $surfaceFilePattern
     build_command = 'cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle'
     app_executable_relative = 'windows/target/release/codexu-tauri.exe'
     output_root = $ResolvedOutputRoot
@@ -849,6 +810,12 @@ function Select-DashboardTab {
   [void](Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 8)
 }
 
+function Move-DashboardScrollToTop {
+  param([IntPtr] $Renderer)
+  [void][NativeVisualCaptureDriver]::ScrollRendererPage($Renderer, 120, 40)
+  Start-Sleep -Milliseconds 650
+}
+
 function Get-ClientScreenBounds {
   param([IntPtr] $Window)
   $description = [NativeVisualCaptureDriver]::GetClientScreenBounds($Window)
@@ -863,12 +830,6 @@ function Get-ClientScreenBounds {
   }
 }
 
-function Move-RendererToTop {
-  param([IntPtr] $Renderer)
-  [void][NativeVisualCaptureDriver]::ScrollRenderer($Renderer, 120, 40)
-  Start-Sleep -Milliseconds 500
-}
-
 function Move-RendererToLeft {
   param([IntPtr] $Renderer)
   [void][NativeVisualCaptureDriver]::ScrollRendererHorizontal(
@@ -879,97 +840,244 @@ function Move-RendererToLeft {
   Start-Sleep -Milliseconds 250
 }
 
-function Align-DashboardSurface {
+function Get-DashboardPanelObservation {
   param(
     [IntPtr] $Window,
-    [IntPtr] $Renderer,
-    [string] $TabId,
     [string] $PanelId
   )
   $client = Get-ClientScreenBounds -Window $Window
-  $clientHeight = $client.bottom - $client.top
-  $preferredTabTop = $client.top + [int]($clientHeight * 0.42)
+  $panel = Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 5
+  $panelRect = $panel.Current.BoundingRectangle
+  $panelVisible = (
+    -not $panel.Current.IsOffscreen -and
+    $panelRect.Height -gt 0 -and
+    $panelRect.Bottom -gt $client.top -and
+    $panelRect.Top -lt $client.bottom
+  )
+  return [ordered]@{
+    panel_visible = $panelVisible
+    panel_start_visible = (
+      $panelVisible -and
+      $panelRect.Top -ge $client.top -and
+      $panelRect.Top -lt $client.bottom
+    )
+    panel_end_visible = (
+      $panelVisible -and
+      $panelRect.Bottom -gt $client.top -and
+      $panelRect.Bottom -le $client.bottom
+    )
+    panel_top = [int]$panelRect.Top
+    panel_bottom = [int]$panelRect.Bottom
+    client_top = $client.top
+    client_bottom = $client.bottom
+    client_height = [int]($client.bottom - $client.top)
+  }
+}
+
+function Align-DashboardPanelStart {
+  param(
+    [IntPtr] $Window,
+    [IntPtr] $Renderer,
+    [string] $PanelId
+  )
   $scrollSettleMilliseconds = 650
   $lastObservation = $null
-  $previousTabTop = $null
-  $stableTabTopCount = 0
+  $previousPanelTop = $null
+  $stablePanelTopCount = 0
   for ($step = 0; $step -le 18; $step++) {
-    $tab = Wait-ForElement -Window $Window -AutomationId $TabId -TimeoutSeconds 5
-    $panel = Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 5
-    $tabRect = $tab.Current.BoundingRectangle
-    $tabVisible = (
-      -not $tab.Current.IsOffscreen -and
-      $tabRect.Height -gt 0 -and
-      $tabRect.Top -ge $client.top -and
-      $tabRect.Top -le $preferredTabTop -and
-      $tabRect.Bottom -le ($client.bottom - 180)
-    )
-    $panelVisible = -not $panel.Current.IsOffscreen
-    $basicFramingVisible = (
-      -not $tab.Current.IsOffscreen -and
-      $tabRect.Height -gt 0 -and
-      $tabRect.Top -ge $client.top -and
-      $tabRect.Bottom -le ($client.bottom - 180) -and
-      $panelVisible
-    )
-    if ($null -ne $previousTabTop -and [int]$tabRect.Top -eq $previousTabTop) {
-      $stableTabTopCount++
+    $observation = Get-DashboardPanelObservation -Window $Window -PanelId $PanelId
+    $alignmentBottom = $observation.client_top + [int]($observation.client_height * 0.24)
+    $lastObservation = $observation
+    if (
+      $null -ne $previousPanelTop -and
+      [math]::Abs($observation.panel_top - $previousPanelTop) -le 1
+    ) {
+      $stablePanelTopCount++
     } else {
-      $stableTabTopCount = 0
+      $stablePanelTopCount = 0
     }
-    $previousTabTop = [int]$tabRect.Top
-    $lastObservation = [ordered]@{
-      step = $step
-      tab_offscreen = $tab.Current.IsOffscreen
-      panel_offscreen = $panel.Current.IsOffscreen
-      tab_top = [int]$tabRect.Top
-      tab_bottom = [int]$tabRect.Bottom
-      client_top = $client.top
-      client_bottom = $client.bottom
-      preferred_tab_top = $preferredTabTop
-    }
-    if ($tabVisible -and $panelVisible) {
+    $previousPanelTop = $observation.panel_top
+    if ($observation.panel_start_visible -and $observation.panel_top -le $alignmentBottom) {
       return [ordered]@{
         scroll_steps = $step
-        selected_tab_visible = $true
-        panel_visible = $true
-        tab_top_in_client = [int]($tabRect.Top - $client.top)
+        panel_start_visible = $true
+        panel_top_in_client = [int]($observation.panel_top - $observation.client_top)
         limited_by_page_end = $false
       }
     }
-    if ($basicFramingVisible -and $stableTabTopCount -ge 1) {
+    if ($observation.panel_start_visible -and $stablePanelTopCount -ge 3) {
       return [ordered]@{
         scroll_steps = $step
-        selected_tab_visible = $true
-        panel_visible = $true
-        tab_top_in_client = [int]($tabRect.Top - $client.top)
+        panel_start_visible = $true
+        panel_top_in_client = [int]($observation.panel_top - $observation.client_top)
         limited_by_page_end = $true
       }
     }
-    [void][NativeVisualCaptureDriver]::ScrollRenderer($Renderer, -120, 1)
+    [void][NativeVisualCaptureDriver]::ScrollRendererPage($Renderer, -120, 1)
     Start-Sleep -Milliseconds $scrollSettleMilliseconds
   }
   throw (
-    "Could not frame $TabId with its selected panel in the same client area. " +
+    "Could not align the beginning of $PanelId in the client area. " +
     ($lastObservation | ConvertTo-Json -Compress)
   )
 }
 
-function Set-VerifiedClientSize {
-  param([IntPtr] $Window, [int] $Width, [int] $Height)
-  $description = [NativeVisualCaptureDriver]::SetClientSizeAndDescribe(
-    $Window,
-    $Width,
-    $Height
+function Move-DashboardPanelViewport {
+  param(
+    [IntPtr] $Window,
+    [IntPtr] $Renderer,
+    [string] $PanelId
   )
-  if ($description -notmatch '^client=(?<width>\d+)x(?<height>\d+);clientPhysical=(?<physicalWidth>\d+)x(?<physicalHeight>\d+);outer=(?<outerWidth>\d+)x(?<outerHeight>\d+);dpi=(?<dpi>\d+)$') {
-    throw "Could not parse verified window dimensions: $description"
+  $scrollSettleMilliseconds = 650
+  $initial = Get-DashboardPanelObservation -Window $Window -PanelId $PanelId
+  $targetDistance = [int]($initial.client_height * (1.0 - $segmentOverlapRatio))
+  $previousTop = $initial.panel_top
+  $distance = 0
+  $stableCount = 0
+  $moved = $false
+
+  for ($message = 1; $message -le 12; $message++) {
+    [void][NativeVisualCaptureDriver]::ScrollRendererPage($Renderer, -120, 1)
+    Start-Sleep -Milliseconds $scrollSettleMilliseconds
+    $current = Get-DashboardPanelObservation -Window $Window -PanelId $PanelId
+    $delta = $previousTop - $current.panel_top
+    if ([math]::Abs($delta) -le 1) {
+      $stableCount++
+    } else {
+      $stableCount = 0
+      $moved = $true
+      $distance += [math]::Max(0, $delta)
+    }
+    $previousTop = $current.panel_top
+
+    if ($distance -ge $targetDistance) {
+      return [ordered]@{
+        moved = $moved
+        page_end = $false
+        scroll_messages = $message
+        distance = $distance
+      }
+    }
+    if ($stableCount -ge 3) {
+      return [ordered]@{
+        moved = $moved
+        page_end = $true
+        scroll_messages = $message
+        distance = $distance
+      }
+    }
   }
-  if ([int]$Matches.width -ne $Width -or [int]$Matches.height -ne $Height) {
-    throw "Requested client ${Width}x${Height}, received $($Matches.width)x$($Matches.height)."
+
+  return [ordered]@{
+    moved = $moved
+    page_end = $false
+    scroll_messages = 12
+    distance = $distance
+  }
+}
+
+function Capture-DashboardSurfaceSegments {
+  param(
+    [IntPtr] $Window,
+    [IntPtr] $Renderer,
+    [System.Collections.IDictionary] $Surface,
+    [string] $CaptureTool,
+    [string] $OutputDirectory,
+    [string] $LogPath,
+    [System.Collections.IDictionary] $SizeRecord
+  )
+
+  $alignment = Align-DashboardPanelStart `
+    -Window $Window `
+    -Renderer $Renderer `
+    -PanelId $Surface.panel
+  $scrollSteps = [int]$alignment.scroll_steps
+  $atPageEnd = [bool]$alignment.limited_by_page_end
+  $firstViewportOnly = $Surface.name -eq 'Projects'
+  $coverageMode = if ($firstViewportOnly) {
+    'first panel viewport'
+  } else {
+    'panel viewport sequence'
+  }
+  $records = @()
+
+  for ($segment = 1; $segment -le $maxSegmentsPerSurface; $segment++) {
+    $observation = Get-DashboardPanelObservation `
+      -Window $Window `
+      -PanelId $Surface.panel
+    if ($segment -eq 1 -and -not $observation.panel_start_visible) {
+      throw "The first $($Surface.name) segment does not cover the panel start."
+    }
+
+    $outputPath = Join-Path $OutputDirectory (
+      '{0}-{1:D2}.png' -f $Surface.slug, $segment
+    )
+    $capture = Invoke-GraphicsCapture `
+      -CaptureTool $CaptureTool `
+      -Window $Window `
+      -OutputPath $outputPath `
+      -LogPath $LogPath
+    $record = [ordered]@{
+      surface = $Surface.name
+      segment = $segment
+      is_first = ($segment -eq 1)
+      is_last = $false
+      coverage_mode = $coverageMode
+      panel_visible = [bool]$observation.panel_visible
+      panel_start_visible = [bool]$observation.panel_start_visible
+      panel_end_visible = [bool]$observation.panel_end_visible
+      scroll_steps = $scrollSteps
+      panel_top_in_client = [int]($observation.panel_top - $observation.client_top)
+      panel_bottom_in_client = [int]($observation.panel_bottom - $observation.client_top)
+      client_height = [int]$observation.client_height
+      limited_by_page_end = $atPageEnd
+      file = $outputPath
+      physical_frame = $capture.physical_frame
+      bytes = $capture.bytes
+    }
+    $records += $record
+    $SizeRecord.captures += $record
+    Save-WorkflowManifest
+
+    if ($firstViewportOnly) {
+      $records[-1].is_last = $true
+      Save-WorkflowManifest
+      return @($records)
+    }
+
+    if ($observation.panel_end_visible) {
+      $records[-1].is_last = $true
+      Save-WorkflowManifest
+      return @($records)
+    }
+    if ($atPageEnd) {
+      throw "Reached a stable page end before the bottom of $($Surface.name) was visible."
+    }
+
+    $advance = Move-DashboardPanelViewport `
+      -Window $Window `
+      -Renderer $Renderer `
+      -PanelId $Surface.panel
+    $scrollSteps += [int]$advance.scroll_messages
+    if (-not [bool]$advance.moved) {
+      $records[-1].limited_by_page_end = $true
+      Save-WorkflowManifest
+      throw "Could not advance $($Surface.name) before its panel end was visible."
+    }
+    $atPageEnd = [bool]$advance.page_end
+  }
+
+  throw "Exceeded $maxSegmentsPerSurface segments while capturing $($Surface.name)."
+}
+
+function Set-MaximizedWindow {
+  param([IntPtr] $Window)
+  $description = [NativeVisualCaptureDriver]::MaximizeAndDescribe($Window)
+  if ($description -notmatch '^maximized=(?<maximized>true);client=(?<width>\d+)x(?<height>\d+);clientPhysical=(?<physicalWidth>\d+)x(?<physicalHeight>\d+);outer=(?<outerWidth>\d+)x(?<outerHeight>\d+);dpi=(?<dpi>\d+)$') {
+    throw "Could not parse maximized window dimensions: $description"
   }
   return [ordered]@{
-    requested_client = "${Width}x${Height}"
+    maximized = $true
     verified_client = "$($Matches.width)x$($Matches.height)"
     physical_client = "$($Matches.physicalWidth)x$($Matches.physicalHeight)"
     outer_window = "$($Matches.outerWidth)x$($Matches.outerHeight)"
@@ -1019,30 +1127,28 @@ function Save-WorkflowManifest {
   }
 }
 
-function Invoke-ClientSizeCapture {
+function Invoke-MaximizedCapture {
   param(
-    [int] $Width,
-    [int] $Height,
     [string] $CaptureTool,
     [string] $ScreenshotsRoot,
     [string] $RuntimeRoot,
     [string] $LogsRoot
   )
 
-  $label = "${Width}x${Height}"
+  $label = 'fullscreen'
   $sizeScreenshots = Join-Path $ScreenshotsRoot $label
   $sizeRuntime = Join-Path $RuntimeRoot $label
   New-Item -ItemType Directory -Path $sizeScreenshots, $sizeRuntime | Out-Null
 
   $sizeRecord = [ordered]@{
-    client = $label
+    run = $label
     status = 'starting'
     window = $null
     captures = @()
     process_records = @()
     cleanup = $null
   }
-  $script:workflowManifest.size_runs += $sizeRecord
+  $script:workflowManifest.fullscreen_run = $sizeRecord
   Save-WorkflowManifest
 
   $process = $null
@@ -1075,7 +1181,7 @@ function Invoke-ClientSizeCapture {
     Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
 
     $window = Wait-TaskWindow -Process $process
-    $sizeRecord.window = Set-VerifiedClientSize -Window $window -Width $Width -Height $Height
+    $sizeRecord.window = Set-MaximizedWindow -Window $window
     [void](Wait-ForElement -Window $window -AutomationId 'dashboard-home-tab-tasks')
     $renderer = [NativeVisualCaptureDriver]::FindRenderer($window)
     if ($renderer -eq [IntPtr]::Zero) {
@@ -1083,7 +1189,7 @@ function Invoke-ClientSizeCapture {
     }
     Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
 
-    Move-RendererToTop -Renderer $renderer
+    Move-DashboardScrollToTop -Renderer $renderer
     Move-RendererToLeft -Renderer $renderer
     Start-Sleep -Milliseconds 700
     $overviewPath = Join-Path $sizeScreenshots 'overview.png'
@@ -1094,8 +1200,7 @@ function Invoke-ClientSizeCapture {
       -LogPath (Join-Path $LogsRoot 'graphics-capture.log')
     $sizeRecord.captures += [ordered]@{
       surface = 'Overview'
-      selected_tab_visible = $null
-      framing = 'page top'
+      framing = 'page top in maximized window'
       file = $overviewPath
       physical_frame = $overviewCapture.physical_frame
       bytes = $overviewCapture.bytes
@@ -1103,37 +1208,20 @@ function Invoke-ClientSizeCapture {
     Save-WorkflowManifest
 
     foreach ($surface in $surfaces) {
-      Move-RendererToTop -Renderer $renderer
-      Move-RendererToLeft -Renderer $renderer
       Select-DashboardTab `
         -Window $window `
         -TabId $surface.tab `
         -PanelId $surface.panel
+      Move-DashboardScrollToTop -Renderer $renderer
       Move-RendererToLeft -Renderer $renderer
-      $framing = Align-DashboardSurface `
+      [void](Capture-DashboardSurfaceSegments `
         -Window $window `
         -Renderer $renderer `
-        -TabId $surface.tab `
-        -PanelId $surface.panel
-      Move-RendererToLeft -Renderer $renderer
-      Start-Sleep -Milliseconds 900
-      $outputPath = Join-Path $sizeScreenshots ($surface.slug + '.png')
-      $capture = Invoke-GraphicsCapture `
+        -Surface $surface `
         -CaptureTool $CaptureTool `
-        -Window $window `
-        -OutputPath $outputPath `
-        -LogPath (Join-Path $LogsRoot 'graphics-capture.log')
-      $sizeRecord.captures += [ordered]@{
-        surface = $surface.name
-        selected_tab_visible = $framing.selected_tab_visible
-        panel_visible = $framing.panel_visible
-        scroll_steps = $framing.scroll_steps
-        tab_top_in_client = $framing.tab_top_in_client
-        limited_by_page_end = $framing.limited_by_page_end
-        file = $outputPath
-        physical_frame = $capture.physical_frame
-        bytes = $capture.bytes
-      }
+        -OutputDirectory $sizeScreenshots `
+        -LogPath (Join-Path $LogsRoot 'graphics-capture.log') `
+        -SizeRecord $sizeRecord)
       Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
       Save-WorkflowManifest
     }
@@ -1233,6 +1321,7 @@ $script:workflowManifest = [ordered]@{
     skipped = [bool]$SkipBuild
     result = 'pending'
   }
+  fullscreen_run = $null
   size_runs = @()
   screenshot_count = 0
   final_process_cleanup = 'pending'
@@ -1284,28 +1373,75 @@ try {
     throw 'The exact target release executable became active before capture; refusing to manage it.'
   }
 
-  foreach ($size in $clientSizes) {
-    Invoke-ClientSizeCapture `
-      -Width $size.width `
-      -Height $size.height `
-      -CaptureTool $captureTool `
-      -ScreenshotsRoot $screenshotsRoot `
-      -RuntimeRoot $runtimeRoot `
-      -LogsRoot $logsRoot
-  }
+  Invoke-MaximizedCapture `
+    -CaptureTool $captureTool `
+    -ScreenshotsRoot $screenshotsRoot `
+    -RuntimeRoot $runtimeRoot `
+    -LogsRoot $logsRoot
 
   $pngFiles = @(
     Get-ChildItem -LiteralPath $screenshotsRoot -Filter '*.png' -File -Recurse
   )
-  if ($pngFiles.Count -ne 12) {
-    throw "Expected 12 native screenshots, found $($pngFiles.Count)."
+  if (@($script:workflowManifest.size_runs).Count -ne 0) {
+    throw 'Native capture unexpectedly recorded a fixed client-size run.'
+  }
+  $fullscreenRun = $script:workflowManifest.fullscreen_run
+  if (
+    $null -eq $fullscreenRun -or
+    $fullscreenRun.status -ne 'complete' -or
+    -not [bool]$fullscreenRun.window.maximized -or
+    @($fullscreenRun.captures | Where-Object { $_.surface -eq 'Overview' }).Count -ne 1
+  ) {
+    throw 'Native capture did not complete exactly one maximized Overview capture.'
+  }
+  $recordedCaptureCount = @($fullscreenRun.captures).Count
+  foreach ($surface in $surfaces) {
+    $surfaceCaptures = @(
+      $fullscreenRun.captures | Where-Object { $_.surface -eq $surface.name }
+    )
+    if ($surfaceCaptures.Count -lt 1) {
+      throw "Maximized run did not record $($surface.name) coverage."
+    }
+    $actualSegments = @(
+      $surfaceCaptures | ForEach-Object { [int]$_.segment }
+    )
+    $expectedSegments = @(1..$surfaceCaptures.Count)
+    if (($actualSegments -join ',') -ne ($expectedSegments -join ',')) {
+      throw "Maximized run recorded non-contiguous $($surface.name) segments."
+    }
+    if (
+      -not [bool]$surfaceCaptures[0].is_first -or
+      -not [bool]$surfaceCaptures[0].panel_start_visible
+    ) {
+      throw "Maximized run did not cover the beginning of $($surface.name)."
+    }
+    $finalCapture = $surfaceCaptures[-1]
+    if ($surface.name -eq 'Projects') {
+      if (
+        $surfaceCaptures.Count -ne 1 -or
+        $finalCapture.coverage_mode -ne 'first panel viewport' -or
+        -not [bool]$finalCapture.is_last
+      ) {
+        throw 'Maximized run did not keep Projects to its first viewport.'
+      }
+    } elseif (
+      -not [bool]$finalCapture.is_last -or
+      -not [bool]$finalCapture.panel_end_visible
+    ) {
+      throw "Maximized run did not establish the end of $($surface.name)."
+    }
+  }
+  if ($pngFiles.Count -ne $recordedCaptureCount) {
+    throw (
+      "Native screenshot files ($($pngFiles.Count)) did not match manifest records " +
+      "($recordedCaptureCount)."
+    )
   }
   $script:workflowManifest.screenshot_count = $pngFiles.Count
 
   $remainingExactApp = @(Get-ExactExecutableProcesses -ExecutablePath $appPath)
   $remainingOwned = @(
-    $script:workflowManifest.size_runs |
-      ForEach-Object { @($_.cleanup.remaining_matching_process_ids) }
+    @($script:workflowManifest.fullscreen_run.cleanup.remaining_matching_process_ids)
   )
   if ($remainingExactApp.Count -ne 0 -or $remainingOwned.Count -ne 0) {
     throw 'Task app or recorded task-owned WebView2 processes remained after capture.'
@@ -1325,7 +1461,7 @@ try {
 $summary = [ordered]@{
   status = $script:workflowManifest.status
   screenshots = $script:workflowManifest.screenshot_count
-  client_sizes = @($preflight.client_sizes)
+  capture_runs = @($preflight.capture_runs)
   surfaces = @($preflight.surfaces)
   process_cleanup = $script:workflowManifest.final_process_cleanup
   output_root = $resolvedOutputRoot

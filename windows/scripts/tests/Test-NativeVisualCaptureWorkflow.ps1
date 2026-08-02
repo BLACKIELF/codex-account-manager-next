@@ -39,8 +39,30 @@ $manifest = "$($manifestLine[0])".Substring('NATIVE_VISUAL_PREFLIGHT='.Length) |
 
 Assert-True ($manifest.capture_engine -eq 'Windows.Graphics.Capture') 'Preflight selected the wrong capture engine.'
 Assert-True ($manifest.targeting -eq 'exact HWND') 'Preflight did not declare exact-HWND targeting.'
-Assert-Sequence @($manifest.client_sizes) @('960x760', '720x540') 'Preflight client-size coverage changed.'
+Assert-Sequence @($manifest.capture_runs) @('fullscreen') 'Preflight capture-run coverage changed.'
+Assert-True (@($manifest.client_sizes).Count -eq 0) 'Preflight retained obsolete fixed client-size runs.'
 Assert-Sequence @($manifest.surfaces) @('Overview', 'Tasks', 'AI Leadership', 'Usage', 'Projects', 'Skills') 'Preflight surface coverage changed.'
+Assert-True (
+  $manifest.window_mode -eq 'maximized exact HWND'
+) 'Preflight did not require a maximized exact-HWND window for every capture.'
+Assert-True (
+  $manifest.overview_file -eq 'fullscreen/overview.png'
+) 'Preflight changed the fullscreen Overview file contract.'
+Assert-True (
+  $manifest.surface_capture_mode -eq 'maximized panel viewport sequence'
+) 'Preflight did not select maximized panel viewport sequences.'
+Assert-True (
+  [double]$manifest.segment_overlap_ratio -eq 0.2
+) 'Preflight changed the required segment overlap.'
+Assert-True (
+  [int]$manifest.max_segments_per_surface -eq 12
+) 'Preflight changed the bounded segment limit.'
+Assert-True (
+  $manifest.surface_file_pattern -eq '<surface>-<segment:00>.png'
+) 'Preflight changed the segment file contract.'
+Assert-True (
+  $manifest.projects_capture_mode -eq 'first panel viewport'
+) 'Preflight did not limit Projects to its first panel viewport.'
 Assert-True ($manifest.app_executable_relative -eq 'windows/target/release/codexu-tauri.exe') 'Preflight selected the wrong release executable.'
 Assert-True ($manifest.build_command -eq 'cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle') 'Preflight selected the wrong release build command.'
 Assert-True ([bool]$manifest.prerequisites.csharp_compiler) 'Preflight did not locate the C# compiler.'
@@ -50,9 +72,6 @@ Assert-True (
 ) 'Preflight did not select versioned Windows UnionMetadata.'
 Assert-True ([bool]$manifest.prerequisites.ui_automation) 'Preflight did not validate UI Automation.'
 Assert-True ([bool]$manifest.prerequisites.native_driver) 'Preflight did not load the native sizing and renderer driver.'
-Assert-True (
-  $manifest.dpi_scaling_probe -eq '720x540@144=>1080x810'
-) 'Preflight did not apply window-DPI scaling to logical client sizes.'
 Assert-True (-not [bool]$manifest.writes_performed) 'Preflight unexpectedly wrote runtime artifacts.'
 Assert-True (-not (Test-Path -LiteralPath $preflightOutput)) 'Preflight created the requested runtime output directory.'
 
@@ -93,13 +112,5 @@ try {
 }
 Assert-True ($invalidExitCode -ne 0) 'An output path outside .local-artifacts was accepted.'
 Assert-True (-not (Test-Path -LiteralPath $outsideRoot)) 'The rejected output path was created.'
-
-$entrySource = Get-Content -LiteralPath $entry -Raw -Encoding UTF8
-Assert-True (
-  $entrySource.Contains('$scrollSettleMilliseconds = 650')
-) 'Framing must wait for WebView2 smooth scrolling to settle between wheel messages.'
-Assert-True (
-  $entrySource.Contains('if ($tabVisible -and $panelVisible) {')
-) 'Framing must prefer the selected tab target before accepting a page-end fallback.'
 
 Write-Output 'PASS: native visual capture preflight and local-artifact boundary'
