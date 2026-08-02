@@ -601,10 +601,10 @@ fn safe_skill_loads_from_tool_payload(
     let mut seen = HashSet::new();
 
     for key in ["arguments", "input", "cmd", "command"] {
-        let Some(argument_text) = payload.get(key).and_then(serde_json::Value::as_str) else {
+        let Some(argument_text) = payload.get(key).and_then(serialized_skill_argument) else {
             continue;
         };
-        for load in extract_safe_skill_loads(argument_text, observed_at) {
+        for load in extract_safe_skill_loads(&argument_text, observed_at) {
             if seen.insert((load.source_label.clone(), load.name.clone())) {
                 loads.push(load);
             }
@@ -612,6 +612,21 @@ fn safe_skill_loads_from_tool_payload(
     }
 
     loads
+}
+
+/// Matches the macOS reader's handling of tool arguments: plain strings are
+/// scanned directly, while object/array arguments are serialized briefly for
+/// safe `SKILL.md` identity extraction. The serialized payload is not stored.
+fn serialized_skill_argument(value: &serde_json::Value) -> Option<String> {
+    if let Some(text) = value.as_str() {
+        return Some(text.to_string());
+    }
+
+    if value.is_object() || value.is_array() {
+        return serde_json::to_string(value).ok();
+    }
+
+    None
 }
 
 fn extract_safe_skill_loads(text: &str, observed_at: Option<DateTime<Utc>>) -> Vec<CodexSkillLoad> {
@@ -862,6 +877,21 @@ mod tests {
         let dashboard_json = serde_json::to_string(&usage).unwrap();
         assert!(!dashboard_json.contains(private_path));
         assert!(!dashboard_json.contains(&raw_argument));
+    }
+
+    #[test]
+    fn extracts_blueprint_from_object_arguments_like_macos_reader() {
+        let payload = serde_json::json!({
+            "arguments": {
+                "cmd": r#"Get-Content -Raw 'C:\Users\private-user\.codex\skills\blueprint\SKILL.md'"#
+            }
+        });
+
+        let loads = safe_skill_loads_from_tool_payload(&payload, None);
+
+        assert_eq!(loads.len(), 1);
+        assert_eq!(loads[0].name, "blueprint");
+        assert_eq!(loads[0].source_label, "Personal Codex skill");
     }
 
     #[tokio::test]
