@@ -456,7 +456,7 @@ enum ModelUsageTrendSelfTest {
             sourceQuality: .detailed
         )
         expect(catalogPriced.first?.usesReferencePricing == false, "catalog-priced models should not be marked as reference pricing")
-        expect(modelUsageUsesReferencePricing("gpt-5.6-luna"), "unknown models should use the documented reference price")
+        expect(!modelUsageUsesReferencePricing("gpt-5.6-luna"), "known GPT-5.6 models should use their explicit price")
         expect(!modelUsageUsesReferencePricing("gpt-5.5"), "catalog-priced models should retain their explicit price basis")
 
         let unsupportedTrend = UsageTrend(
