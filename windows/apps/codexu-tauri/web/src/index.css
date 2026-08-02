@@ -421,6 +421,30 @@ body {
     letter-spacing: 0.01em;
   }
 
+  .skill-activity-bar {
+    position: relative;
+    height: 0.5rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 86%, transparent);
+    border-radius: 9999px;
+    background: color-mix(in oklab, var(--surface) 88%, var(--text-tertiary));
+  }
+
+  .skill-activity-bar::after {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: var(--skill-intensity, 0%);
+    content: '';
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--accent) 42%, transparent),
+      var(--accent)
+    );
+    box-shadow: 0 4px 14px -8px color-mix(in oklab, var(--accent) 68%, transparent);
+    transition: width 180ms ease;
+  }
+
   .glass-input {
     background: var(--surface-inset);
     border: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
