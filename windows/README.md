@@ -40,9 +40,9 @@ cargo test --workspace
 ### 原生视觉验收
 
 Dashboard 的正式 Windows 本机采集入口会构建真实 Tauri release 应用，并执行一次
-最大化、exact HWND 的采集运行。Overview 与每个 Dashboard surface 都会被采集：
-Overview、Tasks、AI Leadership、Usage 与 Skills 使用动态编号的 panel segments，
-Projects 仅采集一个最大化的首个 viewport。截图、日志和 WebView2 临时数据只写入
+最大化、exact HWND 的采集运行。Overview 仅采集一个顶部 viewport；Tasks、AI Leadership、
+Usage 与 Skills 使用动态编号的 panel segments；Projects 仅采集一个最大化的首个 viewport。
+截图、日志和 WebView2 临时数据只写入
 Git 忽略的 `.local-artifacts/`；当前契约不包含额外的 client sizes。
 
 ```powershell

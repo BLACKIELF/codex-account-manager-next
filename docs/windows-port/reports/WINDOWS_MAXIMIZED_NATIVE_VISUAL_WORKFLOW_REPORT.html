@@ -38,14 +38,20 @@
     <h2>Manual native review</h2>
     <p>All 10 fresh local-only PNGs listed by the manifest were inspected. Every frame was maximized; the selected surface matched the captured surface; no horizontal clipping was observed; and every long-surface sequence reached its recorded end coverage. The Projects capture remained limited to its first viewport, as required. The review found no selected-surface mismatch or framing failure in the accepted scope.</p>
     <p>Screenshots and their contents remain local-only. This report contains no screenshot or artifact link, local path, raw captured text, account, thread, project, process, or other identifier, or exact product metric.</p>
+    <p>The report excludes identifiers from captured local or product data. The intentional branch and commit checkout identity above remains only as evidence provenance; it is not captured local or product data.</p>
 
     <h2>Verification record</h2>
     <table><thead><tr><th>Verification</th><th>Result</th><th>Notes</th></tr></thead><tbody>
       <tr><td>Default release build and native capture</td><td class="pass">Passed</td><td>Completed with the manifest values above.</td></tr><tr><td>Native capture workflow PowerShell test</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Active native-visual documentation PowerShell test</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Blueprint validation</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Rust workspace tests</td><td class="pass">Passed</td><td>MSVC workspace command exited 0.</td></tr><tr><td>Web production build</td><td class="limit">Passed with warning</td><td>Exit code 0; existing Vite chunk-size warning remained non-blocking.</td></tr><tr><td>Web contract tests</td><td class="pass">Passed</td><td>Exit code 0; 14 tests passed.</td></tr><tr><td>Pre-report repository diff check</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Capture-process cleanup</td><td class="pass">Confirmed</td><td>Recorded task process identities were cleaned up.</td></tr>
     </tbody></table>
 
+    <h2>Later final-verification history</h2>
+    <p>The formal capture evidence at <code>301b323</code> remains the basis for the passed verdict, all ten PNGs, every per-surface count, and the Task 3 evidence checkout recorded above. Later verification evidence at <code>4ff0d16</code> does not replace or amend that formal capture record.</p>
+    <p>PowerShell parser: 4/4 passed. During the final verification, the initial <code>Test-NativeVisualCaptureCoverage</code> run ended with a Leadership UIA timeout. One authorized clean-state rerun then passed all 10 captures in 57.561s with cleanup.</p>
+    <p>Cause unconfirmed. The clean rerun plus the prior formal capture rules out a deterministic regression at that checkout; no tracked runtime fix is justified. Keep this as a known intermittent warning.</p>
+
     <h2>Known limits and next steps</h2>
-    <ul><li>This is a point-in-time review of changing local data, not a deterministic visual-regression baseline.</li><li>It does not certify unobserved error states, themes, dialogs, system menus, or unrelated interaction paths.</li><li>The accepted scope is one maximized exact-HWND run. Other client sizes remain deferred while their reserved manifest fields stay empty.</li><li>Future visual changes should rerun the default capture, inspect each manifest-listed local-only image, and renew this evidence before changing the verdict.</li></ul>
+    <ul><li>This is a point-in-time review of changing local data, not a deterministic visual-regression baseline.</li><li>It does not certify unobserved error states, themes, dialogs, system menus, or unrelated interaction paths.</li><li>The accepted scope is one maximized exact-HWND run. Other client sizes remain deferred while their reserved manifest fields stay empty.</li><li>The final-verification Leadership UIA timeout is a known intermittent warning; its cause remains unconfirmed, and the authorized clean-state rerun passed with cleanup.</li><li>Future visual changes should rerun the default capture, inspect each manifest-listed local-only image, and renew this evidence before changing the verdict.</li></ul>
   </main>
 </body>
 </html>

@@ -39,6 +39,8 @@ All 10 fresh local-only PNGs listed by the manifest were inspected. Every frame 
 
 Screenshots and their contents remain local-only. This report contains no screenshot or artifact link, local path, raw captured text, account, thread, project, process, or other identifier, or exact product metric.
 
+The report excludes identifiers from captured local or product data. The intentional branch and commit checkout identity above remains only as evidence provenance; it is not captured local or product data.
+
 ## Verification record
 
 | Verification | Result | Notes |
@@ -53,9 +55,18 @@ Screenshots and their contents remain local-only. This report contains no screen
 | Pre-report repository diff check | Passed | Exit code 0. |
 | Capture-process cleanup | Confirmed | Recorded task process identities were cleaned up. |
 
+## Later final-verification history
+
+The formal capture evidence at `301b323` remains the basis for the passed verdict, all ten PNGs, every per-surface count, and the Task 3 evidence checkout recorded above. Later verification evidence at `4ff0d16` does not replace or amend that formal capture record.
+
+PowerShell parser: 4/4 passed. During the final verification, the initial `Test-NativeVisualCaptureCoverage` run ended with a Leadership UIA timeout. One authorized clean-state rerun then passed all 10 captures in 57.561s with cleanup.
+
+Cause unconfirmed. The clean rerun plus the prior formal capture rules out a deterministic regression at that checkout; no tracked runtime fix is justified. Keep this as a known intermittent warning.
+
 ## Known limits and next steps
 
 - This is a point-in-time review of changing local data, not a deterministic visual-regression baseline.
 - It does not certify unobserved error states, themes, dialogs, system menus, or unrelated interaction paths.
 - The accepted scope is one maximized exact-HWND run. Other client sizes remain deferred while their reserved manifest fields stay empty.
+- The final-verification Leadership UIA timeout is a known intermittent warning; its cause remains unconfirmed, and the authorized clean-state rerun passed with cleanup.
 - Future visual changes should rerun the default capture, inspect each manifest-listed local-only image, and renew this evidence before changing the verdict.
