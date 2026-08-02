@@ -82,7 +82,8 @@ foreach ($relativePath in $reportFiles) {
   $reportTextLower = $reportText.ToLowerInvariant()
   Assert-True ($reportTextLower.Contains('formal capture evidence at 301b323')) "$relativePath must distinguish formal-capture evidence from later verification."
   Assert-True ($reportTextLower.Contains('later verification evidence at 4ff0d16')) "$relativePath must distinguish later verification evidence from formal capture."
-  Assert-True ($reportText.Contains('excludes identifiers from captured local or product data')) "$relativePath must scope the privacy exclusion to captured local or product data."
+  Assert-True (-not $reportText.Contains('other identifier')) "$relativePath must reject the overbroad privacy phrase."
+  Assert-True ($reportText.Contains('contains no identifier from captured local or product data')) "$relativePath must scope the original privacy prohibition to captured local or product data."
   Assert-True ($reportText.Contains('intentional branch and commit checkout identity')) "$relativePath must allow intentional checkout identity for provenance."
 }
 

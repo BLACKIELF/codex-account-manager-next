@@ -37,9 +37,9 @@ Long surfaces use numbered viewport segments and do not repeat the dashboard top
 
 All 10 fresh local-only PNGs listed by the manifest were inspected. Every frame was maximized; the selected surface matched the captured surface; no horizontal clipping was observed; and every long-surface sequence reached its recorded end coverage. The Projects capture remained limited to its first viewport, as required. The review found no selected-surface mismatch or framing failure in the accepted scope.
 
-Screenshots and their contents remain local-only. This report contains no screenshot or artifact link, local path, raw captured text, account, thread, project, process, or other identifier, or exact product metric.
+Screenshots and their contents remain local-only. This report contains no identifier from captured local or product data, screenshot or artifact link, local path, raw captured text, account, thread, project, process, or exact product metric.
 
-The report excludes identifiers from captured local or product data. The intentional branch and commit checkout identity above remains only as evidence provenance; it is not captured local or product data.
+The intentional branch and commit checkout identity above remains only as evidence provenance; it is not captured local or product data.
 
 ## Verification record
 
