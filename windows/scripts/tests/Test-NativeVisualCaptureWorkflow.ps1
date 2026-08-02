@@ -106,6 +106,9 @@ Assert-True (
   $null -eq $singleSurfaceManifest.overview_file
 ) 'Single-surface preflight retained an unrelated Overview capture.'
 Assert-True (
+  $singleSurfaceManifest.surface_capture_mode -eq 'maximized first panel viewport'
+) 'Single-surface preflight did not select exactly one maximized panel viewport.'
+Assert-True (
   -not (Test-Path -LiteralPath $singleSurfaceOutput)
 ) 'Single-surface preflight created the requested runtime output directory.'
 
