@@ -67,6 +67,7 @@ if ($captureOverview) {
   $requestedSurfaces += 'Overview'
 }
 $requestedSurfaces += @($selectedPanelSurfaces | ForEach-Object { $_.name })
+$singlePanelCapture = $RequestedSurface -notin @('All', 'Overview')
 
 function Get-NormalizedOutputRoot {
   param([string] $RequestedPath)
@@ -472,7 +473,11 @@ function Get-PreflightManifest {
     surfaces = @($requestedSurfaces)
     window_mode = 'maximized exact HWND'
     overview_file = if ($captureOverview) { 'fullscreen/overview.png' } else { $null }
-    surface_capture_mode = 'maximized panel viewport sequence'
+    surface_capture_mode = if ($singlePanelCapture) {
+      'maximized first panel viewport'
+    } else {
+      'maximized panel viewport sequence'
+    }
     projects_capture_mode = 'first panel viewport'
     segment_overlap_ratio = $segmentOverlapRatio
     max_segments_per_surface = $maxSegmentsPerSurface
@@ -1009,7 +1014,7 @@ function Capture-DashboardSurfaceSegments {
     -PanelId $Surface.panel
   $scrollSteps = [int]$alignment.scroll_steps
   $atPageEnd = [bool]$alignment.limited_by_page_end
-  $firstViewportOnly = $Surface.name -eq 'Projects'
+  $firstViewportOnly = $singlePanelCapture -or $Surface.name -eq 'Projects'
   $coverageMode = if ($firstViewportOnly) {
     'first panel viewport'
   } else {
@@ -1449,13 +1454,13 @@ try {
       throw "Maximized run did not cover the beginning of $($surface.name)."
     }
     $finalCapture = $surfaceCaptures[-1]
-    if ($surface.name -eq 'Projects') {
+    if ($singlePanelCapture -or $surface.name -eq 'Projects') {
       if (
         $surfaceCaptures.Count -ne 1 -or
         $finalCapture.coverage_mode -ne 'first panel viewport' -or
         -not [bool]$finalCapture.is_last
       ) {
-        throw 'Maximized run did not keep Projects to its first viewport.'
+        throw "Maximized run did not keep $($surface.name) to its first viewport."
       }
     } elseif (
       -not [bool]$finalCapture.is_last -or
