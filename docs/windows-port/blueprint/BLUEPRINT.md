@@ -88,7 +88,9 @@ Screenshot Workflow Preflight
 - 语义源：`validate_blueprint.py` 已通过，14 个节点和 19 条关系与 Mermaid fallback 一致。
 - 确定性图：项目本地 `render.py` 已从 schema 生成 SVG/HTML；`diagram.render.png` 由 Microsoft Edge headless 浏览器 fallback 从 HTML 截取，未声称使用 CairoSVG。
 - Geometry gate：0 error；保留 7 个可解释 warning，其中 5 个是已经绘出弧形线桥的验证/额度旁路交叉，2 个是同一 Probe/Build 来源的共享线干。
-- 生成式候选：待从同一语义与 composition 生成并复核忠实度。
+- 生成式候选：使用内置 image generation，从同一五块、测试映射与 composition 约束生成；一次定向编辑只修正 Probe/Build 的四个箭头方向。人工语义复核确认五块完整、测试均在 Runtime 外、截图链和本地证据链正确、没有新增架构节点。
 - 最终 `diagram.png`：待比较两个候选后选择。
 
 本阶段没有重新运行 Windows 产品代码、Rust/Web 测试或 native capture；上述结果只覆盖 Blueprint schema、渲染和几何检查。
+
+生成提示的核心约束是：16:9 深色技术编辑风格；中心只有五个 Runtime 块；测试按对象挂接；`Preflight → Native Screenshot Demo → UI → Local Visual Evidence` 保持独立；禁止 macOS、Claude、云服务、Updater、WinUI 和双泳道。`diagram.generated.png` 仍是展示候选，不替代 schema、SVG 或确定性渲染。
