@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts';
 import type { TokenBreakdown, UsageTrend } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface TrendChartProps {
   trend: UsageTrend | null;
@@ -21,6 +22,7 @@ const RANGES = [
 ];
 
 export function TrendChart({ trend }: TrendChartProps) {
+  const { t } = useI18n();
   const [range, setRange] = useState(30);
 
   const data = useMemo(() => {
@@ -37,9 +39,9 @@ export function TrendChart({ trend }: TrendChartProps) {
   if (!trend || data.length === 0) {
     return (
       <div className="glass-panel p-4 sm:p-5">
-        <h3 className="text-sm font-semibold text-primary">Daily token trend</h3>
-        <p className="mt-2 text-sm text-secondary">No local usage trend yet.</p>
-        <p className="mt-1 text-xs text-tertiary">A recorded session will add daily activity here.</p>
+        <h3 className="text-sm font-semibold text-primary">{t('usage.dailyTrend')}</h3>
+        <p className="mt-2 text-sm text-secondary">{t('usage.noTrend')}</p>
+        <p className="mt-1 text-xs text-tertiary">{t('usage.trendDetail')}</p>
       </div>
     );
   }
@@ -48,8 +50,8 @@ export function TrendChart({ trend }: TrendChartProps) {
     <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-semibold text-primary">Daily token trend</h3>
-          <p className="mt-1 text-xs text-tertiary">{sourceQualityLabel(trend.source_quality)}</p>
+          <h3 className="text-sm font-semibold text-primary">{t('usage.dailyTrend')}</h3>
+          <p className="mt-1 text-xs text-tertiary">{sourceQualityLabel(trend.source_quality, t)}</p>
         </div>
         <div className="flex gap-1 glass-toolbar p-0.5 rounded-full">
           {RANGES.map((r) => (
@@ -67,18 +69,18 @@ export function TrendChart({ trend }: TrendChartProps) {
           ))}
         </div>
       </div>
-      <div className="usage-trend-summary" aria-label="Last 7 day usage summary">
+      <div className="usage-trend-summary" aria-label={t('usage.lastSevenSummary')}>
         <div>
-          <span>Last 7 days</span>
+          <span>{t('usage.lastSevenDays')}</span>
           <strong>{formatTokens(visibleTotalTokens(trend.summary.seven_day.tokens))}</strong>
         </div>
         <div>
-          <span>Daily average</span>
+          <span>{t('usage.dailyAverage')}</span>
           <strong>{formatTokens(trend.summary.daily_average_tokens)}</strong>
         </div>
         <div>
-          <span>Change</span>
-          <strong>{formatChange(trend.summary.change_percent, trend.summary.is_new_activity)}</strong>
+          <span>{t('usage.change')}</span>
+          <strong>{formatChange(trend.summary.change_percent, trend.summary.is_new_activity, t)}</strong>
         </div>
       </div>
       <div className="h-56">
@@ -111,7 +113,7 @@ export function TrendChart({ trend }: TrendChartProps) {
                 borderRadius: '8px',
                 color: 'var(--text-primary)',
               }}
-              formatter={(value: number) => [formatNumber(value), 'Tokens']}
+              formatter={(value: number) => [formatNumber(value), t('usage.tokenLabel')]}
             />
             <Area
               type="monotone"
@@ -145,12 +147,12 @@ function formatTokens(value: number): string {
   return Math.round(value).toLocaleString();
 }
 
-function formatChange(value: number | null, isNewActivity: boolean): string {
-  if (isNewActivity) return 'New activity';
+function formatChange(value: number | null, isNewActivity: boolean, t: ReturnType<typeof useI18n>['t']): string {
+  if (isNewActivity) return t('usage.newActivity');
   if (value == null || !Number.isFinite(value)) return '--';
   return `${value >= 0 ? '+' : ''}${value.toFixed(0)}%`;
 }
 
-function sourceQualityLabel(value: UsageTrend['source_quality']): string {
-  return value === 'detailed' ? 'Detailed token events' : 'Thread-time fallback';
+function sourceQualityLabel(value: UsageTrend['source_quality'], t: ReturnType<typeof useI18n>['t']): string {
+  return value === 'detailed' ? t('usage.detailedEvents') : t('usage.threadFallback');
 }

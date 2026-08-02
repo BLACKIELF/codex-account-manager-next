@@ -27,6 +27,11 @@ fn main() {
             info!("App data dir: {}", app_data_dir.display());
 
             let state = Arc::new(AppState::new(app_data_dir));
+            let initial_language = state
+                .config
+                .try_read()
+                .map(|config| config.language.resolved(app_state::ResolvedLanguage::En))
+                .unwrap_or(app_state::ResolvedLanguage::En);
             app.manage(state.clone());
 
             // Hide main window to tray on close instead of quitting.
@@ -40,7 +45,7 @@ fn main() {
                 });
             }
 
-            tray::setup_tray(app.handle())?;
+            tray::setup_tray(app.handle(), initial_language)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -50,6 +55,7 @@ fn main() {
             commands::settings::get_settings,
             commands::settings::set_settings,
             commands::settings::open_settings_window,
+            commands::settings::sync_runtime_language,
             tray_show_main_window,
         ])
         .run(tauri::generate_context!())

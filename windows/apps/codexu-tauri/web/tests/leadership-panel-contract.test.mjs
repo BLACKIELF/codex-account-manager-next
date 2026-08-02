@@ -20,7 +20,7 @@ test('keeps the leadership identity, rail, and facts as one focused visual stack
   assert.match(panel, /leadership-rail-stage-title/, 'rail stages should show their localised titles');
   assert.match(panel, /band\.zhName/, 'rail titles must come from the existing leadership band data');
   assert.match(panel, /band\.enName/, 'rail titles must retain the existing English data');
-  assert.match(panel, /formatPeriod\(report\.period\)/, 'period metadata should use user-facing wording');
+  assert.match(panel, /formatPeriod\(report\.period,\s*t\)/, 'period metadata should use user-facing wording');
   assert.doesNotMatch(panel, /Period \{report\.period\}/, 'internal period identifiers must not reach the UI');
 
   assert.match(stylesheet, /\.leadership-panel-primary\s*\{/, 'the primary panel needs a focused layout token');

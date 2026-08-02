@@ -18,6 +18,8 @@ import type {
   LeadershipReport,
 } from '../types/models';
 import { LEADERSHIP_BANDS, type LeadershipBand, resolveLeadershipBand } from '../utils/leadershipTitles';
+import { useI18n } from '../i18n/I18nProvider';
+import type { MessageKey } from '../i18n/messages';
 
 interface LeadershipPanelProps {
   signal: CodexLeadershipSignal | null;
@@ -28,31 +30,31 @@ type DimensionKind = LeadershipDimension['kind'];
 type SortField = 'ai_hours' | 'agent_count' | 'autonomous_hours';
 
 interface DimensionMeta {
-  label: string;
+  labelKey: MessageKey;
   weight: string;
-  description: string;
+  descriptionKey: MessageKey;
 }
 
 const DIMENSION_META: Record<DimensionKind, DimensionMeta> = {
   span: {
-    label: 'Span',
+    labelKey: 'leadership.span',
     weight: '30%',
-    description: 'How broadly leadership extends across workers and active windows.',
+    descriptionKey: 'leadership.spanDescription',
   },
   leverage: {
-    label: 'Leverage',
+    labelKey: 'leadership.leverage',
     weight: '30%',
-    description: 'How much additional AI throughput is unlocked by coordination.',
+    descriptionKey: 'leadership.leverageDescription',
   },
   orchestration: {
-    label: 'Orchestration',
+    labelKey: 'leadership.orchestration',
     weight: '25%',
-    description: 'How evenly execution is distributed across projects.',
+    descriptionKey: 'leadership.orchestrationDescription',
   },
   autonomy: {
-    label: 'Autonomy',
+    labelKey: 'leadership.autonomy',
     weight: '15%',
-    description: 'How much execution continues without manual intervention.',
+    descriptionKey: 'leadership.autonomyDescription',
   },
 };
 
@@ -65,18 +67,21 @@ export function LeadershipOverviewCard({
   hasUsage: boolean;
   onOpen: () => void;
 }) {
+  const { t, language } = useI18n();
   const report = signal ? getReportFromSignal(signal) : null;
   const score = signal?.score ?? null;
   const evidenceRatio = signal?.evidence_coverage ?? 0;
   const activeBand = resolveLeadershipBand(score, evidenceRatio, signal?.active_day_count ?? 0);
   const hasSignal = score !== null && activeBand !== null;
   const scoreForVisual = hasSignal ? Math.max(0, Math.min(100, Math.round(score ?? 0))) : 0;
-  const title = hasSignal && activeBand ? `L${activeBand.level} · ${activeBand.zhName}` : 'Record building';
+  const title = hasSignal && activeBand
+    ? `L${activeBand.level} · ${language === 'zh-Hans' ? activeBand.zhName : activeBand.enName}`
+    : t('leadership.recordBuilding');
   const accessibilityLabel = hasSignal && activeBand
-    ? `AI Leadership, score ${scoreForVisual}, ${title}, ${formatNumberish(report?.agent_count)} agents over 28 days, ${formatHours(report?.ai_hours)} AI hours over 28 days`
+    ? `${t('leadership.title')}, ${t('leadership.score')} ${scoreForVisual}, ${title}, ${formatNumberish(report?.agent_count)} ${t('leadership.agents', { value: '' }).trim()} over ${t('leadership.period')}, ${formatHours(report?.ai_hours)} ${t('leadership.aiHours')} over ${t('leadership.period')}`
     : hasUsage
-      ? 'AI Leadership, leadership record insufficient'
-      : 'AI Leadership, no usage snapshot yet';
+      ? `${t('leadership.title')}, ${t('leadership.recordInsufficient')}`
+      : `${t('leadership.title')}, ${t('leadership.noSnapshot')}`;
 
   return (
     <button
@@ -87,8 +92,8 @@ export function LeadershipOverviewCard({
       aria-label={accessibilityLabel}
     >
       <div className="leadership-overview-header">
-        <span>AI Leadership</span>
-        <span className="leadership-period-badge">28D</span>
+        <span>{t('leadership.title')}</span>
+        <span className="leadership-period-badge">{t('leadership.period')}</span>
       </div>
       <div className="leadership-overview-lockup">
         <LeadershipOrbit
@@ -99,26 +104,27 @@ export function LeadershipOverviewCard({
         />
         <div className="leadership-overview-identity">
           <strong>{title}</strong>
-          <span>{hasSignal && activeBand ? activeBand.enName : hasUsage ? 'Record insufficient' : 'No snapshot yet'}</span>
+          <span>{hasSignal && activeBand ? t('leadership.bandLabel') : hasUsage ? t('leadership.recordInsufficient') : t('leadership.noSnapshot')}</span>
         </div>
       </div>
       <div className="leadership-overview-facts">
-        <OverviewFact icon={<Brain size={13} />} label="Score" value={formatScore(hasSignal ? scoreForVisual : null)} />
-        <OverviewFact icon={<Calendar size={13} />} label="Led agents" value={formatNumberish(report?.agent_count)} />
-        <OverviewFact icon={<Globe size={13} />} label="AI hours" value={formatHours(report?.ai_hours)} />
-        <OverviewFact icon={<TrendingUp size={13} />} label="Peak" value={formatNumberish(report?.peak_concurrency)} />
+        <OverviewFact icon={<Brain size={13} />} label={t('leadership.score')} value={formatScore(hasSignal ? scoreForVisual : null)} />
+        <OverviewFact icon={<Calendar size={13} />} label={t('leadership.ledAgents')} value={formatNumberish(report?.agent_count)} />
+        <OverviewFact icon={<Globe size={13} />} label={t('leadership.aiHours')} value={formatHours(report?.ai_hours)} />
+        <OverviewFact icon={<TrendingUp size={13} />} label={t('leadership.peak')} value={formatNumberish(report?.peak_concurrency)} />
       </div>
     </button>
   );
 }
 
 export function LeadershipPanel({ signal }: LeadershipPanelProps) {
+  const { t, language } = useI18n();
   if (!signal) {
     return (
       <section className="glass-panel p-6 sm:p-7 space-y-3">
-        <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
+        <h2 className="text-lg font-semibold text-primary">{t('leadership.title')}</h2>
         <p className="text-sm text-secondary">
-          No leadership snapshot yet. Keep usage running and refresh to load leadership snapshot.
+          {t('leadership.noSnapshotDetail')}
         </p>
       </section>
     );
@@ -128,10 +134,9 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
   if (!report) {
     return (
       <section className="glass-panel p-6 sm:p-7 space-y-3">
-        <h2 className="text-lg font-semibold text-primary">AI Leadership</h2>
+        <h2 className="text-lg font-semibold text-primary">{t('leadership.title')}</h2>
         <p className="text-sm text-secondary">
-          Leadership report is not ready yet for {formatPeriod(signal.period)}. Refresh after more local snapshots are
-          collected.
+          {t('leadership.reportNotReady', { period: formatPeriod(signal.period, t) })}
         </p>
       </section>
     );
@@ -155,9 +160,9 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
           <div className="flex items-start gap-2">
             <AlertTriangle size={16} className="text-status-warn mt-0.5" />
             <div>
-              <p className="font-semibold text-primary">Fallback snapshot mode</p>
+              <p className="font-semibold text-primary">{t('leadership.fallbackMode')}</p>
               <p className="text-xs text-tertiary mt-1">
-                Snapshot source is {signal.model_version}; fields may be fallback-approximated.
+                {t('leadership.fallbackDetail', { source: signal.model_version })}
               </p>
             </div>
           </div>
@@ -175,22 +180,28 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
             />
             <div className="leadership-identity-copy">
               <div className="leadership-identity-eyebrow">
-                <span>AI Leadership</span>
-                <span className="leadership-period-badge">28D</span>
+                <span>{t('leadership.title')}</span>
+                <span className="leadership-period-badge">{t('leadership.period')}</span>
               </div>
               <h2 className="leadership-identity-title">
-                {hasSignal ? `L${activeBand?.level} · ${activeBand?.zhName}` : 'Leadership score pending'}
+                {hasSignal && activeBand
+                  ? `L${activeBand.level} · ${bandName(activeBand, language)}`
+                  : t('leadership.scorePending')}
               </h2>
               <p className="leadership-identity-subtitle">
-                {hasSignal ? activeBand?.enName : 'Record insufficient for authoritative title'}
+                {hasSignal ? t('leadership.bandLabel') : t('leadership.authoritativeTitleUnavailable')}
               </p>
               <p className="leadership-identity-meta">
-                Period {formatPeriod(report.period)} · {report.active_day_count} active days · Evidence {confidence}%
+                {t('leadership.periodMeta', {
+                  period: formatPeriod(report.period, t),
+                  days: report.active_day_count,
+                  confidence,
+                })}
               </p>
             </div>
           </div>
           <div className="leadership-identity-score">
-            <span>Leadership score</span>
+            <span>{t('leadership.leadershipScore')}</span>
             <strong>{formatScore(hasSignal ? scoreForVisual : null)}</strong>
           </div>
         </div>
@@ -202,10 +213,10 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
         />
 
         <div className="leadership-panel-facts">
-          <Pill icon={<Brain size={14} />} label="Leadership Score" value={formatScore(hasSignal ? scoreForVisual : null)} />
-          <Pill icon={<Calendar size={14} />} label="28-day Agents" value={formatNumberish(report.agent_count)} />
-          <Pill icon={<Globe size={14} />} label="AI Hours" value={formatHours(report.ai_hours)} />
-          <Pill icon={<TrendingUp size={14} />} label="Peak Concurrency" value={formatNumberish(report.peak_concurrency)} />
+          <Pill icon={<Brain size={14} />} label={t('leadership.leadershipScore')} value={formatScore(hasSignal ? scoreForVisual : null)} />
+          <Pill icon={<Calendar size={14} />} label={t('leadership.ledAgents')} value={formatNumberish(report.agent_count)} />
+          <Pill icon={<Globe size={14} />} label={t('leadership.aiHours')} value={formatHours(report.ai_hours)} />
+          <Pill icon={<TrendingUp size={14} />} label={t('leadership.peak')} value={formatNumberish(report.peak_concurrency)} />
         </div>
       </section>
 
@@ -213,7 +224,7 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
         <div className="glass-panel p-5">
           <div className="flex items-center gap-2 mb-3">
             <Brain size={16} className="text-secondary" />
-            <h3 className="text-sm font-semibold text-primary">Dimension Scores</h3>
+            <h3 className="text-sm font-semibold text-primary">{t('leadership.dimensionScores')}</h3>
           </div>
           <div className="space-y-3">
             {report.dimensions.map((dimension) => {
@@ -227,49 +238,49 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
                 >
                   <div className="flex items-center justify-between gap-2 text-sm">
                     <span className="text-primary font-medium">
-                      {meta.label}
+                      {t(meta.labelKey)}
                       <span className="text-tertiary ml-2">({meta.weight})</span>
                     </span>
                     <span className="text-tertiary">
-                      {dimension.score.toFixed(1)} / 100 | {confidencePct}% conf
+                      {dimension.score.toFixed(1)} / 100 | {t('leadership.conf', { value: confidencePct })}
                     </span>
                   </div>
-                  <p className="text-xs text-tertiary">{meta.description}</p>
+                  <p className="text-xs text-tertiary">{t(meta.descriptionKey)}</p>
                   <div className="h-2 bg-surface rounded-full overflow-hidden">
                     <div className="h-full rounded-full bg-accent/90" style={{ width: `${pct}%` }} />
                   </div>
                   <p className="text-xs text-secondary">
-                    Value: <span className="text-primary">{dimension.summary_value.toFixed(2)}</span>
+                    {t('leadership.value')}: <span className="text-primary">{dimension.summary_value.toFixed(2)}</span>
                   </p>
                 </article>
               );
             })}
-            {report.dimensions.length === 0 && <p className="text-sm text-secondary">No dimension data yet.</p>}
+            {report.dimensions.length === 0 && <p className="text-sm text-secondary">{t('common.noRecords')}</p>}
           </div>
         </div>
 
         <div className="glass-panel p-5">
           <div className="flex items-center gap-2 mb-3">
             <BookOpenText size={16} className="text-secondary" />
-            <h3 className="text-sm font-semibold text-primary">Score Path</h3>
+            <h3 className="text-sm font-semibold text-primary">{t('leadership.scorePath')}</h3>
           </div>
-          <p className="text-sm text-secondary">This score is composed of span, leverage, orchestration, and autonomy.</p>
+          <p className="text-sm text-secondary">{t('leadership.scorePathDetail')}</p>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <Pill icon={<Globe size={14} />} label="Core score" value={formatCoreScore(report.core_score)} />
-            <Pill icon={<Eye size={14} />} label="Maturity" value={report.maturity.toFixed(1)} />
-            <Pill icon={<Cpu size={14} />} label="Evidence" value={`${confidence}%`} />
-            <Pill icon={<Calendar size={14} />} label="Active window" value={`${report.active_day_count} days`} />
+            <Pill icon={<Globe size={14} />} label={t('leadership.coreScore')} value={formatCoreScore(report.core_score)} />
+            <Pill icon={<Eye size={14} />} label={t('leadership.maturity')} value={report.maturity.toFixed(1)} />
+            <Pill icon={<Cpu size={14} />} label={t('leadership.evidence')} value={`${confidence}%`} />
+            <Pill icon={<Calendar size={14} />} label={t('leadership.activeWindow')} value={t('leadership.days', { value: report.active_day_count })} />
           </div>
           {latest ? (
             <div className="mt-4 p-3 rounded-lg border border-theme bg-surface-inset text-sm">
-              <p className="text-primary font-medium">Latest day signal</p>
+              <p className="text-primary font-medium">{t('leadership.latestDaySignal')}</p>
               <p className="text-xs text-secondary mt-1">
                 {formatPointDate(latest.day)} | {latest.agent_count} agents, {latest.ai_hours.toFixed(1)}h AI hours,
                 peak {latest.peak_concurrency}
               </p>
             </div>
           ) : (
-            <p className="text-xs text-tertiary mt-4">No daily trend data yet.</p>
+            <p className="text-xs text-tertiary mt-4">{t('leadership.noDailyTrend')}</p>
           )}
         </div>
       </section>
@@ -277,11 +288,11 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="glass-panel p-5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-primary">Leading Projects</h3>
-            <span className="text-xs text-tertiary">Sorted by AI hours</span>
+            <h3 className="text-sm font-semibold text-primary">{t('leadership.leadingProjects')}</h3>
+            <span className="text-xs text-tertiary">{t('leadership.sortedByAiHours')}</span>
           </div>
           {sortedProjects.length === 0 ? (
-            <p className="text-sm text-secondary">No project contribution available.</p>
+            <p className="text-sm text-secondary">{t('leadership.noProjectContribution')}</p>
           ) : (
             <div className="space-y-2">
               {sortedProjects.slice(0, 5).map((project, index) => (
@@ -290,12 +301,15 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
                   className="rounded-lg border border-theme bg-surface-inset p-3 text-sm"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-primary font-medium truncate">{project.project_name || 'Unknown'}</span>
+                    <span className="text-primary font-medium truncate">{project.project_name || t('common.unknown')}</span>
                     <span className="text-tertiary text-xs">#{index + 1}</span>
                   </div>
                   <p className="text-xs text-secondary mt-1">
-                    Agents {project.agent_count} | AI Hours {project.ai_hours.toFixed(1)} | Autonomous{' '}
-                    {project.autonomous_hours.toFixed(1)}h
+                    {t('leadership.projectFacts', {
+                      agents: project.agent_count,
+                      hours: project.ai_hours.toFixed(1),
+                      autonomous: project.autonomous_hours.toFixed(1),
+                    })}
                   </p>
                   <div className="mt-2 h-1.5 bg-surface rounded-full overflow-hidden">
                     <div
@@ -317,10 +331,10 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
         <div className="glass-panel p-5">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp size={16} className="text-secondary" />
-            <h3 className="text-sm font-semibold text-primary">28-day Trend Snapshot</h3>
+            <h3 className="text-sm font-semibold text-primary">{t('leadership.trendSnapshot')}</h3>
           </div>
           {report.daily_points.length === 0 ? (
-            <p className="text-sm text-secondary">No trend points available.</p>
+            <p className="text-sm text-secondary">{t('leadership.noTrendPoints')}</p>
           ) : (
             <div className="space-y-2">
               {report.daily_points
@@ -328,18 +342,20 @@ export function LeadershipPanel({ signal }: LeadershipPanelProps) {
                 .map((point) => (
                   <div key={point.day} className="grid grid-cols-4 items-center text-sm text-secondary">
                     <span className="text-xs sm:text-sm">{formatPointDate(point.day)}</span>
-                    <span>{point.agent_count} agents</span>
+                    <span>{t('leadership.agents', { value: point.agent_count })}</span>
                     <span>{point.ai_hours.toFixed(1)}h</span>
-                    <span>parallel x{point.peak_concurrency}</span>
+                    <span>{t('leadership.parallel', { value: point.peak_concurrency })}</span>
                   </div>
                 ))}
             </div>
           )}
-          <p className="text-xs text-tertiary mt-3">Avg parallelism: {formatRatio(report.average_parallelism)}</p>
+          <p className="text-xs text-tertiary mt-3">{t('leadership.averageParallelism', { value: formatRatio(report.average_parallelism) })}</p>
           {trend ? (
             <p className="text-xs text-secondary mt-1">
-              {trend.direction === 'up' ? 'Momentum up' : 'Momentum down'} {trend.delta >= 0 ? '+' : ''}
-              {trend.delta.toFixed(2)}h vs previous sample
+              {t('leadership.momentum', {
+                direction: trend.direction === 'up' ? 'up' : 'down',
+                delta: `${trend.delta >= 0 ? '+' : ''}${trend.delta.toFixed(2)}`,
+              })}
             </p>
           ) : null}
         </div>
@@ -359,6 +375,7 @@ export function LeadershipOrbit({
   activeBand: LeadershipBand | null;
   showScore?: boolean;
 }) {
+  const { t } = useI18n();
   const radius = 56;
   const circumference = Math.round(2 * Math.PI * radius);
   const safeScore = hasSignal ? clampPercent(score) : 0;
@@ -366,9 +383,9 @@ export function LeadershipOrbit({
 
   return (
     <div className="leadership-orbit-wrap">
-      <div className="leadership-orbit" role="img" aria-label="Leadership score orbit">
+      <div className="leadership-orbit" role="img" aria-label={t('leadership.orbit')}>
         {hasSignal && activeBand ? (
-            <img src={activeBand.badge} alt="Leadership badge" className="leadership-orbit-badge" />
+            <img src={activeBand.badge} alt={t('leadership.badge')} className="leadership-orbit-badge" />
         ) : (
           <ShieldQuestion size={40} className="leadership-orbit-neutral-icon" />
         )}
@@ -406,12 +423,13 @@ export function LeadershipCommandRail({
   score: number;
   onOpenLeadership?: () => void;
 }) {
+  const { t, language } = useI18n();
   const safeScore = clampPercent(score);
   const currentBand = bands.find((band) => safeScore >= band.scoreMin && safeScore <= band.scoreMax) ?? null;
   const hasInteractive = typeof onOpenLeadership === 'function';
   const signalLabel = currentBand
-    ? `Open AI Leadership detail for score ${safeScore}, L${currentBand.level} ${currentBand.zhName} / ${currentBand.enName}`
-    : 'Open AI Leadership detail';
+    ? `${t('leadership.openDetail')} ${safeScore}, L${currentBand.level} ${bandName(currentBand, language)}`
+    : t('leadership.openDetail');
   const trackStyle = {
     ['--rail-progress' as keyof CSSProperties]: `${safeScore}%`,
   } as CSSProperties;
@@ -434,10 +452,10 @@ export function LeadershipCommandRail({
                   </span>
                   <span
                     className={`leadership-rail-stage-title ${isCurrent ? 'leadership-rail-stage-title-current' : ''}`}
-                    title={`${band.zhName} / ${band.enName}`}
-                    aria-label={`${band.zhName} / ${band.enName}`}
+                    title={bandName(band, language)}
+                    aria-label={bandName(band, language)}
                   >
-                    L{band.level} · {band.zhName}
+                    L{band.level} · {bandName(band, language)}
                   </span>
                 </div>
               );
@@ -481,9 +499,9 @@ export function LeadershipCommandRail({
 
   if (!hasInteractive) {
     return (
-      <div className="leadership-command-rail" aria-label="AI leadership maturity command rail">
+      <div className="leadership-command-rail" aria-label={t('leadership.title')}>
         {railContent}
-        <span className="sr-only">AI Leadership details currently shown</span>
+        <span className="sr-only">{t('leadership.title')}</span>
       </div>
     );
   }
@@ -493,7 +511,7 @@ export function LeadershipCommandRail({
       type="button"
       onClick={onOpenLeadership}
       className="leadership-command-rail leadership-command-rail-button leadership-command-rail-clickable"
-      aria-label={hasSignal ? signalLabel : 'Open AI Leadership detail'}
+      aria-label={hasSignal ? signalLabel : t('leadership.openDetail')}
     >
       {railContent}
     </button>
@@ -504,6 +522,10 @@ function getReportFromSignal(signal: CodexLeadershipSignal): LeadershipReport | 
   if (!signal.report) return null;
   const byPeriod = signal.report.reports.find((item) => item.period === signal.period);
   return byPeriod ?? signal.report.reports[0] ?? null;
+}
+
+function bandName(band: LeadershipBand, language: 'zh-Hans' | 'en'): string {
+  return language === 'zh-Hans' ? band.zhName : band.enName;
 }
 
 function OverviewFact({
@@ -589,11 +611,11 @@ function formatPointDate(ms: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-function formatPeriod(period: string): string {
-  if (period === 'today') return 'today';
-  if (period === 'sevenDays') return '7 days';
-  if (period === 'twentyEightDays') return '28 days';
-  return 'the selected period';
+function formatPeriod(period: string, t: ReturnType<typeof useI18n>['t']): string {
+  if (period === 'today') return t('leadership.todayPeriod');
+  if (period === 'sevenDays') return t('leadership.sevenDaysPeriod');
+  if (period === 'twentyEightDays') return t('leadership.twentyEightDaysPeriod');
+  return t('leadership.selectedPeriod');
 }
 
 function formatCoreScore(value: number | null | undefined): string {

@@ -3,13 +3,15 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../hooks/useSettings';
-import type { ThemeMode, TrayDensity } from '../types/settings';
+import type { InterfaceLanguage, ThemeMode, TrayDensity } from '../types/settings';
 import { isTauriRuntimeAvailable, requireTauriRuntime } from '../utils/tauri';
 import { applyAppTheme } from '../utils/appTheme';
+import { useI18n } from '../i18n/I18nProvider';
 
 export function Settings() {
   const canInvokeTauri = isTauriRuntimeAvailable();
   const { settings, update, error } = useSettings();
+  const { t, preference, setPreference } = useI18n();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -21,10 +23,12 @@ export function Settings() {
       return (
         <div className="h-full flex flex-col">
           <header className="mx-4 mt-4 glass-toolbar px-5 py-3 rounded-2xl">
-            <h1 className="text-lg font-semibold text-primary">Settings</h1>
+            <h1 className="text-lg font-semibold text-primary">{t('settings.title')}</h1>
           </header>
           <div className="flex-1 p-6">
-            <div className="glass-panel p-4 text-sm text-status-error">Failed to load settings: {error}</div>
+            <div className="glass-panel p-4 text-sm text-status-error">
+              {t('settings.failed', { error: error ?? t('common.unknownError') })}
+            </div>
           </div>
         </div>
       );
@@ -32,7 +36,7 @@ export function Settings() {
 
     return (
       <div className="h-full flex items-center justify-center bg-transparent">
-        <div className="glass-panel px-6 py-8 text-sm text-secondary">Loading settings...</div>
+        <div className="glass-panel px-6 py-8 text-sm text-secondary">{t('settings.loading')}</div>
       </div>
     );
   }
@@ -87,6 +91,14 @@ export function Settings() {
     });
   };
 
+  const handleLanguage = async (language: InterfaceLanguage) => {
+    if (!canInvokeTauri) return;
+
+    await runUpdate(async () => {
+      await setPreference(language);
+    });
+  };
+
   const handleInterval = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!canInvokeTauri) {
       return;
@@ -131,42 +143,67 @@ export function Settings() {
   return (
     <div className="h-full flex flex-col">
       <header className="mx-4 mt-4 glass-toolbar px-5 py-3 rounded-2xl">
-        <h1 className="text-lg font-semibold text-primary">Settings</h1>
+        <h1 className="text-lg font-semibold text-primary">{t('settings.title')}</h1>
       </header>
 
       <main className="flex-1 overflow-auto p-6 md:p-7">
         <div className="max-w-lg mx-auto w-full space-y-6">
-          <Section title="Data Paths">
+          <Section title={t('settings.dataPaths')}>
             <PathField
-              label="Codex data root"
+              label={t('settings.codexDataRoot')}
               value={config.codex_root}
               onBrowse={() => pickDirectory('codex_root')}
             />
             <PathField
-              label="Cache directory"
+              label={t('settings.cacheDirectory')}
               value={config.cache_dir}
               onBrowse={() => pickDirectory('cache_dir')}
             />
           </Section>
 
-          <Section title="Appearance">
+          <Section title={t('settings.appearance')}>
             <div className="grid grid-cols-3 gap-2">
-              {(['light', 'dark', 'system'] as ThemeMode[]).map((t) => (
+              {(['light', 'dark', 'system'] as ThemeMode[]).map((themeValue) => (
                 <button
-                  key={t}
-                  onClick={() => handleTheme(t)}
+                  key={themeValue}
+                  onClick={() => handleTheme(themeValue)}
                   disabled={!canInvokeTauri}
                   className={`px-3 py-2 rounded-full text-sm capitalize transition-all ${
-                    config.theme === t ? 'glass-button-solid' : 'text-secondary glass-button'
+                    config.theme === themeValue ? 'glass-button-solid' : 'text-secondary glass-button'
                   }`}
                 >
-                  {t}
+                  {themeValue === 'light'
+                    ? t('common.light')
+                    : themeValue === 'dark'
+                      ? t('common.dark')
+                      : t('common.system')}
                 </button>
               ))}
             </div>
+            <div className="mt-4">
+              <p className="block text-sm text-secondary mb-2">{t('settings.interfaceLanguage')}</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(['auto', 'zh-Hans', 'en'] as InterfaceLanguage[]).map((language) => (
+                  <button
+                    key={language}
+                    onClick={() => handleLanguage(language)}
+                    disabled={!canInvokeTauri}
+                    className={`px-3 py-2 rounded-full text-sm transition-all ${
+                      preference === language ? 'glass-button-solid' : 'text-secondary glass-button'
+                    }`}
+                  >
+                    {language === 'auto'
+                      ? t('common.auto')
+                      : language === 'zh-Hans'
+                        ? t('common.chinese')
+                        : t('common.english')}
+                  </button>
+                ))}
+              </div>
+            </div>
           </Section>
 
-          <Section title="Tray">
+          <Section title={t('settings.tray')}>
             <div className="grid grid-cols-3 gap-2">
               {(['minimal', 'classic', 'rich'] as TrayDensity[]).map((d) => (
                 <button
@@ -183,8 +220,8 @@ export function Settings() {
             </div>
           </Section>
 
-          <Section title="Refresh">
-            <label className="block text-sm text-secondary mb-2">Auto-refresh interval (seconds)</label>
+          <Section title={t('settings.refresh')}>
+            <label className="block text-sm text-secondary mb-2">{t('settings.interval')}</label>
             <input
               type="number"
               min={10}
@@ -200,34 +237,31 @@ export function Settings() {
                 disabled={!canInvokeTauri}
                 className="flex items-center gap-2 px-4 py-2 rounded-full glass-button-solid text-sm"
               >
-                <RefreshCw size={14} /> Refresh now
+                <RefreshCw size={14} /> {t('common.refreshNow')}
               </button>
               <button
                 onClick={clearCache}
                 disabled={!canInvokeTauri}
                 className="flex items-center gap-2 px-4 py-2 rounded-full glass-button text-status-error border-status-error/30 text-status-error text-sm"
               >
-                <Trash2 size={14} /> Clear cache
+                <Trash2 size={14} /> {t('common.clearCache')}
               </button>
             </div>
           </Section>
 
-          <Section title="About">
-            <p className="text-sm text-secondary">Version 0.1.0</p>
-            <p className="text-xs text-tertiary mt-2">Data folder: {settings.app_data_dir}</p>
-            <p className="text-xs text-tertiary mt-2">
-              Privacy: usage data is read locally and never uploaded.
-            </p>
+          <Section title={t('settings.about')}>
+            <p className="text-sm text-secondary">{t('settings.version')}</p>
+            <p className="text-xs text-tertiary mt-2">{t('settings.dataFolder', { path: settings.app_data_dir })}</p>
+            <p className="text-xs text-tertiary mt-2">{t('settings.privacy')}</p>
             {!canInvokeTauri && (
               <p className="text-xs text-status-warn mt-3">
-                Running from browser: interactive actions are disabled. Open via Tauri app for full
-                functionality.
+                {t('settings.browserWarning')}
               </p>
             )}
           </Section>
 
-          {saved && <p className="text-center text-sm text-status-ok">Settings saved.</p>}
-          {error && <p className="text-center text-sm text-status-error">{error}</p>}
+          {saved && <p className="text-center text-sm text-status-ok">{t('common.saved')}</p>}
+          {error && <p className="text-center text-sm text-status-error">{t('settings.failed', { error })}</p>}
         </div>
       </main>
     </div>

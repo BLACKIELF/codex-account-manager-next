@@ -20,7 +20,8 @@ test('keeps Projects focused on the macOS ranking and activity hierarchy', async
   assert.match(board, /slice\(0, 8\)/);
   assert.match(board, /last_active_at/);
   assert.match(board, /source_quality/);
-  assert.match(board, /No project records/);
+  assert.match(board, /useI18n/);
+  assert.match(board, /projects\.noRecords/);
   assert.doesNotMatch(board, /full_path/);
 
   assert.match(panel, /ProjectBoard/);

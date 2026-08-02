@@ -15,14 +15,15 @@ test('activates the Dashboard Skills tab with safe local-read metadata only', as
   ]);
 
   assert.match(home, /<SkillsPanel skills=\{usage\?\.skill_usages \?\? \[\]\} \/>/);
-  assert.match(panel, /Local Skill usage/);
-  assert.match(panel, /Tracked Skills/);
-  assert.match(panel, /Local reads/);
-  assert.match(panel, /Sessions/);
+  assert.match(panel, /useI18n/);
+  assert.match(panel, /skills\.usage/);
+  assert.match(panel, /skills\.tracked/);
+  assert.match(panel, /skills\.localReads/);
+  assert.match(panel, /skills\.sessions/);
   assert.match(panel, /style=\{\{ '--skill-intensity':/);
-  assert.match(panel, /aria-label=\{`Relative activity/);
-  assert.match(panel, /Privacy filtered/);
-  assert.match(panel, /Paths, prompts, tool input, and source\s+contents stay local\./);
+  assert.match(panel, /skills\.relativeActivityValue/);
+  assert.match(panel, /skills\.privacyFiltered/);
+  assert.match(panel, /skills\.localOnly/);
 
   const skillUsage = models.match(/export interface SkillUsage \{([\s\S]*?)\n\}/)?.[1] ?? '';
   assert.match(skillUsage, /load_count: number;/);

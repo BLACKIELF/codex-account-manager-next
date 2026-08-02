@@ -16,8 +16,8 @@ test('renders every returned official quota window and exposes a retryable first
   assert.match(quota, /snapshot\?\.five_hour_quota/);
   assert.match(quota, /snapshot\?\.seven_day_quota/);
   assert.match(quota, /snapshot\?\.monthly_quota/);
-  assert.match(quota, /Checking official Codex quota/);
-  assert.match(quota, /Retry quota check/);
+  assert.match(quota, /quota\.checking/);
+  assert.match(quota, /quota\.retry/);
   assert.doesNotMatch(
     quota,
     /snapshot\?\.five_hour_quota\s*!=\s*null\s*&&\s*snapshot\?\.seven_day_quota\s*!=\s*null/,
@@ -25,6 +25,6 @@ test('renders every returned official quota window and exposes a retryable first
   assert.match(home, /<QuotaOverview snapshot=\{snapshot\} sourceLabel=\{quotaSourceLabel\} onRefresh=\{onQuotaRefresh\}/);
   assert.match(dashboard, /onQuotaRefresh=\{refresh\}/);
   assert.match(dashboard, /const quotaStatusLabel/);
-  assert.match(dashboard, /Official quota active/);
+  assert.match(dashboard, /dashboard\.status\.officialQuotaActive/);
   assert.doesNotMatch(quota, /today_tokens|seven_day_tokens|lifetime_tokens/);
 });

@@ -2,6 +2,7 @@ import { RefreshCw, Settings, Sun, Moon, Monitor } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { isTauriRuntimeAvailable } from '../utils/tauri';
 import type { ThemeMode } from '../types/settings';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface HeaderProps {
   lastUpdated: number | null;
@@ -18,6 +19,7 @@ export function Header({
   onRefresh,
   refreshing,
 }: HeaderProps) {
+  const { t } = useI18n();
   const openSettings = async () => {
     if (!isTauriRuntimeAvailable()) {
       return;
@@ -36,7 +38,7 @@ export function Header({
         <div className="w-8 h-8 rounded-xl glass-button-solid flex items-center justify-center overflow-hidden">
           <img
             src="/icons/icon.png"
-            alt="codexU icon"
+            alt={t('header.codexIcon')}
             className="w-full h-full object-contain"
           />
         </div>
@@ -44,7 +46,7 @@ export function Header({
           <h1 className="text-lg font-semibold text-primary leading-tight">codexU</h1>
           {lastUpdated && (
             <p className="text-xs text-tertiary">
-              Updated {new Date(lastUpdated).toLocaleTimeString()}
+              {t('header.updated', { time: new Date(lastUpdated).toLocaleTimeString() })}
             </p>
           )}
         </div>
@@ -59,7 +61,7 @@ export function Header({
                 ? 'glass-button-solid'
                 : 'text-secondary glass-button'
             }`}
-            title="Light"
+            title={t('common.light')}
           >
             <Sun size={14} />
           </button>
@@ -68,7 +70,7 @@ export function Header({
             className={`p-1.5 rounded-full transition-all ${
               theme === 'dark' ? 'glass-button-solid' : 'text-secondary glass-button'
             }`}
-            title="Dark"
+            title={t('common.dark')}
           >
             <Moon size={14} />
           </button>
@@ -79,7 +81,7 @@ export function Header({
                 ? 'glass-button-solid'
                 : 'text-secondary glass-button'
             }`}
-            title="System"
+            title={t('common.system')}
           >
             <Monitor size={14} />
           </button>
@@ -89,7 +91,7 @@ export function Header({
           onClick={onRefresh}
           disabled={refreshing}
           className="p-2 rounded-full glass-button text-secondary hover:text-primary transition-colors disabled:opacity-50"
-          title="Refresh"
+          title={t('common.refresh')}
         >
           <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
         </button>
@@ -97,7 +99,7 @@ export function Header({
         <button
           onClick={openSettings}
           className="p-2 rounded-full glass-button-solid"
-          title="Settings"
+          title={t('common.settings')}
         >
           <Settings size={16} />
         </button>

@@ -8,12 +8,14 @@ import {
   YAxis,
 } from 'recharts';
 import type { DailyTokenBucket } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface TokenBarChartProps {
   data: DailyTokenBucket[];
 }
 
 export function TokenBarChart({ data }: TokenBarChartProps) {
+  const { t } = useI18n();
   const chartData = data.map((d) => ({
     label: d.label,
     tokens: d.tokens,
@@ -21,7 +23,7 @@ export function TokenBarChart({ data }: TokenBarChartProps) {
 
   return (
     <div className="glass-panel p-4 sm:p-5">
-      <h3 className="text-sm font-semibold text-primary mb-4">7-Day Usage</h3>
+      <h3 className="text-sm font-semibold text-primary mb-4">{t('usage.sevenDayUsage')}</h3>
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
@@ -46,7 +48,7 @@ export function TokenBarChart({ data }: TokenBarChartProps) {
                 borderRadius: '8px',
                 color: 'var(--text-primary)',
               }}
-              formatter={(value: number) => [formatNumber(value), 'Tokens']}
+              formatter={(value: number) => [formatNumber(value), t('usage.tokenLabel')]}
             />
             <Bar dataKey="tokens" fill="var(--data-primary)" radius={[4, 4, 0, 0]} />
           </BarChart>

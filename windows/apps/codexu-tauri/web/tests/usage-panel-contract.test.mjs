@@ -14,8 +14,9 @@ test('builds Usage around local source quality, token layers, and the existing t
   ]);
 
   assert.match(usagePanel, /<UsageHeatmap trend=\{trend\} \/>/);
-  assert.match(usagePanel, /Local API-equivalent estimate/);
-  assert.match(usagePanel, /not official billing/i);
+  assert.match(usagePanel, /useI18n/);
+  assert.match(usagePanel, /usage\.estimate/);
+  assert.match(usagePanel, /usage\.notOfficial/);
   assert.match(usagePanel, /TokenBreakdownBar/);
   assert.match(usagePanel, /source_quality/);
 
@@ -27,5 +28,5 @@ test('builds Usage around local source quality, token layers, and the existing t
   assert.match(heatmap, /heatmap_weeks/);
   assert.match(heatmap, /heatmap_thresholds/);
   assert.match(heatmap, /is_future/);
-  assert.match(heatmap, /No recorded usage/);
+  assert.match(heatmap, /usage\.noRecordedUsage/);
 });

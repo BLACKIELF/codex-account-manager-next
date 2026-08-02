@@ -1,5 +1,6 @@
 import { BadgeDollarSign } from 'lucide-react';
 import type { LocalUsage } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface MonthlyValueProgressProps {
   usage: LocalUsage | null | undefined;
@@ -11,14 +12,15 @@ const BASE_PROGRESS = 0.28;
 const CAP_PROGRESS = 1;
 
 export function MonthlyValueProgress({ usage }: MonthlyValueProgressProps) {
+  const { t } = useI18n();
   const detailed = usage?.detailed_usage ?? null;
 
   if (detailed === null) {
     return (
       <section className="glass-panel p-4 sm:p-5 dashboard-home-monthly-progress">
-        <h3 className="text-sm font-semibold text-primary">Monthly value progress</h3>
-        <p className="text-xs text-tertiary mt-1">Local API-equivalent cost estimate - Record insufficient</p>
-        <p className="mt-3 text-xs text-tertiary">No detailed monthly data available in local snapshot yet.</p>
+        <h3 className="text-sm font-semibold text-primary">{t('monthly.title')}</h3>
+        <p className="text-xs text-tertiary mt-1">{t('monthly.insufficient')}</p>
+        <p className="mt-3 text-xs text-tertiary">{t('monthly.noDetailedData')}</p>
       </section>
     );
   }
@@ -27,9 +29,9 @@ export function MonthlyValueProgress({ usage }: MonthlyValueProgressProps) {
   if (monthCost === null) {
     return (
       <section className="glass-panel p-4 sm:p-5 dashboard-home-monthly-progress">
-        <h3 className="text-sm font-semibold text-primary">Monthly value progress</h3>
-        <p className="text-xs text-tertiary mt-1">Local API-equivalent cost estimate - Record insufficient</p>
-        <p className="mt-3 text-xs text-tertiary">No detailed monthly cost available.</p>
+        <h3 className="text-sm font-semibold text-primary">{t('monthly.title')}</h3>
+        <p className="text-xs text-tertiary mt-1">{t('monthly.insufficient')}</p>
+        <p className="mt-3 text-xs text-tertiary">{t('monthly.noDetailedCost')}</p>
       </section>
     );
   }
@@ -39,13 +41,13 @@ export function MonthlyValueProgress({ usage }: MonthlyValueProgressProps) {
   const progressValue = `${progressPercent.toFixed(1)}%`;
 
   return (
-    <section className="glass-panel p-4 sm:p-5 dashboard-home-monthly-progress" aria-label="Monthly value progress">
+    <section className="glass-panel p-4 sm:p-5 dashboard-home-monthly-progress" aria-label={t('monthly.title')}>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-sm font-semibold text-primary">Monthly value progress</h3>
-          <p className="text-xs text-tertiary mt-1">Local API-equivalent estimate - Not official quota or allowance</p>
+          <h3 className="text-sm font-semibold text-primary">{t('monthly.title')}</h3>
+          <p className="text-xs text-tertiary mt-1">{t('monthly.estimate')}</p>
         </div>
-        <p className="text-xs text-tertiary text-right">Reference: Plus $20, Pro100 $100, Pro200 $200, Cap $46.5K</p>
+        <p className="text-xs text-tertiary text-right">{t('monthly.reference')}</p>
       </div>
 
       <div className="h-2 rounded-full mt-3 bg-surface border border-theme overflow-visible relative mb-7">
@@ -64,15 +66,16 @@ export function MonthlyValueProgress({ usage }: MonthlyValueProgressProps) {
       </div>
 
       <div className="mt-1 text-xs text-tertiary">
-        {monthCost > 0
-          ? `Mapped with non-linear local estimate: first $0-$${FLAT_THRESHOLD} maps to first 28%, remaining uses log1p to cap ${REFERENCE_CAP}.`
-          : 'This month has no detailed monthly usage yet; only local snapshot structure is present.'}
+        {monthCost > 0 ? t('monthly.mapped') : t('monthly.noUsage')}
       </div>
 
       <p className="mt-2 text-xs text-primary">
         <span className="inline-flex items-center gap-1.5">
           <BadgeDollarSign size={14} />
-          {`Estimated: $${formatUSD(monthCost)}${monthCost === 0 ? ' (no usage yet this month)' : ''}`}
+          {t('monthly.estimated', {
+            value: formatUSD(monthCost),
+            suffix: monthCost === 0 ? t('monthly.noUsageSuffix') : '',
+          })}
         </span>
       </p>
     </section>

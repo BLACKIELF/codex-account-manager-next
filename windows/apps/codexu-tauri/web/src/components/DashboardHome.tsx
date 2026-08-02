@@ -9,6 +9,8 @@ import { SkillsPanel } from './SkillsPanel';
 import { TaskBoardPanel } from './TaskBoardPanel';
 import { UsagePanel } from './UsagePanel';
 import { StatCard } from './StatCard';
+import { useI18n } from '../i18n/I18nProvider';
+import type { MessageKey } from '../i18n/messages';
 
 interface DashboardHomeProps {
   snapshot: UsageSnapshot | null | undefined;
@@ -19,12 +21,12 @@ interface DashboardHomeProps {
 
 type DashboardContentTab = 'tasks' | 'leadership' | 'usage' | 'projects' | 'skills';
 
-const DASHBOARD_TABS: Array<{ id: DashboardContentTab; title: string }> = [
-  { id: 'tasks', title: 'Tasks' },
-  { id: 'leadership', title: 'AI Leadership' },
-  { id: 'usage', title: 'Usage' },
-  { id: 'projects', title: 'Projects' },
-  { id: 'skills', title: 'Skills' },
+const DASHBOARD_TABS: Array<{ id: DashboardContentTab; title: string; titleKey: MessageKey }> = [
+  { id: 'tasks', title: 'Tasks', titleKey: 'dashboard.tabs.tasks' },
+  { id: 'leadership', title: 'AI Leadership', titleKey: 'dashboard.tabs.leadership' },
+  { id: 'usage', title: 'Usage', titleKey: 'dashboard.tabs.usage' },
+  { id: 'projects', title: 'Projects', titleKey: 'dashboard.tabs.projects' },
+  { id: 'skills', title: 'Skills', titleKey: 'dashboard.tabs.skills' },
 ];
 
 const formatUSD = (value: unknown): string => {
@@ -33,6 +35,7 @@ const formatUSD = (value: unknown): string => {
 };
 
 export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, onQuotaRefresh }: DashboardHomeProps) {
+  const { t } = useI18n();
   const usage = snapshot?.local ?? null;
   const signal = leadershipSignal ?? null;
   const detailed = usage?.detailed_usage ?? null;
@@ -85,32 +88,38 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
 
         <QuotaOverview snapshot={snapshot} sourceLabel={quotaSourceLabel} onRefresh={onQuotaRefresh} />
 
-        <section className="dashboard-home-metrics" aria-label="Local token metrics">
+        <section className="dashboard-home-metrics" aria-label={t('dashboard.aria.localTokenMetrics')}>
           <StatCard
-            label="Today"
+            label={t('dashboard.metrics.today')}
             value={formatNumber(hasUsage ? usage?.today_tokens ?? null : null)}
             subValue={
-              detailed ? `$${formatUSD(detailed.today.estimated_cost_usd)} est.` : 'Record insufficient'
+              detailed
+                ? t('dashboard.metrics.estimated', { value: formatUSD(detailed.today.estimated_cost_usd) })
+                : t('dashboard.metrics.recordInsufficient')
             }
             icon={<Activity size={16} />}
             compact
             accent="primary"
           />
           <StatCard
-            label="7-Day"
+            label={t('dashboard.metrics.sevenDay')}
             value={formatNumber(hasUsage ? usage?.seven_day_tokens ?? null : null)}
             subValue={
-              detailed ? `$${formatUSD(detailed.seven_day.estimated_cost_usd)} est.` : 'Record insufficient'
+              detailed
+                ? t('dashboard.metrics.estimated', { value: formatUSD(detailed.seven_day.estimated_cost_usd) })
+                : t('dashboard.metrics.recordInsufficient')
             }
             icon={<Calendar size={16} />}
             compact
             accent="secondary"
           />
           <StatCard
-            label="Lifetime"
+            label={t('dashboard.metrics.lifetime')}
             value={formatNumber(hasUsage ? usage?.lifetime_tokens ?? null : null)}
             subValue={
-              detailed ? `$${formatUSD(detailed.lifetime.estimated_cost_usd)} est.` : 'Record insufficient'
+              detailed
+                ? t('dashboard.metrics.estimated', { value: formatUSD(detailed.lifetime.estimated_cost_usd) })
+                : t('dashboard.metrics.recordInsufficient')
             }
             icon={<TrendingUp size={16} />}
             compact
@@ -126,7 +135,7 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
       <div
         onKeyDown={handleLowerTabKeyDown}
         role="tablist"
-        aria-label="Dashboard lower tabs"
+        aria-label={t('dashboard.aria.lowerTabs')}
         className="flex items-center gap-1.5 flex-wrap rounded-2xl p-1 glass-toolbar"
       >
         {DASHBOARD_TABS.map((tab) => (
@@ -145,7 +154,7 @@ export function DashboardHome({ snapshot, quotaSourceLabel, leadershipSignal, on
               activeDashboardTab === tab.id ? 'glass-button-solid' : 'text-secondary glass-button'
             }`}
           >
-            {tab.title}
+            {t(tab.titleKey)}
           </button>
         ))}
       </div>

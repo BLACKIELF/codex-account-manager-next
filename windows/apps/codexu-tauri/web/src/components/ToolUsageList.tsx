@@ -1,16 +1,18 @@
 import { Wrench } from 'lucide-react';
 import type { ToolUsage } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface ToolUsageListProps {
   tools: ToolUsage[];
 }
 
 export function ToolUsageList({ tools }: ToolUsageListProps) {
+  const { t } = useI18n();
   if (tools.length === 0) {
     return (
       <div className="glass-panel p-4 sm:p-5">
-        <h3 className="text-sm font-semibold text-primary mb-4">Tools</h3>
-        <p className="text-secondary text-sm">No tool usage found.</p>
+        <h3 className="text-sm font-semibold text-primary mb-4">{t('projects.tools')}</h3>
+        <p className="text-secondary text-sm">{t('projects.noToolUsage')}</p>
       </div>
     );
   }
@@ -20,8 +22,8 @@ export function ToolUsageList({ tools }: ToolUsageListProps) {
   return (
     <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-primary">Tools</h3>
-        <span className="text-xs text-tertiary">{tools.length} total</span>
+        <h3 className="text-sm font-semibold text-primary">{t('projects.tools')}</h3>
+        <span className="text-xs text-tertiary">{t('projects.total', { count: tools.length })}</span>
       </div>
       <div className="space-y-3">
         {tools.map((t) => (

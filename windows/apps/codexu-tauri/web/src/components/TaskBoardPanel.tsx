@@ -1,5 +1,6 @@
 import { Archive, CalendarClock, CircleDashed, CircleDot, ClipboardList, Clock3 } from 'lucide-react';
 import type { TaskBoard, TaskItem } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface TaskBoardPanelProps {
   taskBoard: TaskBoard | null;
@@ -13,12 +14,13 @@ const COLUMN_ICONS = {
 } as const;
 
 export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
+  const { t } = useI18n();
   if (!taskBoard) {
     return (
       <section className="glass-panel p-4 sm:p-5" aria-live="polite">
-        <PanelHeading />
+        <PanelHeading t={t} />
         <p className="text-sm text-secondary mt-2">
-          Task status is unavailable until Codex provides local state records.
+          {t('tasks.unavailable')}
         </p>
       </section>
     );
@@ -28,15 +30,15 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
   const isEmpty = itemCount === 0;
 
   return (
-    <section className="glass-panel p-4 sm:p-5 space-y-4" aria-label="Codex task board" aria-live="polite">
-      <PanelHeading summary={taskBoardSummary(taskBoard, itemCount)} />
+    <section className="glass-panel p-4 sm:p-5 space-y-4" aria-label={t('tasks.ariaLabel')} aria-live="polite">
+      <PanelHeading t={t} summary={taskBoardSummary(taskBoard, itemCount, t)} />
       {isEmpty ? (
         <div className="task-board-empty flex items-start gap-2 rounded-xl border border-theme bg-surface-inset px-3 py-2.5">
           <CircleDashed size={15} aria-hidden="true" className="mt-0.5 shrink-0 text-tertiary" />
           <div>
-            <p className="text-sm text-secondary">No trusted task records yet.</p>
+            <p className="text-sm text-secondary">{t('tasks.empty')}</p>
             <p className="mt-1 text-xs text-tertiary">
-              This board shows only non-subagent local activity, explicit archives, and validated active automations.
+              {t('tasks.emptyDetail')}
             </p>
           </div>
         </div>
@@ -56,7 +58,7 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
               {column.items.length === 0 ? (
                 <div className="task-column-empty flex items-center gap-2 py-3 text-xs text-tertiary">
                   <CircleDashed size={13} aria-hidden="true" />
-                  <span>No records</span>
+                  <span>{t('common.noRecords')}</span>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -70,11 +72,11 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
                           {item.title}
                         </p>
                       </div>
-                      {item.detail || factualTime(item) ? (
+                      {item.detail || factualTime(item, t) ? (
                         <div className="task-card-meta mt-2 flex min-w-0 items-center gap-2 text-xs">
                           {item.detail ? <span className="min-w-0 truncate text-secondary">{item.detail}</span> : null}
-                          {factualTime(item) ? (
-                            <time className="shrink-0 text-tertiary">{factualTime(item)}</time>
+                          {factualTime(item, t) ? (
+                            <time className="shrink-0 text-tertiary">{factualTime(item, t)}</time>
                           ) : null}
                         </div>
                       ) : null}
@@ -86,7 +88,7 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
                             const StateIcon = stateIcon(item);
                             return <StateIcon size={12} aria-hidden="true" />;
                           })()}
-                          {stateLabel(item)}
+                          {stateLabel(item, t)}
                         </span>
                       </footer>
                     </article>
@@ -101,21 +103,23 @@ export function TaskBoardPanel({ taskBoard }: TaskBoardPanelProps) {
   );
 }
 
-function PanelHeading({ summary }: { summary?: string | null }) {
+function PanelHeading({ summary, t }: { summary?: string | null; t: ReturnType<typeof useI18n>['t'] }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         <ClipboardList size={16} aria-hidden="true" />
-        <h3 className="text-sm font-semibold text-primary">Tasks</h3>
+        <h3 className="text-sm font-semibold text-primary">{t('tasks.title')}</h3>
       </div>
       {summary ? <p className="task-board-summary shrink-0 text-right text-xs text-secondary tabular-nums">{summary}</p> : null}
     </div>
   );
 }
 
-function taskBoardSummary(taskBoard: TaskBoard, itemCount: number): string {
+function taskBoardSummary(taskBoard: TaskBoard, itemCount: number, t: ReturnType<typeof useI18n>['t']): string {
   const refreshedAt = formatTaskTime(taskBoard.refreshed_at);
-  return refreshedAt ? `${itemCount} items · Refreshed ${refreshedAt}` : `${itemCount} items`;
+  return refreshedAt
+    ? t('tasks.summary', { count: itemCount, time: refreshedAt })
+    : t('tasks.summaryCount', { count: itemCount });
 }
 
 function formatTaskTime(value: number): string | null {
@@ -125,18 +129,18 @@ function formatTaskTime(value: number): string | null {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function stateLabel(item: TaskItem): string {
+function stateLabel(item: TaskItem, t: ReturnType<typeof useI18n>['t']): string {
   switch (item.display_state) {
     case 'recentlyActive':
-      return 'Recent activity';
+      return t('tasks.recentActivity');
     case 'continueLater':
-      return 'To continue';
+      return t('tasks.toContinue');
     case 'archived':
-      return 'Archived';
+      return t('tasks.archived');
     case 'scheduled':
-      return 'Scheduled';
+      return t('tasks.scheduled');
     default:
-      return 'Recorded';
+      return t('tasks.recorded');
   }
 }
 
@@ -168,8 +172,9 @@ function stateBadgeClass(item: TaskItem): string {
   }
 }
 
-function factualTime(item: TaskItem): string | null {
+function factualTime(item: TaskItem, t: ReturnType<typeof useI18n>['t']): string | null {
   if (item.updated_at == null || !Number.isFinite(item.updated_at)) return null;
-  const label = item.display_state === 'archived' ? 'Archived' : 'Updated';
-  return `${label} ${new Date(item.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  const time = new Date(item.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const label = item.display_state === 'archived' ? t('tasks.archivedAt', { time }) : t('tasks.updated', { time });
+  return label;
 }

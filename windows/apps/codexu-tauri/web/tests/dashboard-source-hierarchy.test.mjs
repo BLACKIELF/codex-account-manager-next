@@ -25,8 +25,9 @@ test('keeps one macOS-ordered Dashboard tab system and relegates Leadership to i
   assert.match(home, /useState<DashboardContentTab>\('tasks'\)/);
   assert.match(
     home,
-    /\{ id: 'tasks', title: 'Tasks' \}[\s\S]*\{ id: 'leadership', title: 'AI Leadership' \}[\s\S]*\{ id: 'usage', title: 'Usage' \}[\s\S]*\{ id: 'projects', title: 'Projects' \}[\s\S]*\{ id: 'skills', title: 'Skills' \}/,
+    /\{ id: 'tasks', title: 'Tasks', titleKey: 'dashboard\.tabs\.tasks' \}[\s\S]*\{ id: 'leadership', title: 'AI Leadership', titleKey: 'dashboard\.tabs\.leadership' \}[\s\S]*\{ id: 'usage', title: 'Usage', titleKey: 'dashboard\.tabs\.usage' \}[\s\S]*\{ id: 'projects', title: 'Projects', titleKey: 'dashboard\.tabs\.projects' \}[\s\S]*\{ id: 'skills', title: 'Skills', titleKey: 'dashboard\.tabs\.skills' \}/,
   );
+  assert.match(home, /useI18n/);
   assert.match(home, /activeDashboardTab === 'leadership'[\s\S]*?<LeadershipPanel signal=\{signal\}/);
   assert.match(home, /setActiveDashboardTab\('leadership'\)/);
   assert.doesNotMatch(home, /<LeadershipCommandRail\b/);

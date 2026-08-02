@@ -1,6 +1,7 @@
 import { Activity, Eye, Puzzle } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { SkillUsage } from '../types/models';
+import { useI18n } from '../i18n/I18nProvider';
 
 interface SkillsPanelProps {
   skills: SkillUsage[];
@@ -13,19 +14,19 @@ type SkillActivityStyle = CSSProperties & {
 const MAX_VISIBLE_SKILLS = 20;
 
 export function SkillsPanel({ skills }: SkillsPanelProps) {
+  const { t } = useI18n();
   if (skills.length === 0) {
     return (
       <section
         className="glass-panel flex min-h-[190px] flex-col items-center justify-center p-5 text-center sm:p-6"
-        aria-label="Local Skill usage"
+        aria-label={t('skills.ariaLabel')}
         aria-live="polite"
       >
         <Puzzle size={20} className="text-secondary" aria-hidden="true" />
-        <h3 className="mt-3 text-sm font-semibold text-primary">Skills</h3>
-        <p className="mt-2 text-sm text-secondary">No local Skill reads observed in this snapshot.</p>
+        <h3 className="mt-3 text-sm font-semibold text-primary">{t('skills.title')}</h3>
+        <p className="mt-2 text-sm text-secondary">{t('skills.empty')}</p>
         <p className="mt-2 max-w-md text-xs text-tertiary">
-          Skill activity will appear after a local <code>SKILL.md</code> read. Paths, prompts, tool input, and source
-          contents stay local.
+          {t('skills.emptyDetail')}
         </p>
       </section>
     );
@@ -35,33 +36,33 @@ export function SkillsPanel({ skills }: SkillsPanelProps) {
   const rankedSkills = [...skills].sort(compareSkillUsage).slice(0, MAX_VISIBLE_SKILLS);
 
   return (
-    <section className="glass-panel p-4 sm:p-5" aria-label="Local Skill usage">
+    <section className="glass-panel p-4 sm:p-5" aria-label={t('skills.ariaLabel')}>
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
             <Puzzle size={16} aria-hidden="true" />
           </span>
           <div>
-            <h3 className="text-sm font-semibold text-primary">Skills</h3>
-            <p className="mt-1 text-xs text-secondary">Local Skill usage</p>
+            <h3 className="text-sm font-semibold text-primary">{t('skills.title')}</h3>
+            <p className="mt-1 text-xs text-secondary">{t('skills.usage')}</p>
           </div>
         </div>
         <span className="inline-flex items-center gap-1.5 self-start chip-like text-tertiary">
-          <Eye size={12} aria-hidden="true" /> Privacy filtered
+          <Eye size={12} aria-hidden="true" /> {t('skills.privacyFiltered')}
         </span>
       </header>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Skills summary">
-        <SummaryMetric label="Tracked Skills" value={formatCount(summary.trackedSkills)} />
-        <SummaryMetric label="Local reads" value={formatCount(summary.totalReads)} />
-        <SummaryMetric label="Sessions" value={formatCount(summary.totalSessions)} />
+      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label={t('skills.summary')}>
+        <SummaryMetric label={t('skills.tracked')} value={formatCount(summary.trackedSkills)} />
+        <SummaryMetric label={t('skills.localReads')} value={formatCount(summary.totalReads)} />
+        <SummaryMetric label={t('skills.sessions')} value={formatCount(summary.totalSessions)} />
       </div>
 
       <div className="mt-4 overflow-hidden rounded-xl border border-theme bg-surface-inset" role="list">
         <div className="hidden items-center gap-4 border-b border-theme px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em] text-tertiary sm:flex sm:px-4">
-          <span className="min-w-0 flex-1">Skill</span>
-          <span className="w-48 text-right">Relative activity</span>
-          <span className="w-20 text-right">Reads</span>
+          <span className="min-w-0 flex-1">{t('skills.skill')}</span>
+          <span className="w-48 text-right">{t('skills.relativeActivity')}</span>
+          <span className="w-20 text-right">{t('skills.reads')}</span>
         </div>
         {rankedSkills.map((skill) => {
           const reads = safeCount(skill.load_count);
@@ -78,8 +79,8 @@ export function SkillsPanel({ skills }: SkillsPanelProps) {
                   {skill.name}
                 </p>
                 <p className="mt-1 text-xs text-tertiary">
-                  {skill.source_label || 'Local source'} · {formatThreadCount(skill.thread_count)} ·{' '}
-                  {formatObservedAt(skill.last_loaded_at)}
+                  {skill.source_label || t('skills.localSource')} · {formatThreadCount(skill.thread_count, t)} ·{' '}
+                  {formatObservedAt(skill.last_loaded_at, t)}
                 </p>
               </div>
 
@@ -88,14 +89,16 @@ export function SkillsPanel({ skills }: SkillsPanelProps) {
                   <div
                     className="skill-activity-bar"
                     role="img"
-                    aria-label={`Relative activity ${intensity}%`}
+                    aria-label={t('skills.relativeActivityValue', { value: intensity })}
                     style={{ '--skill-intensity': `${intensity}%` } as SkillActivityStyle}
                   />
-                  <p className="mt-1 text-[11px] text-tertiary sm:text-right">{intensity}% of top Skill</p>
+                  <p className="mt-1 text-[11px] text-tertiary sm:text-right">
+                    {t('skills.percentOfTop', { value: intensity })}
+                  </p>
                 </div>
                 <div className="w-20 shrink-0 text-right">
                   <p className="text-sm font-semibold tabular-nums text-primary">{formatCount(reads)}</p>
-                  <p className="mt-0.5 text-[11px] text-tertiary">local reads</p>
+                  <p className="mt-0.5 text-[11px] text-tertiary">{t('skills.localReads')}</p>
                 </div>
               </div>
             </article>
@@ -105,7 +108,7 @@ export function SkillsPanel({ skills }: SkillsPanelProps) {
 
       <p className="mt-3 flex items-center gap-1.5 text-xs text-tertiary">
         <Activity size={13} aria-hidden="true" />
-        Local observations only; source contents stay on this device.
+        {t('skills.localOnly')}
       </p>
     </section>
   );
@@ -156,9 +159,9 @@ function formatCount(value: number): string {
   return safeCount(value).toLocaleString();
 }
 
-function formatThreadCount(value: number): string {
+function formatThreadCount(value: number, t: ReturnType<typeof useI18n>['t']): string {
   const count = safeCount(value);
-  return `${count} ${count === 1 ? 'session' : 'sessions'}`;
+  return t('skills.sessionCount', { count, unit: count === 1 ? 'session' : 'sessions' });
 }
 
 function validTimestamp(value: number | null): number | null {
@@ -167,9 +170,9 @@ function validTimestamp(value: number | null): number | null {
   return Number.isNaN(date.getTime()) ? null : value;
 }
 
-function formatObservedAt(value: number | null): string {
+function formatObservedAt(value: number | null, t: ReturnType<typeof useI18n>['t']): string {
   const timestamp = validTimestamp(value);
-  if (timestamp === null) return 'Not observed';
+  if (timestamp === null) return t('skills.notObserved');
 
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',

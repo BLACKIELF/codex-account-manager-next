@@ -31,6 +31,9 @@ pub struct AppConfig {
     /// Tray density mode (stored for future use).
     #[serde(default)]
     pub tray_density: TrayDensity,
+    /// Interface language preference.
+    #[serde(default)]
+    pub language: InterfaceLanguage,
 }
 
 impl Default for AppConfig {
@@ -44,6 +47,7 @@ impl Default for AppConfig {
             theme: ThemeMode::System,
             refresh_interval_secs: default_refresh_interval_secs(),
             tray_density: TrayDensity::Classic,
+            language: InterfaceLanguage::Auto,
         }
     }
 }
@@ -68,6 +72,35 @@ pub enum TrayDensity {
     #[default]
     Classic,
     Rich,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InterfaceLanguage {
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "zh-Hans")]
+    ZhHans,
+    #[serde(rename = "en")]
+    En,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ResolvedLanguage {
+    #[serde(rename = "zh-Hans")]
+    ZhHans,
+    #[serde(rename = "en")]
+    En,
+}
+
+impl InterfaceLanguage {
+    pub fn resolved(self, fallback: ResolvedLanguage) -> ResolvedLanguage {
+        match self {
+            Self::Auto => fallback,
+            Self::ZhHans => ResolvedLanguage::ZhHans,
+            Self::En => ResolvedLanguage::En,
+        }
+    }
 }
 
 impl AppConfig {
@@ -121,6 +154,7 @@ pub struct CachedSnapshot {
 /// Shared application state.
 pub struct AppState {
     pub config: RwLock<AppConfig>,
+    pub runtime_language: RwLock<ResolvedLanguage>,
     pub snapshot: RwLock<Option<CachedSnapshot>>,
     pub refresh_lock: Mutex<()>,
     pub app_data_dir: PathBuf,
@@ -135,8 +169,10 @@ pub struct AppState {
 impl AppState {
     pub fn new(app_data_dir: PathBuf) -> Self {
         let config = AppConfig::load(&app_data_dir);
+        let runtime_language = config.language.resolved(ResolvedLanguage::En);
         Self {
             config: RwLock::new(config),
+            runtime_language: RwLock::new(runtime_language),
             snapshot: RwLock::new(None),
             refresh_lock: Mutex::new(()),
             app_data_dir,
@@ -146,6 +182,10 @@ impl AppState {
             #[cfg(test)]
             refresh_attempt_hook: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub async fn set_runtime_language(&self, language: ResolvedLanguage) {
+        *self.runtime_language.write().await = language;
     }
 
     async fn current_source_key(&self) -> DashboardSourceKey {
@@ -356,6 +396,42 @@ mod tests {
         std::env::temp_dir().join(format!("{}-{}", prefix, stamp))
     }
 
+    #[test]
+    fn interface_language_uses_stable_wire_values() {
+        assert_eq!(
+            serde_json::to_string(&InterfaceLanguage::Auto).unwrap(),
+            r#""auto""#
+        );
+        assert_eq!(
+            serde_json::to_string(&InterfaceLanguage::ZhHans).unwrap(),
+            r#""zh-Hans""#
+        );
+        assert_eq!(
+            serde_json::to_string(&InterfaceLanguage::En).unwrap(),
+            r#""en""#
+        );
+    }
+
+    #[test]
+    fn legacy_settings_without_language_default_to_auto() {
+        let app_data_dir = unique_temp_path("codexu-tauri-legacy-language");
+        std::fs::create_dir_all(&app_data_dir).unwrap();
+        std::fs::write(
+            app_data_dir.join("settings.json"),
+            r#"{
+                "codex_root": "C:\\Users\\example\\.codex",
+                "cache_dir": "C:\\Users\\example\\AppData\\Local\\codexU",
+                "theme": "system",
+                "refresh_interval_secs": 60,
+                "tray_density": "classic"
+            }"#,
+        )
+        .unwrap();
+
+        let config = AppConfig::load(&app_data_dir);
+        assert_eq!(config.language, InterfaceLanguage::Auto);
+    }
+
     fn create_snapshot(now: DateTime<Utc>) -> CodexDashboardSnapshot {
         CodexDashboardSnapshot {
             codex: RuntimeUsageSnapshot {
@@ -499,6 +575,7 @@ mod tests {
                     theme: ThemeMode::System,
                     refresh_interval_secs: 60,
                     tray_density: TrayDensity::Classic,
+                    language: InterfaceLanguage::Auto,
                 }),
                 source_generation: 0,
             });

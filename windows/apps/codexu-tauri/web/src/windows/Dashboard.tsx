@@ -5,8 +5,10 @@ import { DashboardHome } from '../components/DashboardHome';
 import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
 import { applyAppTheme } from '../utils/appTheme';
+import { useI18n } from '../i18n/I18nProvider';
 
 export function Dashboard() {
+  const { t } = useI18n();
   const { dashboard, loading, error, refresh } = useUsage();
   const { settings, update } = useSettings();
 
@@ -20,10 +22,10 @@ export function Dashboard() {
   const quotaStatus = dashboard?.codex?.status ?? 'local_only';
   const quotaStatusLabel =
     quotaStatus === 'available'
-      ? 'Official quota active'
+      ? t('dashboard.status.officialQuotaActive')
       : quotaStatus === 'stale'
-        ? 'Official quota last verified'
-        : 'Checking official quota';
+        ? t('dashboard.status.officialQuotaLastVerified')
+        : t('dashboard.status.checkingOfficialQuota');
   const quotaStatusClass =
     quotaStatus === 'available'
       ? 'bg-status-ok/12 text-status-ok border-status-ok/30'
@@ -46,13 +48,13 @@ export function Dashboard() {
         />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="glass-panel p-6 max-w-md border-status-error/30 bg-status-error/8">
-            <h2 className="text-lg font-semibold text-status-error mb-2">Failed to load usage</h2>
+            <h2 className="text-lg font-semibold text-status-error mb-2">{t('dashboard.errors.failedToLoadUsage')}</h2>
             <p className="text-sm opacity-90 text-status-error/90">{error}</p>
             <button
               onClick={refresh}
               className="mt-4 px-4 py-2 rounded-full glass-button-solid text-sm"
             >
-              Retry
+              {t('common.retry')}
             </button>
           </div>
         </div>
@@ -75,20 +77,20 @@ export function Dashboard() {
           <div className="glass-panel p-6 mb-6" role="status" aria-live="polite">
             {loading ? (
               <>
-                <h2 className="text-sm font-semibold text-primary">Loading usage data</h2>
-                <p className="text-sm text-secondary mt-1">Collecting local snapshots...</p>
+                <h2 className="text-sm font-semibold text-primary">{t('dashboard.errors.loadingUsageData')}</h2>
+                <p className="text-sm text-secondary mt-1">{t('dashboard.errors.collectingLocalSnapshots')}</p>
               </>
             ) : (
               <>
-                <h2 className="text-sm font-semibold text-primary">No usage snapshot yet</h2>
+                <h2 className="text-sm font-semibold text-primary">{t('dashboard.errors.noUsageSnapshot')}</h2>
                 <p className="text-sm text-secondary mt-1">
-                  No local usage data is available yet. Click Refresh to sample your latest sessions.
+                  {t('dashboard.errors.noLocalUsage')}
                 </p>
                 <button
                   onClick={refresh}
                   className="mt-4 px-4 py-2 rounded-full glass-button-solid text-sm"
                 >
-                  Refresh now
+                  {t('common.refreshNow')}
                 </button>
               </>
             )}
@@ -101,20 +103,24 @@ export function Dashboard() {
               <span className={`inline-flex items-center gap-1.5 chip-like ${quotaStatusClass}`}>
                 <Activity size={12} /> {quotaStatusLabel}
               </span>
-              <span className="text-xs text-tertiary">Codex {(localUsage?.thread_count ?? 0)} threads</span>
+              <span className="text-xs text-tertiary">{t('dashboard.status.threads', { count: localUsage?.thread_count ?? 0 })}</span>
               {!localUsage ? (
                 <span className="text-xs text-tertiary">
-                  {dashboard ? 'No local usage details yet' : 'Waiting for snapshot'}
+                  {dashboard ? t('dashboard.status.noLocalUsageDetails') : t('dashboard.status.waitingSnapshot')}
                 </span>
               ) : null}
             </div>
             <span className="inline-flex items-center gap-1.5 chip-like text-xs text-secondary">
               <CircleDashed size={12} />
-              Last update: {lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : 'waiting'}
+              {t('dashboard.status.lastUpdate', {
+                time: lastUpdated ? new Date(lastUpdated).toLocaleTimeString() : t('dashboard.status.waiting'),
+              })}
             </span>
           </div>
           {dashboard?.messages?.length ? (
-            <p className="text-xs text-tertiary mt-2">Status: {dashboard.messages.join(' 路 ')}</p>
+            <p className="text-xs text-tertiary mt-2">
+              {t('dashboard.errors.status', { messages: dashboard.messages.join(' · ') })}
+            </p>
           ) : null}
 
           <DashboardHome

@@ -19,6 +19,7 @@ export function useSettings() {
       theme: payload.theme,
       refresh_interval_secs: payload.refresh_interval_secs,
       tray_density: payload.tray_density,
+      language: payload.language ?? 'auto',
     },
     app_data_dir: payload.app_data_dir,
   });
