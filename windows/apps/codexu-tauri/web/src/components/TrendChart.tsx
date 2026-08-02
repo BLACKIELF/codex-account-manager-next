@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { UsageTrend } from '../types/models';
+import type { TokenBreakdown, UsageTrend } from '../types/models';
 
 interface TrendChartProps {
   trend: UsageTrend | null;
@@ -30,15 +30,16 @@ export function TrendChart({ trend }: TrendChartProps) {
       .filter((b) => b.date >= cutoff)
       .map((b) => ({
         date: new Date(b.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        tokens: b.usage.tokens.total_tokens,
+        tokens: visibleTotalTokens(b.usage.tokens),
       }));
   }, [trend, range]);
 
   if (!trend || data.length === 0) {
     return (
       <div className="glass-panel p-4 sm:p-5">
-        <h3 className="text-sm font-semibold text-primary mb-4">Usage Trend</h3>
-        <p className="text-secondary text-sm">No trend data available.</p>
+        <h3 className="text-sm font-semibold text-primary">Daily token trend</h3>
+        <p className="mt-2 text-sm text-secondary">No local usage trend yet.</p>
+        <p className="mt-1 text-xs text-tertiary">A recorded session will add daily activity here.</p>
       </div>
     );
   }
@@ -46,7 +47,10 @@ export function TrendChart({ trend }: TrendChartProps) {
   return (
     <div className="glass-panel p-4 sm:p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-primary">Usage Trend</h3>
+        <div>
+          <h3 className="text-sm font-semibold text-primary">Daily token trend</h3>
+          <p className="mt-1 text-xs text-tertiary">{sourceQualityLabel(trend.source_quality)}</p>
+        </div>
         <div className="flex gap-1 glass-toolbar p-0.5 rounded-full">
           {RANGES.map((r) => (
             <button
@@ -61,6 +65,20 @@ export function TrendChart({ trend }: TrendChartProps) {
               {r.label}
             </button>
           ))}
+        </div>
+      </div>
+      <div className="usage-trend-summary" aria-label="Last 7 day usage summary">
+        <div>
+          <span>Last 7 days</span>
+          <strong>{formatTokens(visibleTotalTokens(trend.summary.seven_day.tokens))}</strong>
+        </div>
+        <div>
+          <span>Daily average</span>
+          <strong>{formatTokens(trend.summary.daily_average_tokens)}</strong>
+        </div>
+        <div>
+          <span>Change</span>
+          <strong>{formatChange(trend.summary.change_percent, trend.summary.is_new_activity)}</strong>
         </div>
       </div>
       <div className="h-56">
@@ -117,4 +135,22 @@ function formatCompact(n: number): string {
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
+}
+
+function visibleTotalTokens(tokens: TokenBreakdown): number {
+  return Math.max(tokens.total_tokens, tokens.input_tokens + tokens.output_tokens);
+}
+
+function formatTokens(value: number): string {
+  return Math.round(value).toLocaleString();
+}
+
+function formatChange(value: number | null, isNewActivity: boolean): string {
+  if (isNewActivity) return 'New activity';
+  if (value == null || !Number.isFinite(value)) return '--';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(0)}%`;
+}
+
+function sourceQualityLabel(value: UsageTrend['source_quality']): string {
+  return value === 'detailed' ? 'Detailed token events' : 'Thread-time fallback';
 }
