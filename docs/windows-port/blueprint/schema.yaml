@@ -160,10 +160,10 @@ nodes:
     layout: {x: 1010, y: 885, w: 285, h: 136}
 
   - id: native_capture_demo
-    label: "Native Screenshot Demo"
+    label: "Maximized Capture Workflow"
     category: validation
     signature: "Windows.Graphics.Capture · exact HWND"
-    note: "6 surfaces × 2 client sizes"
+    note: "single maximized run · dynamic numbered panel segments"
     icon: camera
     layer: capture_bottom
     layout: {x: 1410, y: 845, w: 285, h: 136}
@@ -181,7 +181,7 @@ nodes:
   - id: local_visual_evidence
     label: "Local Visual Evidence"
     category: evidence
-    signature: "manifest · logs · 12 PNGs"
+    signature: "manifest · logs · dynamic PNGs"
     note: ".local-artifacts only · Git ignored"
     icon: image
     layer: evidence_bottom
@@ -231,7 +231,7 @@ edges:
 
   - {from: native_capture_demo, to: windows_desktop_ui, kind: captures, label: "captures exact HWND"}
   - {from: capture_preflight, to: native_capture_demo, kind: verifies, label: "verifies workflow"}
-  - {from: native_capture_demo, to: local_visual_evidence, kind: produces, label: "produces manifest + 12 PNGs"}
+  - {from: native_capture_demo, to: local_visual_evidence, kind: produces, label: "produces maximized viewport PNGs"}
 
   - {from: codexu_probe, to: safe_readers, kind: consumes, label: "consumes safe readers"}
   - {from: codexu_probe, to: dashboard_aggregation, kind: consumes, label: "emits diagnostic snapshot"}

@@ -52,31 +52,31 @@ codexU Windows 是本地优先的 Tauri 桌面工具：它只读本机 Codex 状
 | Reader & Aggregation Rust Tests | Readers、Aggregation | SQLite/transcript/task/skill 缩减与 Leadership 聚合 | `windows/crates/codexu-core/src/readers/`、`tests/task_board.rs` |
 | AppState Tests | Snapshot / AppState | cache、single-flight、generation、retry | `windows/apps/codexu-tauri/src-tauri/src/app_state.rs` |
 | Web Contract Tests | Windows Desktop UI | React 层级、quota、Tasks、Skills、Leadership rail 契约 | `windows/apps/codexu-tauri/web/tests/*.test.mjs` |
-| Native Screenshot Demo | Windows Desktop UI | 当前 checkout 的真实 release executable、WebView2、窗口尺寸与 exact HWND 捕获 | `windows/scripts/Capture-NativeVisuals.ps1`、`native-visual-capture/GraphicsCaptureSnapshot.cs` |
-| Screenshot Workflow Preflight | Native Screenshot Demo | 截图引擎、exact HWND、六个 surface 与本地产物边界 | `windows/scripts/tests/Test-NativeVisualCaptureWorkflow.ps1` |
+| Maximized Capture Workflow | Windows Desktop UI | 当前 checkout 的真实 release executable、WebView2、最大化窗口与 exact HWND 捕获 | `windows/scripts/Capture-NativeVisuals.ps1`、`native-visual-capture/GraphicsCaptureSnapshot.cs` |
+| Screenshot Workflow Preflight | Maximized Capture Workflow | 截图引擎、exact HWND、六个 surface 与本地产物边界 | `windows/scripts/tests/Test-NativeVisualCaptureWorkflow.ps1` |
 
 最关键的嵌套关系是：
 
 ```text
 Screenshot Workflow Preflight
-        -- verifies workflow --> Native Screenshot Demo
+        -- verifies workflow --> Maximized Capture Workflow
         -- captures exact HWND --> Windows Desktop UI
-        -- produces -----------> local manifest + 12 PNGs
+        -- produces -----------> maximized viewport PNGs
 ```
 
-因此，Preflight 测的是截图工具；截图 Demo 才直接面对 UI。这能表达“测试也有自己的测试”，而不会把两者混成一个笼统的 UI 测试块。
+因此，Preflight 测的是截图工具；最大化采集工作流才直接面对 UI。这能表达“测试也有自己的测试”，而不会把两者混成一个笼统的 UI 测试块。
 
 ## 诊断、构建与证据
 
 - `codexu-probe` 是 Readers/Aggregation 的只读诊断消费者，不属于 UI 运行链。
-- Release Build & Package 组合 Tauri backend 和 WebView UI，目标为 MSI/NSIS，并向截图 Demo 提供精确 release executable。
-- Native Screenshot Demo 的 manifest、日志与两种 client size 下的 12 张 PNG 只写入 `.local-artifacts/windows-visual-captures/`。这些文件包含真实本地证据，保持 Git ignored，不进入 Blueprint、报告或公开提交。
+- Release Build & Package 组合 Tauri backend 和 WebView UI，目标为 MSI/NSIS，并向最大化采集工作流提供精确 release executable。
+- Maximized Capture Workflow 的 manifest、日志与动态数量的最大化 viewport PNG 只写入 `.local-artifacts/windows-visual-captures/`。当前 `client_sizes` 与 `size_runs` 均保留字段但为空；实际证据是一轮最大化运行，其 PNG 数量随 panel segments 动态变化。这些文件包含真实本地证据，保持 Git ignored，不进入 Blueprint、报告或公开提交。
 
 ## 证据能证明什么
 
 - Rust 测试证明对应 reader、聚合或 AppState 行为，不证明窗口渲染质量。
 - Web contract tests 证明 React/CSS 源码契约，不证明真实 WebView2、DPI、窗口装饰、原生对话框或 IPC。
-- Native Screenshot Demo 证明当前 checkout、当前构建和当前本地数据下的可见表面；它不是视觉回归基线，也不自动等于完整 UI 质量通过。
+- Maximized Capture Workflow 证明当前 checkout、当前构建和当前本地数据下的可见表面；它不是视觉回归基线，也不自动等于完整 UI 质量通过。
 - 最终 Blueprint 只记录本次实际运行的 schema、几何和图像复核结果，不追溯宣称旧运行记录仍然有效。
 
 ## 已排除的旧设想
@@ -93,4 +93,4 @@ Screenshot Workflow Preflight
 
 本阶段没有重新运行 Windows 产品代码、Rust/Web 测试或 native capture；上述结果只覆盖 Blueprint schema、渲染和几何检查。
 
-生成提示的核心约束是：16:9 深色技术编辑风格；中心只有五个 Runtime 块；测试按对象挂接；`Preflight → Native Screenshot Demo → UI → Local Visual Evidence` 保持独立；禁止 macOS、Claude、云服务、Updater、WinUI 和双泳道。`diagram.generated.png` 仍是展示候选，不替代 schema、SVG 或确定性渲染。
+生成提示的核心约束是：16:9 深色技术编辑风格；中心只有五个 Runtime 块；测试按对象挂接；`Preflight → Maximized Capture Workflow → UI → Local Visual Evidence` 保持独立；禁止 macOS、Claude、云服务、Updater、WinUI 和双泳道。`diagram.generated.png` 仍是展示候选，不替代 schema、SVG 或确定性渲染。
