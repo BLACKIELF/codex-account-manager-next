@@ -21,8 +21,9 @@ later, but they are not part of the current workflow contract.
 
 ## Active sources to update
 
-- Remove the obsolete empty `client_sizes` preflight field and `size_runs`
-  workflow-manifest field, together with tests that preserve those names.
+- Keep `client_sizes` in preflight and `size_runs` in the workflow manifest as
+  reserved extension points for future non-fullscreen test modes. The current
+  maximized-only contract requires both arrays to remain empty.
 - Update `windows/README.md` so the documented acceptance command and evidence
   describe maximized exact-HWND capture and dynamic panel sequences.
 - Update the Windows Blueprint schema, Mermaid fallback, narrative, and
@@ -33,24 +34,32 @@ later, but they are not part of the current workflow contract.
 
 ## Historical records
 
-Do not rewrite `.planning/`, the existing paired native-workflow acceptance
-report, or Phase 4 product-layout documents. Their fixed-size statements record
-past experiments or UI design targets rather than the future capture contract.
+Do not rewrite `.planning/` or Phase 4 product-layout documents. Their
+fixed-size statements record past experiments or UI design targets rather than
+the future capture contract.
+
+Create a new paired Markdown/HTML acceptance report from a fresh maximized
+native run. Only after the new report is complete and its conclusions agree in
+both formats, delete the old paired two-size native-workflow acceptance report.
 
 ## Compatibility and failure behavior
 
-No tracked consumer reads `client_sizes` or `size_runs`; removing the empty
-fields is therefore the intended contract cleanup. Existing exact executable,
+`client_sizes` and `size_runs` remain schema-compatible but inactive. Future
+size modes must be added deliberately with their own design and tests; they
+must not silently change the current fullscreen run. Existing exact executable,
 local-artifact, read-only data, bounded scrolling, and process-cleanup checks
 remain unchanged. An unverified or non-maximized window still fails closed.
 
 ## Verification
 
-- Add failing preflight and coverage assertions that reject the legacy fields.
+- Preserve assertions that `client_sizes` and `size_runs` are empty in the
+  current maximized-only workflow.
 - Preserve and pass the existing single-surface selection contract.
 - Pass PowerShell parsing, preflight, single-surface/default native coverage,
   Blueprint schema validation/rendering, `git diff --check`, Web contracts/build,
   and Rust workspace tests in proportion to the touched files.
+- Run a fresh default release build and maximized native capture, then create
+  the paired replacement acceptance report before deleting the old report.
 - Search active sources after the change; remaining fixed-size references must
   be limited to the explicitly preserved historical records and product-layout
   targets.
