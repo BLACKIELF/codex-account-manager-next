@@ -6,8 +6,8 @@ use chrono::{DateTime, Utc};
 
 use crate::models::*;
 use crate::readers::{
-    build_leadership_snapshot, make_local_usage, CodexAppServerQuotaSnapshot, CodexStateReader,
-    CodexTaskBoardReader, CodexThreadMetadata, CodexTranscriptReader,
+    build_leadership_snapshot, CodexAppServerQuotaSnapshot, CodexStateReader, CodexTaskBoardReader,
+    CodexThreadMetadata, CodexTranscriptReader,
 };
 
 /// Default leadership period for dashboard visibility.
@@ -110,6 +110,9 @@ impl CodexDashboardProvider {
         let (state_metadata, messages) = self.load_state_metadata().await?;
 
         let transcript_reader = CodexTranscriptReader::new(&self.cache_dir);
+        let local_usage = transcript_reader
+            .load_local_usage_with_metadata(&self.codex_root, state_metadata.clone(), now)
+            .await?;
         let summaries = transcript_reader
             .load_local_session_summaries(&self.codex_root, state_metadata)
             .await?;
@@ -117,7 +120,6 @@ impl CodexDashboardProvider {
             return Ok(None);
         };
 
-        let local_usage = make_local_usage(summaries.clone(), now);
         let leadership_snapshot = build_leadership_snapshot(&summaries, now);
         let leadership_signal = build_codex_leadership_signal(&leadership_snapshot);
 
@@ -233,7 +235,7 @@ mod tests {
 
     use super::*;
     use crate::models::usage::TokenBreakdown;
-    use crate::readers::{SessionSummary, UsageDelta};
+    use crate::readers::{make_local_usage, SessionSummary, UsageDelta};
 
     fn create_codex_state_db(
         path: &std::path::Path,
@@ -322,6 +324,40 @@ mod tests {
 
     fn write_session_file(path: &std::path::Path, lines: Vec<&str>) {
         std::fs::write(path, lines.join("\n")).unwrap();
+    }
+
+    #[tokio::test]
+    async fn dashboard_snapshot_preserves_skill_usages_from_transcripts() {
+        let temp = tempdir().unwrap();
+        let archived = temp.path().join("archived_sessions");
+        std::fs::create_dir_all(&archived).unwrap();
+
+        let session = archived.join("rollout-blueprint.jsonl");
+        write_session_file(
+            &session,
+            vec![
+                r#"{"timestamp":"2026-07-28T11:59:00.000Z","type":"session_meta","payload":{"id":"session-blueprint","cwd":"C:\\workspace"}}"#,
+                r#"{"timestamp":"2026-07-28T12:00:00.000Z","type":"response_item","payload":{"type":"function_call","arguments":{"cmd":"Get-Content -Raw 'C:\\Users\\private-user\\.codex\\skills\\blueprint\\SKILL.md'"}}}"#,
+                r#"{"timestamp":"2026-07-28T12:01:00.000Z","type":"event_msg","payload":{"type":"token_count","turn_id":"turn-1","info":{"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":20,"reasoning_output_tokens":0,"total_tokens":120}}}}"#,
+            ],
+        );
+
+        let now = Utc.with_ymd_and_hms(2026, 7, 28, 12, 0, 0).unwrap();
+        let provider = CodexDashboardProvider::new(temp.path(), temp.path().join("cache"));
+        let snapshot = provider
+            .load_dashboard_snapshot(now)
+            .await
+            .unwrap()
+            .expect("should produce snapshot");
+
+        let local = snapshot
+            .codex
+            .snapshot
+            .local
+            .expect("should produce local usage");
+        assert_eq!(local.skill_usages.len(), 1);
+        assert_eq!(local.skill_usages[0].name, "blueprint");
+        assert_eq!(local.skill_usages[0].source_label, "Personal Codex skill");
     }
 
     #[tokio::test]
