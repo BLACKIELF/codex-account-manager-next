@@ -123,8 +123,8 @@
 <g class="edge edge-native_capture_demo-local_visual_evidence" data-crossing-style="">
 <polyline points="1410.0,940.2 1370.0,940.2 1370.0,1263.0 1330.0,1263.0" fill="none" stroke="#e5b65b" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow-produces)"/>
 <g class="edge-label">
-<rect x="1279.0" y="1084.6" width="182.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
-<text x="1370.0" y="1099.6" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#e5b65b" text-anchor="middle" opacity="1.00" letter-spacing="0.0">produces manifest + 12 PNGs</text>
+<rect x="1264.0" y="1084.6" width="212.0" height="21" rx="7" fill="#081120" fill-opacity="0.94" stroke="#263754" stroke-width="0.8"/>
+<text x="1370.0" y="1099.6" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="9.8" font-weight="650" fill="#e5b65b" text-anchor="middle" opacity="1.00" letter-spacing="0.0">produces maximized viewport PNGs</text>
 </g>
 </g>
 <g class="edge edge-codexu_probe-safe_readers" data-crossing-style="">
@@ -284,9 +284,9 @@
 <g id="node-native_capture_demo">
 <rect x="1410.0" y="845.0" width="285.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" filter="url(#card-shadow)"/>
 <rect x="1411.0" y="846.0" width="5" height="134.0" rx="3" fill="#a7b7cf"/>
-<text x="1428.0" y="876.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Native Screenshot Demo</text>
+<text x="1428.0" y="876.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Maximized Capture Workflow</text>
 <text x="1428.0" y="917.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#a7b7cf" text-anchor="start" opacity="1.00" letter-spacing="0.0">Windows.Graphics.Capture · exact HWND</text>
-<text x="1428.0" y="956.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">6 surfaces × 2 client sizes</text>
+<text x="1428.0" y="956.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">single maximized run · dynamic…</text>
 </g>
 <g id="node-capture_preflight">
 <rect x="1410.0" y="1045.0" width="285.0" height="136.0" rx="20" fill="#222b3c" stroke="#6f86a8" stroke-width="1.8" stroke-dasharray="8 6" filter="url(#card-shadow)"/>
@@ -300,7 +300,7 @@
 <rect x="1030.0" y="1195.0" width="300.0" height="136.0" rx="20" fill="#3d3424" stroke="#d8a74d" stroke-width="1.8" filter="url(#card-shadow)"/>
 <rect x="1031.0" y="1196.0" width="5" height="134.0" rx="3" fill="#f0c978"/>
 <text x="1048.0" y="1226.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="15.0" font-weight="720" fill="#f5f8ff" text-anchor="start" opacity="1.00" letter-spacing="0.0">Local Visual Evidence</text>
-<text x="1048.0" y="1267.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#f0c978" text-anchor="start" opacity="1.00" letter-spacing="0.0">manifest · logs · 12 PNGs</text>
+<text x="1048.0" y="1267.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="600" fill="#f0c978" text-anchor="start" opacity="1.00" letter-spacing="0.0">manifest · logs · dynamic PNGs</text>
 <text x="1048.0" y="1306.0" font-family="'Segoe UI','Microsoft YaHei UI','Noto Sans CJK SC',sans-serif" font-size="11.5" font-weight="430" fill="#aebbd0" text-anchor="start" opacity="1.00" letter-spacing="0.0">.local-artifacts only · Git ignored</text>
 </g>
 </g>

@@ -21,9 +21,9 @@ flowchart LR
     WebTests["Web Contract Tests"]:::validation
     Probe["codexu-probe"]:::operations
     Build["Release Build & Package<br/>Tauri / MSI / NSIS"]:::operations
-    Capture["Native Screenshot Demo<br/>Windows.Graphics.Capture · exact HWND"]:::validation
+    Capture["Maximized Capture Workflow<br/>Windows.Graphics.Capture · exact HWND"]:::validation
     Preflight["Capture Workflow Preflight"]:::validation
-    VisualEvidence["Local Visual Evidence<br/>manifest + 12 PNGs · Git ignored"]:::evidence
+    VisualEvidence["Local Visual Evidence<br/>manifest + dynamic PNGs · Git ignored"]:::evidence
 
     QuotaTests -. "verifies quota protocol" .-> Evidence
     QuotaTests -. "verifies apply + retain" .-> Aggregate
@@ -39,7 +39,7 @@ flowchart LR
     Build -->|"provides release executable"| Capture
     Preflight -. "verifies workflow" .-> Capture
     Capture -->|"captures exact HWND"| UI
-    Capture -->|"produces manifest + 12 PNGs"| VisualEvidence
+    Capture -->|"produces maximized viewport PNGs"| VisualEvidence
 
     classDef source fill:#12233f,stroke:#5fa8ff,color:#eef6ff
     classDef reader fill:#15324a,stroke:#45c8d8,color:#eefcff
