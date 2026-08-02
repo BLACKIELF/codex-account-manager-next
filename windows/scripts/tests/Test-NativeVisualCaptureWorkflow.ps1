@@ -75,6 +75,40 @@ Assert-True ([bool]$manifest.prerequisites.native_driver) 'Preflight did not loa
 Assert-True (-not [bool]$manifest.writes_performed) 'Preflight unexpectedly wrote runtime artifacts.'
 Assert-True (-not (Test-Path -LiteralPath $preflightOutput)) 'Preflight created the requested runtime output directory.'
 
+$singleSurfaceOutput = Join-Path $repositoryRoot (
+  '.local-artifacts\windows-visual-captures\preflight-single-surface-' +
+  [guid]::NewGuid().ToString('N')
+)
+$singleSurfaceLines = @(
+  & $powershell -NoProfile -ExecutionPolicy Bypass -File $entry `
+    -PreflightOnly `
+    -Surface 'Skills' `
+    -OutputRoot $singleSurfaceOutput 2>&1
+)
+$singleSurfaceExitCode = $LASTEXITCODE
+Assert-True (
+  $singleSurfaceExitCode -eq 0
+) "Single-surface preflight failed with exit code $singleSurfaceExitCode."
+$singleSurfaceManifestLine = @(
+  $singleSurfaceLines | Where-Object { "$($_)".StartsWith('NATIVE_VISUAL_PREFLIGHT=') }
+)
+Assert-True (
+  $singleSurfaceManifestLine.Count -eq 1
+) 'Single-surface preflight did not emit exactly one manifest line.'
+$singleSurfaceManifest = "$($singleSurfaceManifestLine[0])".Substring(
+  'NATIVE_VISUAL_PREFLIGHT='.Length
+) | ConvertFrom-Json
+Assert-Sequence `
+  @($singleSurfaceManifest.surfaces) `
+  @('Skills') `
+  'Single-surface preflight selected extra Dashboard surfaces.'
+Assert-True (
+  $null -eq $singleSurfaceManifest.overview_file
+) 'Single-surface preflight retained an unrelated Overview capture.'
+Assert-True (
+  -not (Test-Path -LiteralPath $singleSurfaceOutput)
+) 'Single-surface preflight created the requested runtime output directory.'
+
 $defaultOutput = @(
   & $powershell -NoProfile -ExecutionPolicy Bypass -File $entry -PreflightOnly 2>&1
 )

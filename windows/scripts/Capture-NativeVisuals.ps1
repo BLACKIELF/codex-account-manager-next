@@ -4,7 +4,10 @@
 param(
   [string] $OutputRoot,
   [switch] $PreflightOnly,
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [Alias('Surface')]
+  [ValidateSet('All', 'Overview', 'Tasks', 'AI Leadership', 'Usage', 'Projects', 'Skills')]
+  [string] $RequestedSurface = 'All'
 )
 
 Set-StrictMode -Version Latest
@@ -51,6 +54,19 @@ $surfaces = @(
     panel = 'dashboard-home-panel-skills'
   }
 )
+$captureOverview = $RequestedSurface -in @('All', 'Overview')
+$selectedPanelSurfaces = if ($RequestedSurface -eq 'All') {
+  @($surfaces)
+} elseif ($RequestedSurface -eq 'Overview') {
+  @()
+} else {
+  @($surfaces | Where-Object { $_.name -eq $RequestedSurface })
+}
+$requestedSurfaces = @()
+if ($captureOverview) {
+  $requestedSurfaces += 'Overview'
+}
+$requestedSurfaces += @($selectedPanelSurfaces | ForEach-Object { $_.name })
 
 function Get-NormalizedOutputRoot {
   param([string] $RequestedPath)
@@ -453,9 +469,9 @@ function Get-PreflightManifest {
     targeting = 'exact HWND'
     capture_runs = @($captureRuns)
     client_sizes = @()
-    surfaces = @('Overview') + @($surfaces | ForEach-Object { $_.name })
+    surfaces = @($requestedSurfaces)
     window_mode = 'maximized exact HWND'
-    overview_file = 'fullscreen/overview.png'
+    overview_file = if ($captureOverview) { 'fullscreen/overview.png' } else { $null }
     surface_capture_mode = 'maximized panel viewport sequence'
     projects_capture_mode = 'first panel viewport'
     segment_overlap_ratio = $segmentOverlapRatio
@@ -1189,25 +1205,27 @@ function Invoke-MaximizedCapture {
     }
     Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
 
-    Move-DashboardScrollToTop -Renderer $renderer
-    Move-RendererToLeft -Renderer $renderer
-    Start-Sleep -Milliseconds 700
-    $overviewPath = Join-Path $sizeScreenshots 'overview.png'
-    $overviewCapture = Invoke-GraphicsCapture `
-      -CaptureTool $CaptureTool `
-      -Window $window `
-      -OutputPath $overviewPath `
-      -LogPath (Join-Path $LogsRoot 'graphics-capture.log')
-    $sizeRecord.captures += [ordered]@{
-      surface = 'Overview'
-      framing = 'page top in maximized window'
-      file = $overviewPath
-      physical_frame = $overviewCapture.physical_frame
-      bytes = $overviewCapture.bytes
+    if ($captureOverview) {
+      Move-DashboardScrollToTop -Renderer $renderer
+      Move-RendererToLeft -Renderer $renderer
+      Start-Sleep -Milliseconds 700
+      $overviewPath = Join-Path $sizeScreenshots 'overview.png'
+      $overviewCapture = Invoke-GraphicsCapture `
+        -CaptureTool $CaptureTool `
+        -Window $window `
+        -OutputPath $overviewPath `
+        -LogPath (Join-Path $LogsRoot 'graphics-capture.log')
+      $sizeRecord.captures += [ordered]@{
+        surface = 'Overview'
+        framing = 'page top in maximized window'
+        file = $overviewPath
+        physical_frame = $overviewCapture.physical_frame
+        bytes = $overviewCapture.bytes
+      }
+      Save-WorkflowManifest
     }
-    Save-WorkflowManifest
 
-    foreach ($surface in $surfaces) {
+    foreach ($surface in $selectedPanelSurfaces) {
       Select-DashboardTab `
         -Window $window `
         -TabId $surface.tab `
@@ -1389,13 +1407,28 @@ try {
   if (
     $null -eq $fullscreenRun -or
     $fullscreenRun.status -ne 'complete' -or
-    -not [bool]$fullscreenRun.window.maximized -or
-    @($fullscreenRun.captures | Where-Object { $_.surface -eq 'Overview' }).Count -ne 1
+    -not [bool]$fullscreenRun.window.maximized
   ) {
-    throw 'Native capture did not complete exactly one maximized Overview capture.'
+    throw 'Native capture did not complete one maximized exact-HWND run.'
+  }
+  $overviewCaptureCount = @(
+    $fullscreenRun.captures | Where-Object { $_.surface -eq 'Overview' }
+  ).Count
+  if ($captureOverview -and $overviewCaptureCount -ne 1) {
+    throw 'Native capture did not complete exactly one requested Overview capture.'
+  }
+  if (-not $captureOverview -and $overviewCaptureCount -ne 0) {
+    throw 'Native capture recorded an unrequested Overview capture.'
+  }
+  $unexpectedCaptures = @(
+    $fullscreenRun.captures |
+      Where-Object { $requestedSurfaces -notcontains $_.surface }
+  )
+  if ($unexpectedCaptures.Count -ne 0) {
+    throw 'Native capture recorded an unrequested Dashboard surface.'
   }
   $recordedCaptureCount = @($fullscreenRun.captures).Count
-  foreach ($surface in $surfaces) {
+  foreach ($surface in $selectedPanelSurfaces) {
     $surfaceCaptures = @(
       $fullscreenRun.captures | Where-Object { $_.surface -eq $surface.name }
     )
