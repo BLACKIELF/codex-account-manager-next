@@ -5,6 +5,7 @@ import test from 'node:test';
 const homePath = new URL('../src/components/DashboardHome.tsx', import.meta.url);
 const modelsPath = new URL('../src/types/models.ts', import.meta.url);
 const panelPath = new URL('../src/components/SkillsPanel.tsx', import.meta.url);
+const dashboardPath = new URL('../src/windows/Dashboard.tsx', import.meta.url);
 
 test('activates the Dashboard Skills tab with safe local-read metadata only', async () => {
   const [home, models, panel] = await Promise.all([
@@ -29,4 +30,10 @@ test('activates the Dashboard Skills tab with safe local-read metadata only', as
   assert.match(skillUsage, /last_loaded_at: number \| null;/);
   assert.doesNotMatch(skillUsage, /path:/);
   assert.doesNotMatch(skillUsage, /static_token_estimate|static_byte_count/);
+});
+
+test('keeps long Skills panels inside the Dashboard scroll container', async () => {
+  const dashboard = await readFile(dashboardPath, 'utf8');
+
+  assert.match(dashboard, /<main className="flex-1 min-h-0 overflow-auto p-6 md:p-7">/);
 });

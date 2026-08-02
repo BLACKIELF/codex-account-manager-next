@@ -70,7 +70,7 @@ export function Dashboard() {
         refreshing={loading}
       />
 
-      <main className="flex-1 overflow-auto p-6 md:p-7">
+      <main className="flex-1 min-h-0 overflow-auto p-6 md:p-7">
         {!dashboard && (
           <div className="glass-panel p-6 mb-6" role="status" aria-live="polite">
             {loading ? (
