@@ -1,136 +1,91 @@
-# codexU Windows 版本架构蓝图
+# codexU Windows Desktop Blueprint
 
-## 一、系统架构图
+## 架构图
 
-![架构图](docs/windows-port/blueprint/diagram.png)
+![codexU Windows Desktop Blueprint](./diagram.png)
 
-架构图源文件都在 [`docs/windows-port/blueprint/`](docs/windows-port/blueprint/)：
+架构事实与视图：
 
-- [`schema.yaml`](docs/windows-port/blueprint/schema.yaml) —— **真值**
-- [`diagram.svg`](docs/windows-port/blueprint/diagram.svg) —— 确定性 renderer 生成的可编辑主图
-- [`diagram.png`](docs/windows-port/blueprint/diagram.png) —— 展示图
-- [`diagram.html`](docs/windows-port/blueprint/diagram.html) —— 可选预览页
-- [`diagram.mmd`](docs/windows-port/blueprint/diagram.mmd) —— Mermaid fallback
+- [`schema.yaml`](./schema.yaml)：唯一语义事实源。
+- [`diagram.mmd`](./diagram.mmd)：GitHub / Obsidian Mermaid fallback。
+- [`diagram.svg`](./diagram.svg) 与 [`diagram.html`](./diagram.html)：确定性维护视图。
+- [`diagram.render.png`](./diagram.render.png)：确定性渲染候选。
+- [`diagram.generated.png`](./diagram.generated.png)：生成式展示候选。
+- [`diagram.png`](./diagram.png)：完成语义与视觉复核后的选定视图。
+- [`render.py`](./render.py)：项目本地确定性 renderer。
 
----
+> 当前文件先固化 Windows 语义源。图像候选、几何结果与最终选图状态会在本次重做的渲染阶段更新。
 
-## 二、一句话定位
+## 定位与边界
 
-codexU Windows 版本是原 macOS 应用的 **Windows 移植版**。它保留 codexU 的核心架构与数据模型，只替换平台绑定层：用 Windows 系统托盘替代 macOS 菜单栏，用 WinUI 3 或 Tauri WebView 替代 SwiftUI/Cocoa，从而把 Codex / Claude Code 的额度、用量、任务与 AI 领导力评估带给 Windows 用户。
+codexU Windows 是本地优先的 Tauri 桌面工具：它只读本机 Codex 状态和已成功解析的官方额度，把敏感内容在 reader 边界缩减为安全观察，再通过稳定的 `CodexDashboardSnapshot` 契约交给托盘、Dashboard 与 Settings。这里描述的是当前 Windows 实现，不从 macOS 源码推导模块，也不把未来设想画成已完成架构。
 
----
+## 五块运行图
 
-## 三、迁移原则
+| 运行块 | 责任 | 输入 | 输出 | 非目标 |
+| --- | --- | --- | --- | --- |
+| 1 · 本地证据与官方额度 | 定义只读输入边界 | `state_5.sqlite`、sessions、archived sessions、automations、Codex app-server quota | 本地观察与已验证官方额度窗口 | 不上传数据；缺失额度不伪造成 0 |
+| 2 · 安全读取与隐私缩减 | 读取状态、transcript、Task Board 与 Skill 观察并立即缩减 | 本地原始观察 | usage/task/skill 安全摘要 | 不保留 prompt、回复、tool arguments、raw logs 或敏感路径 |
+| 3 · 用量、任务与 Leadership 聚合 | 构建本地用量、任务、Leadership 1.4-real，并应用/保留官方额度 | 安全摘要、官方额度旁路 | 完整 Dashboard 数据 | 不把本地 token 估算伪装成官方额度 |
+| 4 · Snapshot 与 AppState / IPC | 固定前后端契约，管理缓存、single-flight、generation 与刷新 | 聚合结果 | `CodexDashboardSnapshot`、Tauri commands/events | 不让陈旧 refresh 覆盖新来源 |
+| 5 · Windows Desktop UI | 呈现 Overview、Tasks、AI Leadership、Usage、Projects、Skills、Tray 与 Settings | 已缩减 Snapshot、设置和刷新事件 | 真实 Tauri / WebView2 桌面界面 | 首屏不展示敏感正文或 raw logs |
 
-1. **核心 pipeline 不变**：Runtime Provider → MultiRuntimeUsageReader → Aggregator → Leadership Model。
-2. **Domain 模型直接翻译**：`TokenBreakdown`、`UsageTrend`、`LeadershipReport` 等保持同名同义。
-3. **平台绑定层重写**：托盘、主窗口、设置、打包、签名。
-4. **本地优先、隐私优先不变**：不上传 usage、线程、路径、日志或账户数据。
-5. **数据格式假设一致**：在 Windows 上复用相同的 JSONL / SQLite / TOML 解析逻辑，只改路径。
+中心图是混合拓扑而不是五步机械流水线：本地证据沿 `Evidence → Readers → Aggregation → Snapshot/AppState → UI` 前进；官方额度作为只读旁路从输入边界进入 Aggregation/Snapshot，不穿过 transcript/task readers。
 
----
+## 运行时契约账本
 
-## 四、可复用 vs 需重写
+| From | To | 契约 / 产物 | 类型 |
+| --- | --- | --- | --- |
+| 本地证据与官方额度 | 安全 Readers | SQLite / JSONL / automation observations | 主数据流 |
+| 安全 Readers | Aggregation | safe session/task/skill observations | 主数据流 |
+| 官方额度 | Aggregation | successfully parsed quota windows | 只读旁路 |
+| Aggregation | Snapshot / AppState | `CodexDashboardSnapshot` | 前后端数据契约 |
+| Snapshot / AppState | Windows Desktop UI | Tauri commands、events 与 refresh state | 展示契约 |
 
-| 模块 | macOS 实现 | Windows 方案 | 可复用度 |
-|---|---|---|---|
-| `LeadershipModel` / `LeadershipAggregator` | Swift struct + 算法 | 同构翻译 | **高** |
-| `TokenBreakdown` / `PricedTokenUsage` | Swift struct | 同构翻译 | **高** |
-| `ClaudeCodeRuntimeProvider` | 文件/JSONL/SQLite 解析 | 路径适配 + 解析逻辑复用 | **高** |
-| `LeadershipDataReader` | fingerprint 缓存 + SQLite | 直接翻译 | **高** |
-| `AgentUsageAggregator` | 聚合算法 | 直接翻译 | **高** |
-| `RuntimeProviderRegistry` | 注册表 | 同构实现 | **高** |
-| `Menu Bar Extra` | `NSStatusItem` + SwiftUI | Windows System Tray | **低（重写）** |
-| `SwiftUI Views` | SwiftUI + Liquid Glass | WinUI 3 / Tauri WebView | **低（重写）** |
-| `GlobalShortcut` | Carbon HIToolbox | Windows HotKey API | **低（重写）** |
-| `Makefile` | swiftc + codesign + DMG | cargo / msbuild + MSI/MSIX | **低（重写）** |
+## 测试按对象挂接
 
----
+测试不是第二条业务泳道。每个验证节点位于 Runtime 边界外，只连接它真正验证的对象。
 
-## 五、推荐技术选型
+| 验证或工具 | 直接对象 | 它证明什么 | 当前 Windows 证据 |
+| --- | --- | --- | --- |
+| Quota Protocol / Continuity Tests | 输入边界、Aggregation | app-server 协议解析、额度 apply/retain | `windows/crates/codexu-core/tests/codex_app_server_quota.rs`、`codex_dashboard_quota.rs` |
+| Reader & Aggregation Rust Tests | Readers、Aggregation | SQLite/transcript/task/skill 缩减与 Leadership 聚合 | `windows/crates/codexu-core/src/readers/`、`tests/task_board.rs` |
+| AppState Tests | Snapshot / AppState | cache、single-flight、generation、retry | `windows/apps/codexu-tauri/src-tauri/src/app_state.rs` |
+| Web Contract Tests | Windows Desktop UI | React 层级、quota、Tasks、Skills、Leadership rail 契约 | `windows/apps/codexu-tauri/web/tests/*.test.mjs` |
+| Native Screenshot Demo | Windows Desktop UI | 当前 checkout 的真实 release executable、WebView2、窗口尺寸与 exact HWND 捕获 | `windows/scripts/Capture-NativeVisuals.ps1`、`native-visual-capture/GraphicsCaptureSnapshot.cs` |
+| Screenshot Workflow Preflight | Native Screenshot Demo | 截图引擎、exact HWND、六个 surface 与本地产物边界 | `windows/scripts/tests/Test-NativeVisualCaptureWorkflow.ps1` |
 
-### 首选：Rust + Tauri
+最关键的嵌套关系是：
 
-- **理由**：
-  - Rust 与 codexU "本地、快速、隐私" 气质一致。
-  - Tauri v2 原生支持 Windows 系统托盘与菜单。
-  - 核心算法可用 Rust crate 独立实现，单测友好。
-  - 打包体积小，远小于 Electron。
-  - 未来若需 Linux 版本，迁移成本最低。
-- **风险**：Rust 学习曲线；Tauri Windows 深度视觉集成不如原生。
+```text
+Screenshot Workflow Preflight
+        -- verifies workflow --> Native Screenshot Demo
+        -- captures exact HWND --> Windows Desktop UI
+        -- produces -----------> local manifest + 12 PNGs
+```
 
-### 备选：C# + WinUI 3
+因此，Preflight 测的是截图工具；截图 Demo 才直接面对 UI。这能表达“测试也有自己的测试”，而不会把两者混成一个笼统的 UI 测试块。
 
-- **理由**：
-  - Windows 原生体验最好，NotifyIcon 最成熟。
-  - C# 翻译 Swift struct 与算法效率高。
-  - WinUI 3 支持 Mica/Acrylic，视觉现代。
-- **风险**：锁定 Windows；未来无法复用。
+## 诊断、构建与证据
 
-### 不推荐：Electron
+- `codexu-probe` 是 Readers/Aggregation 的只读诊断消费者，不属于 UI 运行链。
+- Release Build & Package 组合 Tauri backend 和 WebView UI，目标为 MSI/NSIS，并向截图 Demo 提供精确 release executable。
+- Native Screenshot Demo 的 manifest、日志与两种 client size 下的 12 张 PNG 只写入 `.local-artifacts/windows-visual-captures/`。这些文件包含真实本地证据，保持 Git ignored，不进入 Blueprint、报告或公开提交。
 
-- 与 codexU "小而快" 的产品气质不符；打包体积大、内存占用高。
+## 证据能证明什么
 
----
+- Rust 测试证明对应 reader、聚合或 AppState 行为，不证明窗口渲染质量。
+- Web contract tests 证明 React/CSS 源码契约，不证明真实 WebView2、DPI、窗口装饰、原生对话框或 IPC。
+- Native Screenshot Demo 证明当前 checkout、当前构建和当前本地数据下的可见表面；它不是视觉回归基线，也不自动等于完整 UI 质量通过。
+- 最终 Blueprint 只记录本次实际运行的 schema、几何和图像复核结果，不追溯宣称旧运行记录仍然有效。
 
-## 六、关键待调研问题
+## 已排除的旧设想
 
-在实现前必须确认：
+新 schema 不保留旧 Blueprint 中的 Claude 主路径、`RuntimeProviderRegistry`、`MultiRuntimeUsageReader`、旧 Leadership v1.3、WinUI/Tauri 二选一、GitHub updater 或未落地发布节点。它们不是当前 Windows Desktop Runtime 的事实。
 
-1. Windows 上 Codex CLI / 桌面应用的数据路径是什么？
-2. Windows 上 Claude Code 的数据路径是什么？
-3. `state_5.sqlite` 表结构是否与 macOS 一致？
-4. JSONL 事件格式是否一致？
-5. Windows 上是否有等价的 `codex app-server` 本地 API？
-6. Claude Code statusLine snapshot 在 Windows 上如何生成？
-7. Windows 上 JSONL 是否有 UTF-8 BOM 问题？
+## 当前验证状态
 
-详见 [`RFC.md`](../RFC.md) 的"Windows 数据路径调研清单"。
-
----
-
-## 七、分阶段实施建议
-
-### 阶段 1：核心 Domain + 数据读取原型
-- 翻译模型：`TokenBreakdown`、`DetailedUsage`、`UsageTrend`、`LocalUsage`。
-- 翻译 `ClaudeCodeRuntimeProvider` 的 JSONL 解析与缓存。
-- 翻译 `LeadershipDataReader` 的 SQLite 查询与 fingerprint 缓存。
-- 适配 Windows 路径。
-- **交付物**：命令行工具，输出与 macOS `--dump-json` 等价的 JSON。
-
-### 阶段 2：聚合与评估
-- 实现 `RuntimeProvider` trait。
-- 实现 Codex provider、Claude Code provider。
-- 复现 `MultiRuntimeUsageReader`、`AgentUsageAggregator`、`LeadershipAggregator`。
-- **交付物**：核心库 + 单测。
-
-### 阶段 3：Windows UI
-- 系统托盘 + 弹出菜单。
-- 主窗口：额度环、趋势图、任务板、AI 领导力。
-- 设置窗口。
-- **交付物**：可运行的 GUI 应用。
-
-### 阶段 4：打包与发布
-- MSI/MSIX/便携版。
-- 自动更新。
-- **交付物**：安装包 + GitHub Release。
-
----
-
-## 八、协作方式建议
-
-建议以 **独立 fork / 新项目** 形式存在，例如 `shanggqm/codexU-windows` 或社区 fork。原因：
-
-- 原仓库是 macOS Swift/Cocoa 项目，硬塞 Windows 代码会破坏项目边界。
-- 两个平台的前端、构建、发布链路完全不同，分开迭代更高效。
-- 独立项目可以更快响应 Windows 用户需求。
-
-下一步：向原仓库提交 RFC issue，说明 Windows port 计划，询问原作者倾向的协作方式。
-
----
-
-## 九、相关文档
-
-- [`../RFC.md`](../RFC.md) —— Windows 版本技术选型与迁移 RFC
-- [`../../BLUEPRINT.md`](../../BLUEPRINT.md) —— macOS 版本完整架构蓝图
-- [`../../docs/architecture/schema.yaml`](../../docs/architecture/schema.yaml) —— macOS 版本架构真值
+- 语义源：待本次 `validate_blueprint.py` 复核。
+- 确定性图：待从新 schema 生成并运行 geometry gate。
+- 生成式候选：待从同一语义与 composition 生成并复核忠实度。
+- 最终 `diagram.png`：待比较两个候选后选择。

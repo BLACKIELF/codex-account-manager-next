@@ -107,7 +107,7 @@ Include: selected architecture image and source links; one-paragraph Windows pos
 Run:
 
 ```powershell
-uv run --with pyyaml python C:\Users\ADMIN\.cc-switch\skills\blueprint\scripts\validate_blueprint.py --schema docs/windows-port/blueprint/schema.yaml --mermaid docs/windows-port/blueprint/diagram.mmd
+uv run --with pyyaml python C:\Users\ADMIN\.cc-switch\skills\blueprint\scripts\validate_blueprint.py --schema docs/windows-port/blueprint/schema.yaml --artifacts-dir docs/windows-port/blueprint
 @'
 import pathlib, yaml
 s = yaml.safe_load(pathlib.Path("docs/windows-port/blueprint/schema.yaml").read_text(encoding="utf-8"))
@@ -253,7 +253,7 @@ In `BLUEPRINT.md`, state which candidate was selected, how the deterministic PNG
 Run:
 
 ```powershell
-uv run --with pyyaml python C:\Users\ADMIN\.cc-switch\skills\blueprint\scripts\validate_blueprint.py --schema docs/windows-port/blueprint/schema.yaml --mermaid docs/windows-port/blueprint/diagram.mmd
+uv run --with pyyaml python C:\Users\ADMIN\.cc-switch\skills\blueprint\scripts\validate_blueprint.py --schema docs/windows-port/blueprint/schema.yaml --artifacts-dir docs/windows-port/blueprint
 python C:\Users\ADMIN\.cc-switch\skills\blueprint\scripts\check_svg_geometry.py docs/windows-port/blueprint/diagram.svg --json-out docs/windows-port/blueprint/geometry.json --overlay-out docs/windows-port/blueprint/geometry-overlay.svg --fail-on-error
 @'
 from pathlib import Path

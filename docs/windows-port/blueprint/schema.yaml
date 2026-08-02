@@ -1,269 +1,255 @@
-# codexU Windows 版本架构图 schema —— Source of Truth
+# codexU Windows Blueprint — semantic source of truth
 
 meta:
-  title: "codexU Windows 版本系统架构图"
-  subtitle: "Windows 托盘应用：复用核心 pipeline，替换平台绑定层"
-  updated: "2026-07-24"
-  version: "0.1.0"
-  direction: top_to_bottom
+  title: "codexU Windows Desktop Blueprint"
+  subtitle: "五块运行图 · 测试按对象挂接 · 原生截图证据链"
+  updated: "2026-08-02"
+  version: "1.0.0"
+  direction: left_to_right
+  canvas: {width: 1800, height: 1400}
 
 categories:
-  external:
-    role: "外部数据源 / 本地文件"
-    fill: "#dbeafe"
-    stroke: "#3b82f6"
-  runtime:
-    role: "Runtime Provider"
-    fill: "#fce7f3"
-    stroke: "#ec4899"
-  core:
-    role: "核心聚合与评估"
-    fill: "#d1fae5"
-    stroke: "#10b981"
-  front:
-    role: "UI / 输出"
-    fill: "#e0e7ff"
-    stroke: "#6366f1"
-  config:
-    role: "配置 / 设计系统"
-    fill: "#fef3c7"
-    stroke: "#f59e0b"
-  infra:
-    role: "基础设施 / 打包 / 发布"
-    fill: "#f3f4f6"
-    stroke: "#6b7280"
+  source:
+    role: "只读输入边界"
+    fill: "#12233f"
+    stroke: "#5fa8ff"
+    accent: "#81bcff"
+  reader:
+    role: "安全读取与缩减"
+    fill: "#15324a"
+    stroke: "#45c8d8"
+    accent: "#79e2ed"
+  aggregate:
+    role: "聚合与评分"
+    fill: "#173b35"
+    stroke: "#4ed0a5"
+    accent: "#79e3bf"
+  contract:
+    role: "状态与 IPC 契约"
+    fill: "#30294f"
+    stroke: "#9b87ff"
+    accent: "#bcadff"
+  ui:
+    role: "Windows 桌面体验"
+    fill: "#442846"
+    stroke: "#e477d5"
+    accent: "#f3a5e7"
+  validation:
+    role: "自动化验证"
+    fill: "#222b3c"
+    stroke: "#6f86a8"
+    accent: "#a7b7cf"
+  operations:
+    role: "诊断与交付"
+    fill: "#2d3038"
+    stroke: "#8d98aa"
+    accent: "#bec7d5"
+  evidence:
+    role: "本地验证产物"
+    fill: "#3d3424"
+    stroke: "#d8a74d"
+    accent: "#f0c978"
 
 nodes:
-  - id: codex_app_server
-    label: "Codex app-server / CLI"
-    category: external
-    signature: "Windows 本地 API 或 CLI 调用"
-    note: "额度、账户、云端 lifetime tokens（待调研）"
-    layer: top
+  - id: local_evidence
+    label: "1 · 本地证据与官方额度"
+    category: source
+    signature: "state_5.sqlite · sessions · automations · app-server"
+    note: "本机只读输入；官方额度不伪造"
+    icon: database
+    layer: runtime
+    layout: {x: 100, y: 455, w: 285, h: 190}
+    insets: ["SQLite / JSONL", "Official quota"]
 
-  - id: codex_sqlite
-    label: "%USERPROFILE%\\.codex\\state_5.sqlite"
-    category: external
-    signature: "本地 SQLite"
-    note: "线程元数据、rollout 路径、父子关系"
-    shape: cylinder
-    layer: top
+  - id: safe_readers
+    label: "2 · 安全读取与隐私缩减"
+    category: reader
+    signature: "State · Transcript · Task Board readers"
+    note: "reader 边界丢弃正文、参数与敏感路径"
+    icon: filter
+    layer: runtime
+    layout: {x: 430, y: 455, w: 285, h: 190}
+    insets: ["Usage summaries", "Safe skill metadata"]
 
-  - id: codex_jsonl
-    label: "%USERPROFILE%\\.codex\\sessions\\*.jsonl"
-    category: external
-    signature: "token_count / task_started / task_complete"
-    note: "细粒度 token 事件与任务生命周期"
-    shape: cylinder
-    layer: top
+  - id: dashboard_aggregation
+    label: "3 · 用量、任务与 Leadership 聚合"
+    category: aggregate
+    signature: "make_local_usage · Leadership 1.4-real · quota merge"
+    note: "汇总安全观察；应用并保留已验证额度"
+    icon: chart
+    layer: runtime
+    layout: {x: 760, y: 455, w: 285, h: 190}
+    insets: ["Usage + Tasks", "Leadership + Quota"]
 
-  - id: codex_automation
-    label: "%USERPROFILE%\\.codex\\automations"
-    category: external
-    signature: "automation.toml"
-    note: "定时任务元数据与下次运行时间"
-    shape: page
-    layer: top
+  - id: snapshot_app_state
+    label: "4 · Snapshot 与 AppState / IPC"
+    category: contract
+    signature: "CodexDashboardSnapshot · cache · single-flight"
+    note: "generation 防陈旧覆盖；Tauri commands / events"
+    icon: contract
+    layer: runtime
+    layout: {x: 1090, y: 455, w: 285, h: 190}
+    insets: ["Snapshot contract", "Refresh state"]
 
-  - id: claude_transcript
-    label: "%USERPROFILE%\\.claude\\projects\\*.jsonl"
-    category: external
-    signature: "message.usage · tool_use · attribution"
-    note: "Claude Code Windows transcript（待确认路径）"
-    shape: cylinder
-    layer: top
+  - id: windows_desktop_ui
+    label: "5 · Windows Desktop UI"
+    category: ui
+    signature: "Overview · Tasks · Leadership · Usage · Projects · Skills"
+    note: "真实 Tauri + WebView2 窗口与 Settings"
+    icon: window
+    layer: runtime
+    layout: {x: 1420, y: 455, w: 285, h: 190}
+    insets: ["Dashboard surfaces", "Tray + Settings"]
 
-  - id: claude_tasks
-    label: "%USERPROFILE%\\.claude\\tasks\\*.json"
-    category: external
-    signature: "task status / subject"
-    note: "Claude Code 任务看板数据"
-    shape: page
-    layer: top
+  - id: quota_tests
+    label: "Quota Protocol / Continuity Tests"
+    category: validation
+    signature: "app-server parser · apply / retain"
+    note: "验证输入协议与额度连续性"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 185, y: 160, w: 270, h: 118}
 
-  - id: claude_statusline
-    label: "statusline-snapshot.json"
-    category: external
-    signature: "%LOCALAPPDATA%\\codexU\\claude-code\\"
-    note: "Claude Code 活跃额度快照"
-    shape: page
-    layer: top
+  - id: core_tests
+    label: "Reader & Aggregation Rust Tests"
+    category: validation
+    signature: "state · transcript · task · skill · Leadership"
+    note: "验证安全缩减与聚合结果"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 570, y: 160, w: 285, h: 118}
 
-  - id: github_releases
-    label: "GitHub Releases API"
-    category: external
-    signature: "shanggqm/codexU 或 codexU-windows"
-    note: "版本检查与更新元数据"
-    layer: top
+  - id: app_state_tests
+    label: "AppState Tests"
+    category: validation
+    signature: "cache · single-flight · generation · retry"
+    note: "验证运行时状态行为"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 1045, y: 160, w: 275, h: 118}
 
-  - id: codex_provider
-    label: "CodexRuntimeProvider"
-    category: runtime
-    signature: "RuntimeUsageProvider trait"
-    note: "读取 SQLite + JSONL + automations"
-    layer: middle
+  - id: web_contract_tests
+    label: "Web Contract Tests"
+    category: validation
+    signature: "hierarchy · quota · tasks · skills · rail"
+    note: "验证 React / CSS 组件契约"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 1405, y: 160, w: 275, h: 118}
 
-  - id: claude_provider
-    label: "ClaudeCodeRuntimeProvider"
-    category: runtime
-    signature: "RuntimeUsageProvider trait"
-    note: "读取 transcript + tasks + statusLine"
-    layer: middle
+  - id: codexu_probe
+    label: "codexu-probe"
+    category: operations
+    signature: "read-only CLI diagnostic consumer"
+    note: "读取安全观察并输出诊断快照"
+    icon: terminal
+    layer: operations_bottom
+    layout: {x: 455, y: 885, w: 275, h: 118}
 
-  - id: provider_registry
-    label: "RuntimeProviderRegistry"
-    category: runtime
-    signature: "注册表"
-    note: "聚合 Codex / Claude Code 两个 provider"
-    layer: middle
+  - id: build_package
+    label: "Release Build & Package"
+    category: operations
+    signature: "Tauri release · MSI · NSIS"
+    note: "生成精确 executable 并提供截图入口"
+    icon: package
+    layer: operations_bottom
+    layout: {x: 1010, y: 885, w: 285, h: 118}
 
-  - id: multi_reader
-    label: "MultiRuntimeUsageReader"
-    category: core
-    signature: "load() · load_task_board()"
-    note: "统一入口；性能测时"
-    layer: middle
+  - id: native_capture_demo
+    label: "Native Screenshot Demo"
+    category: validation
+    signature: "Windows.Graphics.Capture · exact HWND"
+    note: "6 surfaces × 2 client sizes"
+    icon: camera
+    layer: capture_bottom
+    layout: {x: 1410, y: 845, w: 285, h: 128}
 
-  - id: aggregator
-    label: "AgentUsageAggregator"
-    category: core
-    signature: "aggregate(runtimes)"
-    note: "跨 runtime 合并用量与任务"
-    layer: middle
+  - id: capture_preflight
+    label: "Screenshot Workflow Preflight"
+    category: validation
+    signature: "engine · target · surfaces · output guard"
+    note: "测试截图工具，而不是越级测试 UI"
+    style: dashed
+    icon: test
+    layer: capture_bottom
+    layout: {x: 1410, y: 1045, w: 285, h: 118}
 
-  - id: leadership_reader
-    label: "LeadershipDataReader"
-    category: core
-    signature: "load(context)"
-    note: "文件指纹缓存；增量解析 34 天数据"
-    layer: middle
-
-  - id: leadership_model
-    label: "LeadershipScoreModel v1.3"
-    category: core
-    signature: "四维加权几何平均"
-    note: "span · leverage · orchestration · autonomy"
-    layer: middle
-
-  - id: task_runtime
-    label: "TaskRuntime"
-    category: core
-    signature: "Codex / Claude 任务状态归一"
-    note: "统一列：active / pending / scheduled / done"
-    layer: middle
-
-  - id: quota_continuity
-    label: "RuntimeQuotaContinuity"
-    category: core
-    signature: "reconcile(previous, incoming)"
-    note: "配额读取失败时复用旧值，避免界面闪烁"
-    layer: middle
-
-  - id: design_system
-    label: "DesignSystem / Palettes"
-    category: config
-    signature: "青花瓷 · 故宫红 · 敦煌飞天 · 兰亭晨曦"
-    note: "复用 codexU 配色 token"
-    layer: middle
-
-  - id: system_tray
-    label: "Windows System Tray"
-    category: front
-    signature: "NotifyIcon / Tauri Tray"
-    note: "实时额度环、今日 token、Runtime 菜单"
-    layer: bottom
-
-  - id: main_window
-    label: "Main Window"
-    category: front
-    signature: "WinUI 3 / Tauri WebView"
-    note: "主窗口仪表盘"
-    layer: bottom
-
-  - id: settings_window
-    label: "Settings Window"
-    category: front
-    signature: "语言 · 外观 · 状态栏配置"
-    note: "设置窗口"
-    layer: bottom
-
-  - id: build_scripts
-    label: "Build Scripts / CI"
-    category: infra
-    signature: "cargo tauri build / msbuild"
-    note: "构建、打包、测试"
-    layer: bottom
-
-  - id: installer
-    label: "Installer / Updater"
-    category: infra
-    signature: "MSI / MSIX / NSIS"
-    note: "安装包与自动更新"
-    layer: bottom
+  - id: local_visual_evidence
+    label: "Local Visual Evidence"
+    category: evidence
+    signature: "manifest · logs · 12 PNGs"
+    note: ".local-artifacts only · Git ignored"
+    icon: image
+    layer: evidence_bottom
+    layout: {x: 1030, y: 1195, w: 300, h: 118}
 
 groups:
-  - id: external_sources
-    label: "本地与外部数据源"
-    nodes:
-      - codex_app_server
-      - codex_sqlite
-      - codex_jsonl
-      - codex_automation
-      - claude_transcript
-      - claude_tasks
-      - claude_statusline
-      - github_releases
-    fill: "#eff6ff"
-    stroke: "#3b82f6"
+  - id: windows_runtime
+    label: "codexU Windows Desktop Runtime"
+    nodes: [local_evidence, safe_readers, dashboard_aggregation, snapshot_app_state, windows_desktop_ui]
+    fill: "#0c1528"
+    stroke: "#5f7192"
+    style: strong
 
-  - id: core_pipeline
-    label: "核心 Pipeline（从 macOS 直接迁移）"
-    nodes:
-      - codex_provider
-      - claude_provider
-      - provider_registry
-      - multi_reader
-      - aggregator
-      - leadership_reader
-      - leadership_model
-      - task_runtime
-      - quota_continuity
-    fill: "#f0fdf4"
-    stroke: "#10b981"
-
-  - id: output_layer
-    label: "Windows UI 层（需重写）"
-    nodes:
-      - design_system
-      - system_tray
-      - main_window
-      - settings_window
-    fill: "#eef2ff"
-    stroke: "#6366f1"
+callouts:
+  - id: local_first
+    label: "LOCAL-FIRST · READ-ONLY INPUT"
+    target: local_evidence
+    fill: "#10213b"
+    stroke: "#426a9b"
+    layout: {x: 100, y: 690, w: 250, h: 34}
+  - id: safe_contract
+    label: "UI CONSUMES SANITIZED SNAPSHOT ONLY"
+    target: windows_desktop_ui
+    fill: "#31223b"
+    stroke: "#8f5d91"
+    layout: {x: 1390, y: 690, w: 315, h: 34}
+  - id: evidence_limit
+    label: "LOCAL EVIDENCE · NOT A COMMITTED BASELINE"
+    target: local_visual_evidence
+    fill: "#3b2f1d"
+    stroke: "#9f7837"
+    layout: {x: 990, y: 1335, w: 355, h: 34}
 
 edges:
-  - {from: codex_app_server, to: codex_provider, kind: data_flow, label: "额度 / 账户"}
-  - {from: codex_sqlite, to: codex_provider, kind: data_flow, label: "线程元数据"}
-  - {from: codex_jsonl, to: codex_provider, kind: data_flow, label: "token 事件"}
-  - {from: codex_automation, to: codex_provider, kind: data_flow, label: "定时任务"}
-  - {from: claude_transcript, to: claude_provider, kind: data_flow, label: "usage / tools"}
-  - {from: claude_tasks, to: claude_provider, kind: data_flow, label: "任务状态"}
-  - {from: claude_statusline, to: claude_provider, kind: data_flow, label: "额度快照"}
-  - {from: codex_provider, to: provider_registry, kind: data_flow}
-  - {from: claude_provider, to: provider_registry, kind: data_flow}
-  - {from: provider_registry, to: multi_reader, kind: data_flow}
-  - {from: multi_reader, to: aggregator, kind: orchestration, label: "合并多 runtime"}
-  - {from: multi_reader, to: leadership_reader, kind: orchestration, label: "34 天数据"}
-  - {from: leadership_reader, to: leadership_model, kind: data_flow, label: "workers + intervals"}
-  - {from: leadership_model, to: main_window, kind: data_flow, label: "AI 领导力报告"}
-  - {from: aggregator, to: main_window, kind: data_flow, label: "聚合用量 / 任务"}
-  - {from: codex_provider, to: task_runtime, kind: data_flow}
-  - {from: claude_provider, to: task_runtime, kind: data_flow}
-  - {from: task_runtime, to: main_window, kind: data_flow, label: "统一任务板"}
-  - {from: quota_continuity, to: multi_reader, kind: calibration, label: "防闪烁"}
-  - {from: design_system, to: system_tray, kind: config_input}
-  - {from: design_system, to: main_window, kind: config_input}
-  - {from: design_system, to: settings_window, kind: config_input}
-  - {from: aggregator, to: system_tray, kind: data_flow, label: "托盘摘要"}
-  - {from: github_releases, to: installer, kind: data_flow, label: "版本检查"}
-  - {from: build_scripts, to: installer, kind: orchestration}
+  - {from: local_evidence, to: safe_readers, kind: data_flow, label: "reads local evidence"}
+  - {from: safe_readers, to: dashboard_aggregation, kind: data_flow, label: "safe observations"}
+  - {from: local_evidence, to: dashboard_aggregation, kind: read_only, label: "official quota bypass", route: [[242, 405], [902, 405]]}
+  - {from: dashboard_aggregation, to: snapshot_app_state, kind: contract, label: "CodexDashboardSnapshot"}
+  - {from: snapshot_app_state, to: windows_desktop_ui, kind: contract, label: "Tauri commands + events"}
+
+  - {from: quota_tests, to: local_evidence, kind: verifies, label: "verifies quota protocol"}
+  - {from: quota_tests, to: dashboard_aggregation, kind: verifies, label: "verifies apply + retain", route: [[320, 320], [902, 320]]}
+  - {from: core_tests, to: safe_readers, kind: verifies, label: "verifies reduction"}
+  - {from: core_tests, to: dashboard_aggregation, kind: verifies, label: "verifies aggregation"}
+  - {from: app_state_tests, to: snapshot_app_state, kind: verifies, label: "verifies state behavior"}
+  - {from: web_contract_tests, to: windows_desktop_ui, kind: verifies, label: "verifies component contracts"}
+
+  - {from: native_capture_demo, to: windows_desktop_ui, kind: captures, label: "captures exact HWND"}
+  - {from: capture_preflight, to: native_capture_demo, kind: verifies, label: "verifies workflow"}
+  - {from: native_capture_demo, to: local_visual_evidence, kind: produces, label: "produces manifest + 12 PNGs"}
+
+  - {from: codexu_probe, to: safe_readers, kind: consumes, label: "consumes safe readers"}
+  - {from: codexu_probe, to: dashboard_aggregation, kind: consumes, label: "emits diagnostic snapshot"}
+  - {from: build_package, to: snapshot_app_state, kind: builds, label: "bundles Tauri backend"}
+  - {from: build_package, to: windows_desktop_ui, kind: builds, label: "bundles WebView UI", route: [[1152, 815], [1562, 815]]}
+  - {from: build_package, to: native_capture_demo, kind: builds, label: "provides release executable"}
+
+composition:
+  paths:
+    - id: local_runtime_path
+      role: primary
+      nodes: [local_evidence, safe_readers, dashboard_aggregation, snapshot_app_state, windows_desktop_ui]
+    - id: official_quota_context
+      role: context
+      nodes: [local_evidence, dashboard_aggregation]
+    - id: native_capture_chain
+      role: secondary
+      nodes: [capture_preflight, native_capture_demo, windows_desktop_ui]
+    - id: capture_evidence_chain
+      role: secondary
+      nodes: [native_capture_demo, local_visual_evidence]
