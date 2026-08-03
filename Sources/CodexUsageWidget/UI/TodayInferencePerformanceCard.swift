@@ -152,64 +152,6 @@ private struct InferencePerformanceScatterPlot: View {
                     maximumThroughput: maximumThroughput
                 )
 
-                Rectangle()
-                    .fill(Color.primary.opacity(0.001))
-                    .contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        switch phase {
-                        case .active(let location):
-                            updateHover(
-                                location: location,
-                                width: width,
-                                height: height,
-                                maximumDuration: maximumDuration,
-                                maximumThroughput: maximumThroughput,
-                                maximumCalls: maximumCalls
-                            )
-                        case .ended:
-                            hoveredGroupID = nil
-                        }
-                    }
-                    .gesture(
-                        SpatialTapGesture()
-                            .onEnded { event in
-                                updateHover(
-                                    location: event.location,
-                                    width: width,
-                                    height: height,
-                                    maximumDuration: maximumDuration,
-                                    maximumThroughput: maximumThroughput,
-                                    maximumCalls: maximumCalls
-                                )
-                            }
-                    )
-                    .accessibilityHidden(true)
-
-                ForEach(groups) { group in
-                    let point = CGPoint(
-                        x: xPosition(group.p50DurationSeconds, width: width, maximum: maximumDuration),
-                        y: yPosition(
-                            group.effectiveOutputTokensPerSecond,
-                            height: height,
-                            maximum: maximumThroughput
-                        )
-                    )
-
-                    Circle()
-                        .fill(Color.primary.opacity(0.001))
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
-                        .position(point)
-                        .onHover { hovering in
-                            updatePointHover(group: group, point: point, hovering: hovering)
-                        }
-                        .onTapGesture {
-                            hoveredGroupID = group.id
-                            hoverAnchor = point
-                        }
-                        .accessibilityHidden(true)
-                }
-
                 if let hoveredGroup = groups.first(where: { $0.id == hoveredGroupID }) {
                     let payload = tooltipPayload(hoveredGroup)
                     ChartTooltipView(payload: payload, prefersOpaqueSurface: true, compact: true)
@@ -223,10 +165,40 @@ private struct InferencePerformanceScatterPlot: View {
                                 compact: true
                             )
                         )
+                        .allowsHitTesting(false)
                         .transition(.opacity.combined(with: .scale(scale: 0.98)))
                         .zIndex(10)
                 }
             }
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    updateHover(
+                        location: location,
+                        width: width,
+                        height: height,
+                        maximumDuration: maximumDuration,
+                        maximumThroughput: maximumThroughput,
+                        maximumCalls: maximumCalls
+                    )
+                case .ended:
+                    hoveredGroupID = nil
+                }
+            }
+            .gesture(
+                SpatialTapGesture()
+                    .onEnded { event in
+                        updateHover(
+                            location: event.location,
+                            width: width,
+                            height: height,
+                            maximumDuration: maximumDuration,
+                            maximumThroughput: maximumThroughput,
+                            maximumCalls: maximumCalls
+                        )
+                    }
+            )
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hoveredGroupID)
         }
         .accessibilityElement(children: .contain)
@@ -364,7 +336,7 @@ private struct InferencePerformanceScatterPlot: View {
             )
             let distance = hypot(location.x - point.x, location.y - point.y)
             let diameter = bubbleDiameter(callCount: group.callCount, maximumCalls: maximumCalls)
-            let hitRadius = max(24, diameter / 2 + 10)
+            let hitRadius = max(18, diameter / 2 + 8)
             guard distance <= hitRadius else { continue }
             if nearest == nil || distance < (nearest?.distance ?? .greatestFiniteMagnitude) {
                 nearest = (group, point, distance)
@@ -374,19 +346,6 @@ private struct InferencePerformanceScatterPlot: View {
         hoveredGroupID = nearest?.group.id
         if let point = nearest?.point {
             hoverAnchor = point
-        }
-    }
-
-    private func updatePointHover(
-        group: ModelInferencePerformanceGroup,
-        point: CGPoint,
-        hovering: Bool
-    ) {
-        if hovering {
-            hoveredGroupID = group.id
-            hoverAnchor = point
-        } else if hoveredGroupID == group.id {
-            hoveredGroupID = nil
         }
     }
 
