@@ -1150,7 +1150,7 @@ final class UsageStore: ObservableObject {
 
 final class CodexUsageReader {
     private let fileManager = FileManager.default
-    private let localAnalyticsCacheVersion = 11
+    private let localAnalyticsCacheVersion = 12
     private let sessionUsageCacheVersion = 8
     private static let memorySessionUsageCacheLimit = 64
     private static let persistentSessionUsageCacheLimit = 1_024
@@ -3365,6 +3365,15 @@ func estimateStaticTokens(_ text: String) -> Int64 {
 private func modelTokenPrice(for model: String?) -> ModelTokenPrice {
     let normalized = (model ?? "").lowercased()
 
+    if normalized.contains("gpt-5.6-sol") || normalized == "gpt-5.6" {
+        return ModelTokenPrice(model: "gpt-5.6-sol", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: false)
+    }
+    if normalized.contains("gpt-5.6-terra") {
+        return ModelTokenPrice(model: "gpt-5.6-terra", inputPerMillion: 2, cachedInputPerMillion: 0.2, outputPerMillion: 12, usesReferencePricing: false)
+    }
+    if normalized.contains("gpt-5.6-luna") {
+        return ModelTokenPrice(model: "gpt-5.6-luna", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.2, usesReferencePricing: false)
+    }
     if normalized.contains("gpt-5.5-pro") {
         return ModelTokenPrice(model: "gpt-5.5-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180, usesReferencePricing: false)
     }
@@ -3423,6 +3432,46 @@ private func estimatedCostUSD(tokens: TokenBreakdown, price: ModelTokenPrice) ->
     let cachedInputCost = Double(tokens.billableCachedInputTokens) / 1_000_000 * price.cachedInputPerMillion
     let outputCost = Double(max(tokens.outputTokens, 0)) / 1_000_000 * price.outputPerMillion
     return uncachedInputCost + cachedInputCost + outputCost
+}
+
+private enum ModelPricingSelfTest {
+    static func run() -> Bool {
+        var failures: [String] = []
+        func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+            if !condition() { failures.append(message) }
+        }
+        func nearlyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+            abs(lhs - rhs) < 0.000_001
+        }
+
+        let sampleTokens = TokenBreakdown(
+            inputTokens: 1_000_000,
+            cachedInputTokens: 400_000,
+            outputTokens: 100_000,
+            reasoningOutputTokens: 0,
+            totalTokens: 1_100_000
+        )
+        let sol = modelTokenPrice(for: "gpt-5.6")
+        let terra = modelTokenPrice(for: "gpt-5.6-terra-2026-02-16")
+        let luna = modelTokenPrice(for: "GPT-5.6-LUNA")
+
+        expect(sol.model == "gpt-5.6-sol", "gpt-5.6 should resolve to gpt-5.6-sol")
+        expect(!sol.usesReferencePricing, "gpt-5.6 should use an explicit price")
+        expect(terra.model == "gpt-5.6-terra", "terra snapshots should preserve the terra price")
+        expect(luna.model == "gpt-5.6-luna", "luna matching should be case-insensitive")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: sol), 6.2), "Sol cached input estimate should use the split rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: terra), 2.48), "Terra should use the official standard API rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: luna), 0.248), "Luna should use the official standard API rates")
+        expect(!modelUsageUsesReferencePricing("gpt-5.6-luna"), "known GPT-5.6 models should not use reference pricing")
+        expect(modelUsageUsesReferencePricing("future-model"), "unknown models should retain reference pricing")
+
+        if failures.isEmpty {
+            print("model pricing self-test passed")
+            return true
+        }
+        failures.forEach { print("model pricing self-test failed: \($0)") }
+        return false
+    }
 }
 
 private func parseSimpleTOML(_ text: String) -> [String: String] {
@@ -11630,6 +11679,10 @@ struct codexUMain {
 
         if CommandLine.arguments.contains("--self-test-token-counter") {
             exit(CodexTokenCounterNormalizerSelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-model-pricing") {
+            exit(ModelPricingSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-model-usage-trend") {
