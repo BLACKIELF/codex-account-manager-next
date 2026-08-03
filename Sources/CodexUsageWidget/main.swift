@@ -9652,17 +9652,20 @@ struct DashboardCard<Content: View>: View {
 struct DashboardCardHeader<Trailing: View>: View {
     let title: String
     let systemName: String
+    let helpTitle: String?
     let helpText: String?
     let trailing: Trailing
 
     init(
         title: String,
         systemName: String,
+        helpTitle: String? = nil,
         helpText: String? = nil,
         @ViewBuilder trailing: () -> Trailing
     ) {
         self.title = title
         self.systemName = systemName
+        self.helpTitle = helpTitle
         self.helpText = helpText
         self.trailing = trailing()
     }
@@ -9678,18 +9681,69 @@ struct DashboardCardHeader<Trailing: View>: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             if let helpText {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 9.5, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .frame(width: 14, height: dashboardCardHeaderHeight)
-                    .contentShape(Rectangle())
-                    .help(helpText)
-                    .accessibilityLabel(helpText)
+                DashboardCardHelpButton(
+                    title: helpTitle ?? title,
+                    helpText: helpText
+                )
             }
             Spacer(minLength: dashboardCardHeaderSpacing)
             trailing
         }
         .frame(height: dashboardCardHeaderHeight, alignment: .center)
+    }
+}
+
+private struct DashboardCardHelpButton: View {
+    let title: String
+    let helpText: String
+
+    @State private var isHovered = false
+    @State private var isPinned = false
+
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { isHovered || isPinned },
+            set: { newValue in
+                guard !newValue else { return }
+                isHovered = false
+                isPinned = false
+            }
+        )
+    }
+
+    var body: some View {
+        Button {
+            isPinned.toggle()
+        } label: {
+            Label(title, systemImage: isPinned ? "info.circle.fill" : "info.circle")
+                .labelStyle(.iconOnly)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(isPinned ? .secondary : .tertiary)
+                .frame(width: dashboardHelpButtonSize, height: dashboardCardHeaderHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
+        .popover(
+            isPresented: isPresented,
+            attachmentAnchor: .rect(.bounds),
+            arrowEdge: .top
+        ) {
+            VStack(alignment: .leading, spacing: dashboardHelpPopoverSpacing) {
+                Label(title, systemImage: "info.circle.fill")
+                    .font(.system(size: dashboardCardTitleSize, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(helpText)
+                    .font(.system(size: dashboardHelpBodySize, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(width: dashboardHelpPopoverWidth, alignment: .leading)
+            .padding(dashboardHelpPopoverPadding)
+        }
+        .accessibilityLabel(title)
+        .accessibilityHint(helpText)
     }
 }
 
@@ -10173,6 +10227,11 @@ private let dashboardTabHorizontalPadding: CGFloat = 8
 private let dashboardCardIconSize: CGFloat = 12
 private let dashboardCardIconFrame: CGFloat = 18
 private let dashboardCardTitleSize: CGFloat = 11
+private let dashboardHelpButtonSize: CGFloat = 18
+private let dashboardHelpPopoverWidth: CGFloat = 320
+private let dashboardHelpPopoverPadding: CGFloat = 12
+private let dashboardHelpPopoverSpacing: CGFloat = 8
+private let dashboardHelpBodySize: CGFloat = 10
 private let dashboardListRowSpacing: CGFloat = 6
 private let dashboardRowPadding: CGFloat = 7
 private let dashboardRowCornerRadius: CGFloat = 8

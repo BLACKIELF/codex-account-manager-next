@@ -14,6 +14,7 @@ struct TodayInferencePerformanceCard: View {
                 DashboardCardHeader(
                     title: language.text("今日实测推理表现", "Today's observed inference"),
                     systemName: "gauge.with.dots.needle.50percent",
+                    helpTitle: language.text("统计规则与观看方法", "Statistics and chart guide"),
                     helpText: chartAlgorithmHelp
                 ) {
                     EmptyView()
