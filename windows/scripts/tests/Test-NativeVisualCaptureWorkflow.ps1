@@ -46,6 +46,27 @@ Assert-True (
   $manifest.window_mode -eq 'maximized exact HWND'
 ) 'Preflight did not require a maximized exact-HWND window for every capture.'
 Assert-True (
+  $manifest.activation_mode -eq 'non-activating'
+) 'Preflight did not require non-activating window presentation.'
+Assert-True (
+  $manifest.foreground_policy -eq 'preserve active window'
+) 'Preflight did not require preserving the active user window.'
+Assert-True (
+  $manifest.z_order_policy -eq 'background'
+) 'Preflight did not require background window layering.'
+Assert-True (
+  $manifest.startup_window_mode -eq 'visible non-activating capture window'
+) 'Preflight did not require a visible but non-activating capture window.'
+Assert-True (
+  $manifest.capture_argument -eq '--codexu-native-capture-background'
+) 'Preflight did not declare the capture-only background argument.'
+Assert-True (
+  $manifest.taskbar_policy -eq 'excluded'
+) 'Preflight did not require taskbar exclusion for capture windows.'
+Assert-True (
+  $manifest.alt_tab_policy -eq 'excluded'
+) 'Preflight did not require Alt-Tab exclusion for capture windows.'
+Assert-True (
   $manifest.overview_file -eq 'fullscreen/overview.png'
 ) 'Preflight changed the fullscreen Overview file contract.'
 Assert-True (

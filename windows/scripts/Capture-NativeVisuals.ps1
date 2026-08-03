@@ -196,6 +196,17 @@ public static class NativeVisualCaptureDriver
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPLACEMENT
+    {
+        public int Length;
+        public int Flags;
+        public int ShowCmd;
+        public POINT MinPosition;
+        public POINT MaxPosition;
+        public RECT NormalPosition;
+    }
+
     private delegate bool EnumChildProc(IntPtr hwnd, IntPtr lParam);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -209,6 +220,50 @@ public static class NativeVisualCaptureDriver
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hwnd, int command);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowPlacement(
+        IntPtr hwnd,
+        ref WINDOWPLACEMENT placement
+    );
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPlacement(
+        IntPtr hwnd,
+        ref WINDOWPLACEMENT placement
+    );
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hwnd,
+        IntPtr insertAfter,
+        int x,
+        int y,
+        int width,
+        int height,
+        uint flags
+    );
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "GetWindowLongPtrW",
+        SetLastError = true
+    )]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+
+    [DllImport(
+        "user32.dll",
+        EntryPoint = "SetWindowLongPtrW",
+        SetLastError = true
+    )]
+    private static extern IntPtr SetWindowLongPtr(
+        IntPtr hwnd,
+        int index,
+        IntPtr value
+    );
 
     [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr hwnd);
@@ -259,6 +314,52 @@ public static class NativeVisualCaptureDriver
             throw new Win32Exception(Marshal.GetLastWin32Error());
         }
         return rect;
+    }
+
+    public static IntPtr GetForegroundWindowHandle()
+    {
+        return GetForegroundWindow();
+    }
+
+    public static bool ApplyCaptureWindowStyle(IntPtr hwnd)
+    {
+        const int GWL_EXSTYLE = -20;
+        const long WS_EX_TOOLWINDOW = 0x00000080L;
+        const long WS_EX_APPWINDOW = 0x00040000L;
+        const uint SWP_NOSIZE = 0x0001;
+        const uint SWP_NOMOVE = 0x0002;
+        const uint SWP_NOZORDER = 0x0004;
+        const uint SWP_NOACTIVATE = 0x0010;
+        const uint SWP_FRAMECHANGED = 0x0020;
+
+        long current = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+        long updated = (current | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW;
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(updated));
+        long applied = GetWindowLongPtr(hwnd, GWL_EXSTYLE).ToInt64();
+        if (applied != updated)
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        if (!SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOSIZE |
+            SWP_NOMOVE |
+            SWP_NOZORDER |
+            SWP_NOACTIVATE |
+            SWP_FRAMECHANGED
+        ))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+        return (
+            (updated & WS_EX_TOOLWINDOW) != 0 &&
+            (updated & WS_EX_APPWINDOW) == 0
+        );
     }
 
     private static int UnscaleForDpi(int physicalValue, uint dpi)
@@ -340,16 +441,61 @@ public static class NativeVisualCaptureDriver
         return delivered;
     }
 
-    public static string MaximizeAndDescribe(IntPtr hwnd)
+    public static string MaximizeInBackground(
+        IntPtr hwnd,
+        IntPtr expectedForeground
+    )
     {
         IntPtr previousDpiContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
         try
         {
-            ShowWindow(hwnd, 3);
+            bool toolWindow = ApplyCaptureWindowStyle(hwnd);
+            var placement = new WINDOWPLACEMENT
+            {
+                Length = Marshal.SizeOf(typeof(WINDOWPLACEMENT)),
+            };
+            if (!GetWindowPlacement(hwnd, ref placement))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+            placement.ShowCmd = 3;
+            if (!SetWindowPlacement(hwnd, ref placement))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            const uint SWP_NOSIZE = 0x0001;
+            const uint SWP_NOMOVE = 0x0002;
+            const uint SWP_NOACTIVATE = 0x0010;
+            const uint SWP_NOOWNERZORDER = 0x0200;
+            ShowWindow(hwnd, 8);
+            if (!SetWindowPos(
+                hwnd,
+                new IntPtr(1),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
+            ))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
             Thread.Sleep(750);
             if (!IsZoomed(hwnd))
             {
                 throw new InvalidOperationException("The target window did not maximize.");
+            }
+
+            IntPtr actualForeground = GetForegroundWindow();
+            if (
+                expectedForeground != IntPtr.Zero &&
+                actualForeground != expectedForeground
+            )
+            {
+                throw new InvalidOperationException(
+                    "Background capture changed the active foreground window."
+                );
             }
 
             uint dpi = GetDpiForWindow(hwnd);
@@ -358,7 +504,9 @@ public static class NativeVisualCaptureDriver
             int physicalWidth = client.Right - client.Left;
             int physicalHeight = client.Bottom - client.Top;
             return String.Format(
-                "maximized=true;client={0}x{1};clientPhysical={2}x{3};outer={4}x{5};dpi={6}",
+                "maximized=true;foregroundPreserved={0};toolWindow={1};client={2}x{3};clientPhysical={4}x{5};outer={6}x{7};dpi={8}",
+                expectedForeground == IntPtr.Zero || actualForeground == expectedForeground,
+                toolWindow,
                 UnscaleForDpi(physicalWidth, dpi),
                 UnscaleForDpi(physicalHeight, dpi),
                 physicalWidth,
@@ -468,6 +616,13 @@ function Get-PreflightManifest {
   return [ordered]@{
     capture_engine = 'Windows.Graphics.Capture'
     targeting = 'exact HWND'
+    activation_mode = 'non-activating'
+    foreground_policy = 'preserve active window'
+    z_order_policy = 'background'
+    startup_window_mode = 'visible non-activating capture window'
+    capture_argument = '--codexu-native-capture-background'
+    taskbar_policy = 'excluded'
+    alt_tab_policy = 'excluded'
     capture_runs = @($captureRuns)
     client_sizes = @()
     surfaces = @($requestedSurfaces)
@@ -1092,13 +1247,26 @@ function Capture-DashboardSurfaceSegments {
 }
 
 function Set-MaximizedWindow {
-  param([IntPtr] $Window)
-  $description = [NativeVisualCaptureDriver]::MaximizeAndDescribe($Window)
-  if ($description -notmatch '^maximized=(?<maximized>true);client=(?<width>\d+)x(?<height>\d+);clientPhysical=(?<physicalWidth>\d+)x(?<physicalHeight>\d+);outer=(?<outerWidth>\d+)x(?<outerHeight>\d+);dpi=(?<dpi>\d+)$') {
+  param(
+    [IntPtr] $Window,
+    [IntPtr] $ExpectedForeground
+  )
+  $description = [NativeVisualCaptureDriver]::MaximizeInBackground(
+    $Window,
+    $ExpectedForeground
+  )
+  if ($description -notmatch '^maximized=(?<maximized>true);foregroundPreserved=(?<foregroundPreserved>true|false);toolWindow=(?<toolWindow>true|false);client=(?<width>\d+)x(?<height>\d+);clientPhysical=(?<physicalWidth>\d+)x(?<physicalHeight>\d+);outer=(?<outerWidth>\d+)x(?<outerHeight>\d+);dpi=(?<dpi>\d+)$') {
     throw "Could not parse maximized window dimensions: $description"
   }
   return [ordered]@{
     maximized = $true
+    activation_mode = 'non-activating'
+    foreground_policy = 'preserve active window'
+    foreground_preserved = [bool]::Parse($Matches.foregroundPreserved)
+    z_order_policy = 'background'
+    taskbar_policy = 'excluded'
+    alt_tab_policy = 'excluded'
+    tool_window = [bool]::Parse($Matches.toolWindow)
     verified_client = "$($Matches.width)x$($Matches.height)"
     physical_client = "$($Matches.physicalWidth)x$($Matches.physicalHeight)"
     outer_window = "$($Matches.outerWidth)x$($Matches.outerHeight)"
@@ -1176,6 +1344,7 @@ function Invoke-MaximizedCapture {
   $stdoutTask = $null
   $stderrTask = $null
   $records = [System.Collections.ArrayList]::new()
+  $foregroundBefore = [NativeVisualCaptureDriver]::GetForegroundWindowHandle()
   try {
     $appData = Join-Path $sizeRuntime 'appdata'
     $localAppData = Join-Path $sizeRuntime 'localappdata'
@@ -1186,6 +1355,9 @@ function Invoke-MaximizedCapture {
     $startInfo.FileName = $appPath
     $startInfo.WorkingDirectory = Split-Path -Parent $appPath
     $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $startInfo.Arguments = '--codexu-native-capture-background'
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
     $startInfo.EnvironmentVariables['APPDATA'] = $appData
@@ -1202,7 +1374,9 @@ function Invoke-MaximizedCapture {
     Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
 
     $window = Wait-TaskWindow -Process $process
-    $sizeRecord.window = Set-MaximizedWindow -Window $window
+    $sizeRecord.window = Set-MaximizedWindow `
+      -Window $window `
+      -ExpectedForeground $foregroundBefore
     [void](Wait-ForElement -Window $window -AutomationId 'dashboard-home-tab-tasks')
     $renderer = [NativeVisualCaptureDriver]::FindRenderer($window)
     if ($renderer -eq [IntPtr]::Zero) {
@@ -1337,6 +1511,13 @@ $script:workflowManifest = [ordered]@{
   }
   capture_engine = 'Windows.Graphics.Capture'
   targeting = 'exact HWND'
+  activation_mode = 'non-activating'
+  foreground_policy = 'preserve active window'
+  z_order_policy = 'background'
+  startup_window_mode = 'visible non-activating capture window'
+  capture_argument = '--codexu-native-capture-background'
+  taskbar_policy = 'excluded'
+  alt_tab_policy = 'excluded'
   real_local_codex_input = 'read-only'
   app_runtime_storage = 'task-local under .local-artifacts'
   build = [ordered]@{
