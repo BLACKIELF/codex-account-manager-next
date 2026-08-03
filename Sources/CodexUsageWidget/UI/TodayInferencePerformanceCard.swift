@@ -20,32 +20,31 @@ struct TodayInferencePerformanceCard: View {
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.secondary)
                         InfoChip(
-                            title: language.text("调用", "Calls"),
+                            title: language.text("模型调用", "Model calls"),
                             value: "\(performance?.totalCallCount ?? 0)"
                         )
+                        .help(modelCallCountHelp)
                     }
                 }
 
                 if groups.isEmpty {
                     compactEmptyState
                 } else {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.left.and.line.vertical.and.arrow.right")
-                            .font(.system(size: 8, weight: .semibold))
-                        Text(language.text("越左响应越快 · 越上吞吐越高", "Left is faster · higher is more throughput"))
-                            .font(.system(size: 9, weight: .medium))
-                    }
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
-
                     InferencePerformanceScatterPlot(groups: groups, language: language)
                 }
             }
         }
         .help(language.text(
-            "按模型与推理强度汇总今天本机记录。横轴为完整模型调用耗时 P50，竖轴为输出 tokens ÷ 完整调用耗时；横线延伸至 P90，气泡大小代表调用数。不是 TTFT，也不是可见文本解码 TPS。",
-            "Grouped by model and reasoning effort from today's on-device records. X is P50 full-call duration; Y is output tokens divided by full-call duration. Whiskers extend to P90 and bubble area reflects call count. This is not TTFT or visible decode TPS."
+            "按模型与推理强度汇总今天本机记录。横轴为完整模型调用耗时 P50，纵轴为输出 tokens ÷ 完整调用耗时；横线延伸至 P90，气泡大小代表模型调用数。模型调用是跨 Session 汇总的模型响应次数，不是 Session、线程或工具调用数。不是 TTFT，也不是可见文本解码 TPS。",
+            "Grouped by model and reasoning effort from today's on-device records. X is P50 full-call duration; Y is output tokens divided by full-call duration. Whiskers extend to P90 and bubble area reflects model calls aggregated across sessions—not session, thread, or tool-call counts. This is not TTFT or visible decode TPS."
         ))
+    }
+
+    private var modelCallCountHelp: String {
+        language.text(
+            "模型调用 \(performance?.totalCallCount ?? 0) 次：今天所有 Codex Session 中完成且能归因到模型与推理强度的模型响应次数。同一 Session 可以包含多次；不是 Session、线程或工具调用数。",
+            "\(performance?.totalCallCount ?? 0) model calls: completed model responses attributable to a model and reasoning effort across all Codex sessions today. One session can contain multiple calls; this is not a session, thread, or tool-call count."
+        )
     }
 
     private var compactEmptyState: some View {
@@ -77,11 +76,15 @@ private struct InferencePerformanceScatterPlot: View {
     let language: WidgetLanguage
 
     @Environment(\.visualTokens) private var visualTokens
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var hoveredGroupID: String?
+    @State private var hoverAnchor: CGPoint = .zero
 
     private let plotLeft: CGFloat = 34
     private let plotRight: CGFloat = 12
     private let plotTop: CGFloat = 8
     private let plotBottom: CGFloat = 20
+    private let tooltipWidth: CGFloat = 188
 
     var body: some View {
         GeometryReader { proxy in
@@ -105,6 +108,7 @@ private struct InferencePerformanceScatterPlot: View {
                     let p90X = xPosition(group.p90DurationSeconds, width: width, maximum: maximumDuration)
                     let color = modelColor(group.model)
                     let diameter = bubbleDiameter(callCount: group.callCount, maximumCalls: maximumCalls)
+                    let isHovered = hoveredGroupID == group.id
 
                     Path { path in
                         path.move(to: CGPoint(x: medianX, y: y))
@@ -116,11 +120,28 @@ private struct InferencePerformanceScatterPlot: View {
 
                     Circle()
                         .fill(color.opacity(0.82))
-                        .overlay(Circle().stroke(Color.white.opacity(0.72), lineWidth: 1))
-                        .frame(width: diameter, height: diameter)
+                        .overlay(
+                            Circle().stroke(
+                                Color.white.opacity(isHovered ? 0.95 : 0.72),
+                                lineWidth: isHovered ? 2 : 1
+                            )
+                        )
+                        .shadow(color: color.opacity(isHovered ? 0.42 : 0), radius: 5)
+                        .frame(
+                            width: diameter + (isHovered ? 3 : 0),
+                            height: diameter + (isHovered ? 3 : 0)
+                        )
                         .position(x: medianX, y: y)
+                        .allowsHitTesting(false)
 
-                    pointLabel(group, color: color, medianX: medianX, y: y, plotWidth: width)
+                    pointLabel(
+                        group,
+                        color: color,
+                        medianX: medianX,
+                        y: y,
+                        plotWidth: width,
+                        isHovered: isHovered
+                    )
                 }
 
                 axisLabels(
@@ -130,7 +151,83 @@ private struct InferencePerformanceScatterPlot: View {
                     maximumDuration: maximumDuration,
                     maximumThroughput: maximumThroughput
                 )
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.001))
+                    .contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            updateHover(
+                                location: location,
+                                width: width,
+                                height: height,
+                                maximumDuration: maximumDuration,
+                                maximumThroughput: maximumThroughput,
+                                maximumCalls: maximumCalls
+                            )
+                        case .ended:
+                            hoveredGroupID = nil
+                        }
+                    }
+                    .gesture(
+                        SpatialTapGesture()
+                            .onEnded { event in
+                                updateHover(
+                                    location: event.location,
+                                    width: width,
+                                    height: height,
+                                    maximumDuration: maximumDuration,
+                                    maximumThroughput: maximumThroughput,
+                                    maximumCalls: maximumCalls
+                                )
+                            }
+                    )
+                    .accessibilityHidden(true)
+
+                ForEach(groups) { group in
+                    let point = CGPoint(
+                        x: xPosition(group.p50DurationSeconds, width: width, maximum: maximumDuration),
+                        y: yPosition(
+                            group.effectiveOutputTokensPerSecond,
+                            height: height,
+                            maximum: maximumThroughput
+                        )
+                    )
+
+                    Circle()
+                        .fill(Color.primary.opacity(0.001))
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                        .position(point)
+                        .onHover { hovering in
+                            updatePointHover(group: group, point: point, hovering: hovering)
+                        }
+                        .onTapGesture {
+                            hoveredGroupID = group.id
+                            hoverAnchor = point
+                        }
+                        .accessibilityHidden(true)
+                }
+
+                if let hoveredGroup = groups.first(where: { $0.id == hoveredGroupID }) {
+                    let payload = tooltipPayload(hoveredGroup)
+                    ChartTooltipView(payload: payload, prefersOpaqueSurface: true, compact: true)
+                        .frame(width: tooltipWidth)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .position(
+                            ChartTooltipLayout.position(
+                                anchor: hoverAnchor,
+                                containerSize: size,
+                                rowCount: payload.rows.count,
+                                compact: true
+                            )
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .zIndex(10)
+                }
             }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hoveredGroupID)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(language.text("今日模型推理表现散点图", "Today's model inference scatter plot"))
@@ -167,7 +264,8 @@ private struct InferencePerformanceScatterPlot: View {
         color: Color,
         medianX: CGFloat,
         y: CGFloat,
-        plotWidth: CGFloat
+        plotWidth: CGFloat,
+        isHovered: Bool
     ) -> some View {
         let placeBefore = medianX > plotLeft + plotWidth * 0.72
         return HStack(spacing: 4) {
@@ -183,14 +281,14 @@ private struct InferencePerformanceScatterPlot: View {
         .padding(.vertical, 3)
         .background(
             Capsule(style: .continuous)
-                .fill(FixedVisualPalette.surfaceTrack.opacity(0.58))
+                .fill(isHovered ? color.opacity(0.18) : FixedVisualPalette.surfaceTrack.opacity(0.58))
         )
         .fixedSize()
         .position(
             x: medianX + (placeBefore ? -54 : 54),
             y: y
         )
-        .help(pointHelp(group))
+        .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pointAccessibilityLabel(group))
     }
@@ -249,6 +347,49 @@ private struct InferencePerformanceScatterPlot: View {
         return 9 + CGFloat(normalized) * 11
     }
 
+    private func updateHover(
+        location: CGPoint,
+        width: CGFloat,
+        height: CGFloat,
+        maximumDuration: Double,
+        maximumThroughput: Double,
+        maximumCalls: Int
+    ) {
+        var nearest: (group: ModelInferencePerformanceGroup, point: CGPoint, distance: CGFloat)?
+
+        for group in groups {
+            let point = CGPoint(
+                x: xPosition(group.p50DurationSeconds, width: width, maximum: maximumDuration),
+                y: yPosition(group.effectiveOutputTokensPerSecond, height: height, maximum: maximumThroughput)
+            )
+            let distance = hypot(location.x - point.x, location.y - point.y)
+            let diameter = bubbleDiameter(callCount: group.callCount, maximumCalls: maximumCalls)
+            let hitRadius = max(24, diameter / 2 + 10)
+            guard distance <= hitRadius else { continue }
+            if nearest == nil || distance < (nearest?.distance ?? .greatestFiniteMagnitude) {
+                nearest = (group, point, distance)
+            }
+        }
+
+        hoveredGroupID = nearest?.group.id
+        if let point = nearest?.point {
+            hoverAnchor = point
+        }
+    }
+
+    private func updatePointHover(
+        group: ModelInferencePerformanceGroup,
+        point: CGPoint,
+        hovering: Bool
+    ) {
+        if hovering {
+            hoveredGroupID = group.id
+            hoverAnchor = point
+        } else if hoveredGroupID == group.id {
+            hoveredGroupID = nil
+        }
+    }
+
     private func modelColor(_ model: String) -> Color {
         let colors = visualTokens.data.modelSeries ?? visualTokens.data.series
         guard !colors.isEmpty else { return visualTokens.accent.primary.color }
@@ -273,17 +414,35 @@ private struct InferencePerformanceScatterPlot: View {
         effort.prefix(1).uppercased() + effort.dropFirst()
     }
 
-    private func pointHelp(_ group: ModelInferencePerformanceGroup) -> String {
-        language.text(
-            "\(group.model) · \(displayEffort(group.effort))\n调用 \(group.callCount) 次\n平均 \(formatDuration(group.averageDurationSeconds)) · P50 \(formatDuration(group.p50DurationSeconds)) · P90 \(formatDuration(group.p90DurationSeconds))\n有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s\n本机完整调用口径，不等同 TTFT 或可见文本解码 TPS。",
-            "\(group.model) · \(displayEffort(group.effort))\n\(group.callCount) calls\nAverage \(formatDuration(group.averageDurationSeconds)) · P50 \(formatDuration(group.p50DurationSeconds)) · P90 \(formatDuration(group.p90DurationSeconds))\nEffective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s\nOn-device full-call metric; not TTFT or visible decode TPS."
+    private func tooltipPayload(_ group: ModelInferencePerformanceGroup) -> ChartTooltipPayload {
+        ChartTooltipPayload(
+            title: "\(group.model) · \(displayEffort(group.effort))",
+            rows: [
+                ChartTooltipRow(
+                    id: "model-calls",
+                    label: language.text("模型调用", "Model calls"),
+                    value: language.text("\(group.callCount) 次 · 跨 Session", "\(group.callCount) · across sessions")
+                ),
+                ChartTooltipRow(
+                    id: "average",
+                    label: language.text("平均耗时", "Average"),
+                    value: formatDuration(group.averageDurationSeconds)
+                ),
+                ChartTooltipRow(id: "p50", label: "P50", value: formatDuration(group.p50DurationSeconds)),
+                ChartTooltipRow(id: "p90", label: "P90", value: formatDuration(group.p90DurationSeconds)),
+                ChartTooltipRow(
+                    id: "throughput",
+                    label: language.text("有效吞吐", "Throughput"),
+                    value: "\(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s"
+                )
+            ]
         )
     }
 
     private func pointAccessibilityLabel(_ group: ModelInferencePerformanceGroup) -> String {
         language.text(
-            "\(group.model)，推理强度 \(displayEffort(group.effort))，\(group.callCount) 次调用，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒",
-            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(group.callCount) calls, P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second"
+            "\(group.model)，推理强度 \(displayEffort(group.effort))，跨 Session 汇总 \(group.callCount) 次模型调用，平均耗时 \(formatDuration(group.averageDurationSeconds))，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒",
+            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(group.callCount) model calls aggregated across sessions, average \(formatDuration(group.averageDurationSeconds)), P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second"
         )
     }
 
