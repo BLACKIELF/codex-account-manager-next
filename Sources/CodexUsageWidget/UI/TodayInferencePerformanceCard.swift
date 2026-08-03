@@ -13,18 +13,10 @@ struct TodayInferencePerformanceCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 DashboardCardHeader(
                     title: language.text("今日实测推理表现", "Today's observed inference"),
-                    systemName: "gauge.with.dots.needle.50percent"
+                    systemName: "gauge.with.dots.needle.50percent",
+                    helpText: chartAlgorithmHelp
                 ) {
-                    HStack(spacing: 6) {
-                        Text(language.text("本机实测", "On-device"))
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        InfoChip(
-                            title: language.text("模型调用", "Model calls"),
-                            value: "\(performance?.totalCallCount ?? 0)"
-                        )
-                        .help(modelCallCountHelp)
-                    }
+                    EmptyView()
                 }
 
                 if groups.isEmpty {
@@ -34,16 +26,12 @@ struct TodayInferencePerformanceCard: View {
                 }
             }
         }
-        .help(language.text(
-            "按模型与推理强度汇总今天本机记录。横轴为完整模型调用耗时 P50，纵轴为输出 tokens ÷ 完整调用耗时；横线延伸至 P90，气泡大小代表模型调用数。模型调用是跨 Session 汇总的模型响应次数，不是 Session、线程或工具调用数。不是 TTFT，也不是可见文本解码 TPS。",
-            "Grouped by model and reasoning effort from today's on-device records. X is P50 full-call duration; Y is output tokens divided by full-call duration. Whiskers extend to P90 and bubble area reflects model calls aggregated across sessions—not session, thread, or tool-call counts. This is not TTFT or visible decode TPS."
-        ))
     }
 
-    private var modelCallCountHelp: String {
+    private var chartAlgorithmHelp: String {
         language.text(
-            "模型调用 \(performance?.totalCallCount ?? 0) 次：今天所有 Codex Session 中完成且能归因到模型与推理强度的模型响应次数。同一 Session 可以包含多次；不是 Session、线程或工具调用数。",
-            "\(performance?.totalCallCount ?? 0) model calls: completed model responses attributable to a model and reasoning effort across all Codex sessions today. One session can contain multiple calls; this is not a session, thread, or tool-call count."
+            "数据：按模型 × 推理强度汇总今天本机完成的模型调用。\n横轴：完整调用耗时 P50；横线延伸至 P90。\n纵轴：全部输出 tokens（含 Reasoning）÷ 完整调用耗时。\n气泡：面积代表跨 Session 汇总的模型调用数；不是 Session、线程或工具调用数。\n说明：Reasoning 占比是 token 占比，不是耗时占比；指标不是 TTFT 或可见文本解码 TPS。",
+            "Data: today's completed on-device model calls grouped by model × reasoning effort.\nX: P50 full-call duration; whiskers extend to P90.\nY: all output tokens, including reasoning, divided by full-call duration.\nBubble: area represents model calls aggregated across sessions—not session, thread, or tool-call counts.\nNote: reasoning share is a token share, not a duration share; this is not TTFT or visible-text decode TPS."
         )
     }
 

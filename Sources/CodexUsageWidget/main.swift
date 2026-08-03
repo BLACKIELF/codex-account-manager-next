@@ -9652,15 +9652,18 @@ struct DashboardCard<Content: View>: View {
 struct DashboardCardHeader<Trailing: View>: View {
     let title: String
     let systemName: String
+    let helpText: String?
     let trailing: Trailing
 
     init(
         title: String,
         systemName: String,
+        helpText: String? = nil,
         @ViewBuilder trailing: () -> Trailing
     ) {
         self.title = title
         self.systemName = systemName
+        self.helpText = helpText
         self.trailing = trailing()
     }
 
@@ -9674,6 +9677,15 @@ struct DashboardCardHeader<Trailing: View>: View {
                 .font(.system(size: dashboardCardTitleSize, weight: .semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            if let helpText {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 9.5, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 14, height: dashboardCardHeaderHeight)
+                    .contentShape(Rectangle())
+                    .help(helpText)
+                    .accessibilityLabel(helpText)
+            }
             Spacer(minLength: dashboardCardHeaderSpacing)
             trailing
         }
