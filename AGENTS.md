@@ -87,7 +87,24 @@ git diff --check
 - 代码改动后运行 `make build`。
 - 数据读取或聚合逻辑改动后运行 `make probe` 或 `--dump-json`。
 - UI 改动后启动本地 app 进行人工检查。
+- Windows Dashboard UI 改动后，先运行原生视觉 workflow preflight；需要证明真实窗口行为时，再运行 coverage 测试或完整采集。采集窗口必须保持最大化、non-activating、保留用户当前前台窗口，并作为 tool window 排除在任务栏和 Alt-Tab 之外。
 - 文档-only 改动至少运行 `git diff --check`。
+
+Windows 原生视觉验收的最小入口（从仓库根目录运行）：
+
+```powershell
+# 只验证依赖、窗口策略、表面契约和脚本语法；不构建、不启动 app
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1 -PreflightOnly
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\tests\Test-NativeVisualCaptureWorkflow.ps1
+
+# 构建并启动真实 Tauri 窗口，覆盖各 Dashboard surface 并确认进程清理
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\tests\Test-NativeVisualCaptureCoverage.ps1
+
+# 正式采集并逐张人工检查本次生成的截图
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\windows\scripts\Capture-NativeVisuals.ps1
+```
+
+Windows 原生采集使用真实 exact HWND 和当前屏幕/DPI，不用浏览器 mock、fixture、pixel baseline 或 Computer Use 代替；截图、日志和 WebView2 临时数据只能留在 Git 忽略的 `.local-artifacts/`。该流程验证窗口与视觉验收边界，不替代 Rust、Web 合同测试和 release build。详细清单见 [`docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md`](docs/windows-port/WINDOWS_NATIVE_VISUAL_WORKFLOW.md)。
 
 本地启动：
 

@@ -12,6 +12,12 @@ mod tray;
 
 use app_state::AppState;
 
+const BACKGROUND_CAPTURE_ARGUMENT: &str = "--codexu-native-capture-background";
+
+fn is_background_capture() -> bool {
+    std::env::args().any(|argument| argument == BACKGROUND_CAPTURE_ARGUMENT)
+}
+
 fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -29,8 +35,14 @@ fn main() {
             let state = Arc::new(AppState::new(app_data_dir));
             app.manage(state.clone());
 
+            let background_capture = is_background_capture();
+
             // Hide main window to tray on close instead of quitting.
             if let Some(window) = app.get_webview_window("main") {
+                if !background_capture {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {

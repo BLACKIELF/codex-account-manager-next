@@ -163,7 +163,7 @@ nodes:
     label: "Maximized Capture Workflow"
     category: validation
     signature: "Windows.Graphics.Capture · exact HWND"
-    note: "single maximized run · dynamic numbered panel segments"
+    note: "maximized non-activating tool window · dynamic numbered panel segments"
     icon: camera
     layer: capture_bottom
     layout: {x: 1410, y: 845, w: 285, h: 136}

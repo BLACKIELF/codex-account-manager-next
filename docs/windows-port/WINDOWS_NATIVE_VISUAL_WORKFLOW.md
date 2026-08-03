@@ -35,7 +35,9 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 3. 将仓库内的 Windows Graphics Capture helper 源码编译到本次本地产物目录。
 4. 构建真实 Tauri release 应用。
 5. 拒绝接管已经运行的同一精确 release executable。
-6. 只启动一个任务实例，并通过 Win32 最大化该窗口；Overview 与所有子板块都保持这一最大化状态。
+6. 只启动一个带 `--codexu-native-capture-background` 参数的任务实例；capture-only 窗口使用
+   non-activating background tool-window 样式，从任务栏和 Alt-Tab 排除，再通过 Win32 最大化；
+   Overview 与所有子板块都保持这一最大化状态，不改变用户当前前台窗口。
 7. 重新读取并记录最大化状态、client area、DPI 与原生外框尺寸。
 8. 先在页面顶部采集一张 Overview，再用 UI Automation 依次选择 Tasks、AI Leadership、Usage、Projects、Skills。
 9. 每个子板块先对齐自身起点，再按约 20% 纵向重叠连续采集原生视口，直到板块底部可见。Projects 是明确例外：只采集最大化窗口下的首个板块视口，不滚动内部项目列表。
@@ -69,7 +71,10 @@ cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle
 ## 最大化窗口与 DPI
 
 - 所有截图来自同一个 Win32 最大化窗口，不再创建 960×760 或 720×540 的固定 client-size 运行。
-- 脚本通过 `ShowWindow(SW_MAXIMIZE)` 最大化并用 `IsZoomed` 复核；不以截图像素猜测窗口状态。
+- 脚本通过窗口 placement 设置最大化并用 `IsZoomed` 复核；随后以 `SW_SHOWNA`、`SWP_NOACTIVATE`
+  和后台 Z-order 显示，不以截图像素猜测窗口状态。
+- capture-only 窗口设置 `WS_EX_TOOLWINDOW` 并移除 `WS_EX_APPWINDOW`，manifest 必须记录
+  `foreground_preserved=true`、`taskbar_policy=excluded` 和 `alt_tab_policy=excluded`；正常启动窗口不使用这组样式。
 - Windows Graphics Capture 输出包含原生窗口装饰，物理帧会随当前屏幕和 DPI scaling 改变。
 - `manifest.json` 记录 maximized、verified client、outer window、DPI、每张图的 physical frame 与动态截图总数；人工验收只比较本次记录，不建立 baseline。
 

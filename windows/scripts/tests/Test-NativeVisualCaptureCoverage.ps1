@@ -48,6 +48,17 @@ $fullscreenRun = $manifest.fullscreen_run
 Assert-True ($null -ne $fullscreenRun) 'Coverage capture did not record its fullscreen run.'
 Assert-True ($fullscreenRun.status -eq 'complete') 'Fullscreen Overview capture is not complete.'
 Assert-True ([bool]$fullscreenRun.window.maximized) 'Overview was not captured from a maximized window.'
+Assert-True (
+  $fullscreenRun.window.activation_mode -eq 'non-activating' -and
+  $fullscreenRun.window.foreground_policy -eq 'preserve active window' -and
+  [bool]$fullscreenRun.window.foreground_preserved -and
+  $fullscreenRun.window.z_order_policy -eq 'background'
+) 'Fullscreen capture changed the active window or foreground policy.'
+Assert-True (
+  [bool]$fullscreenRun.window.tool_window -and
+  $fullscreenRun.window.taskbar_policy -eq 'excluded' -and
+  $fullscreenRun.window.alt_tab_policy -eq 'excluded'
+) 'Fullscreen capture did not exclude its tool window from task switching surfaces.'
 $fullscreenCaptures = @($fullscreenRun.captures)
 $overviewCaptures = @($fullscreenCaptures | Where-Object { $_.surface -eq 'Overview' })
 Assert-True ($overviewCaptures.Count -eq 1) 'Fullscreen run did not contain exactly one Overview capture.'
