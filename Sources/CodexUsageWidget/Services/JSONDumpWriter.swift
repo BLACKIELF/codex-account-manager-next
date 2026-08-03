@@ -202,6 +202,27 @@ private func runtimeJSONObject(_ local: LocalUsage) -> [String: Any] {
         ] as [String: Any]
     }
 
+    if let performance = local.inferencePerformance {
+        object["inferencePerformance"] = [
+            "source": "local-rollout-observed-call",
+            "totalCallCount": performance.totalCallCount,
+            "groups": performance.groups.map { group in
+                [
+                    "id": group.id,
+                    "model": group.model,
+                    "effort": group.effort,
+                    "callCount": group.callCount,
+                    "averageDurationSeconds": group.averageDurationSeconds,
+                    "p50DurationSeconds": group.p50DurationSeconds,
+                    "p90DurationSeconds": group.p90DurationSeconds,
+                    "effectiveOutputTokensPerSecond": group.effectiveOutputTokensPerSecond,
+                    "outputTokens": group.outputTokens,
+                    "reasoningOutputTokens": group.reasoningOutputTokens
+                ] as [String: Any]
+            }
+        ] as [String: Any]
+    }
+
     if let trend = local.usageTrend {
         let modelTrends: Any = trend.modelTrends.map { trends in
             trends.map { modelTrend in

@@ -258,6 +258,7 @@ struct LocalUsage: Equatable {
     let recentThreads: [LocalThread]
     let detailedUsage: DetailedUsage?
     let usageTrend: UsageTrend?
+    let inferencePerformance: ModelInferencePerformance?
     let projectBoard: ProjectBoard?
     let toolUsages: [ToolUsage]
     let skillUsages: [SkillUsage]
@@ -458,14 +459,40 @@ private struct SessionUsageCacheEntry: Codable {
     let hasTokenEvents: Bool
     let tokenEventCount: Int
     let deltas: [SessionUsageDelta]
+    let inferenceSamples: [ModelInferenceSample]?
+    let inferenceSchemaVersion: Int?
     let toolCalls: [String: Int]
     let skillLoads: [SkillLoadEvent]
+
+    var resolvedInferenceSamples: [ModelInferenceSample] {
+        inferenceSamples ?? []
+    }
 }
 
 private struct SessionUsageDiskCache: Codable {
     let version: Int
     let entries: [String: SessionUsageCacheEntry]
 }
+
+private let inferenceBoundaryPayloadTypes: Set<String> = [
+    "function_call_output",
+    "custom_tool_call_output",
+    "tool_search_output",
+    "mcp_tool_call_end",
+    "web_search_end",
+    "patch_apply_end",
+    "image_generation_end"
+]
+
+private let modelOutputPayloadTypes: Set<String> = [
+    "reasoning",
+    "agent_reasoning",
+    "agent_message",
+    "function_call",
+    "custom_tool_call",
+    "tool_search_call",
+    "web_search_call"
+]
 
 private struct DetailedUsageAccumulator {
     var today = PricedTokenUsage.zero
@@ -602,6 +629,7 @@ private struct SkillUsageAccumulator {
 private struct LocalAnalytics: Equatable, Codable {
     let detailedUsage: DetailedUsage?
     let usageTrend: UsageTrend?
+    let inferencePerformance: ModelInferencePerformance?
     let recentProjects: [ProjectUsage]
     let toolUsages: [ToolUsage]
     let skillUsages: [SkillUsage]
@@ -1152,6 +1180,7 @@ final class CodexUsageReader {
     private let fileManager = FileManager.default
     private let localAnalyticsCacheVersion = 12
     private let sessionUsageCacheVersion = 8
+    private let inferenceSampleSchemaVersion = 1
     private static let memorySessionUsageCacheLimit = 64
     private static let persistentSessionUsageCacheLimit = 1_024
     private static let maximumPersistentCacheBytes: Int64 = 128 * 1_024 * 1_024
@@ -1721,6 +1750,7 @@ final class CodexUsageReader {
                 calendar: calendar,
                 forkBaselines: forkBaselines
             ),
+            inferencePerformance: analytics.inferencePerformance,
             projectBoard: projectBoard,
             toolUsages: analytics.toolUsages,
             skillUsages: analytics.skillUsages
@@ -1749,6 +1779,7 @@ final class CodexUsageReader {
         return LocalAnalytics(
             detailedUsage: nil,
             usageTrend: nil,
+            inferencePerformance: nil,
             recentProjects: [],
             toolUsages: analytics.toolUsages.map { usage in
                 ToolUsage(
@@ -1803,6 +1834,7 @@ final class CodexUsageReader {
             return LocalAnalytics(
                 detailedUsage: nil,
                 usageTrend: nil,
+                inferencePerformance: nil,
                 recentProjects: [],
                 toolUsages: [],
                 skillUsages: [],
@@ -1868,16 +1900,19 @@ final class CodexUsageReader {
         var recentProjectUsage: [String: ProjectUsageAccumulator] = [:]
         var toolUsage: [String: ToolUsageAccumulator] = [:]
         var skillUsage: [String: SkillUsageAccumulator] = [:]
+        var inferenceSamples: [ModelInferenceSample] = []
 
         let sourceByThreadId = Dictionary(
             uniqueKeysWithValues: sources.map { ($0.threadId, $0) }
         )
         var inheritedPrefixLengthByThreadId: [String: Int] = [:]
+        var inheritedInferencePrefixLengthByThreadId: [String: Int] = [:]
         var forkBaselineTokensByThreadId: [String: Int64] = [:]
 
         for source in sources {
             guard let entry = cachedSessionUsage(
                 source: source,
+                collectInference: source.updatedAt.map { $0 >= dayStart } ?? false,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ),
@@ -1885,6 +1920,7 @@ final class CodexUsageReader {
             let parentSource = sourceByThreadId[parentId],
             let parentEntry = cachedSessionUsage(
                 source: parentSource,
+                collectInference: parentSource.updatedAt.map { $0 >= dayStart } ?? false,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ) else { continue }
@@ -1899,16 +1935,26 @@ final class CodexUsageReader {
                     .prefix(inheritedPrefixLength)
                     .reduce(0) { $0 + $1.tokens.totalTokens }
             }
+            let inheritedInferencePrefixLength = CodexForkUsageDeduplicator.inheritedPrefixLength(
+                child: entry.resolvedInferenceSamples.map(\.eventIdentity),
+                parent: parentEntry.resolvedInferenceSamples.map(\.eventIdentity)
+            )
+            if inheritedInferencePrefixLength > 0 {
+                inheritedInferencePrefixLengthByThreadId[source.threadId] = inheritedInferencePrefixLength
+            }
         }
 
         for source in sources {
             guard let entry = cachedSessionUsage(
                 source: source,
+                collectInference: source.updatedAt.map { $0 >= dayStart } ?? false,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ) else { continue }
             let inheritedPrefixLength = inheritedPrefixLengthByThreadId[source.threadId] ?? 0
             let effectiveDeltas = entry.deltas.dropFirst(inheritedPrefixLength)
+            let inheritedInferencePrefixLength = inheritedInferencePrefixLengthByThreadId[source.threadId] ?? 0
+            inferenceSamples.append(contentsOf: entry.resolvedInferenceSamples.dropFirst(inheritedInferencePrefixLength))
 
             if entry.hasTokenEvents {
                 accumulator.parsedFileCount += 1
@@ -1995,6 +2041,7 @@ final class CodexUsageReader {
             let analytics = LocalAnalytics(
                 detailedUsage: nil,
                 usageTrend: nil,
+                inferencePerformance: nil,
                 recentProjects: [],
                 toolUsages: toolUsage.values
                     .map { $0.makeUsage() }
@@ -2013,6 +2060,8 @@ final class CodexUsageReader {
             return analytics
         }
 
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
+            ?? dayStart.addingTimeInterval(24 * 60 * 60)
         let analytics = LocalAnalytics(
             detailedUsage: accumulator.makeUsage(),
             usageTrend: makeUsageTrend(
@@ -2024,6 +2073,11 @@ final class CodexUsageReader {
                 sourceQuality: .detailed,
                 modelDailyUsage: dailyUsageByModel,
                 modelNamesByID: modelNamesByID
+            ),
+            inferencePerformance: ModelInferencePerformanceBuilder.make(
+                samples: inferenceSamples,
+                dayStart: dayStart,
+                dayEnd: dayEnd
             ),
             recentProjects: recentProjectUsage.values
                 .map { $0.makeUsage() }
@@ -2410,6 +2464,7 @@ final class CodexUsageReader {
 
     private func cachedSessionUsage(
         source: SessionUsageSource,
+        collectInference: Bool,
         fractionalFormatter: ISO8601DateFormatter,
         plainFormatter: ISO8601DateFormatter
     ) -> SessionUsageCacheEntry? {
@@ -2420,22 +2475,45 @@ final class CodexUsageReader {
 
         let modificationDate = attributes[.modificationDate] as? Date
         if let cached = memorySessionUsageCacheEntry(for: source.rolloutPath),
-           sameSessionFileIdentity(cached, fileSize: fileSize, modificationDate: modificationDate) {
+           sameSessionFileIdentity(cached, fileSize: fileSize, modificationDate: modificationDate),
+           !collectInference || cached.inferenceSchemaVersion == inferenceSampleSchemaVersion {
             return cached
         }
 
         if let cached = persistentSessionUsageCache()[source.rolloutPath],
-           sameSessionFileIdentity(cached, fileSize: fileSize, modificationDate: modificationDate) {
+           sameSessionFileIdentity(cached, fileSize: fileSize, modificationDate: modificationDate),
+           !collectInference || cached.inferenceSchemaVersion == inferenceSampleSchemaVersion {
             storeSessionUsageCacheEntry(cached, for: source.rolloutPath, markDirty: false)
             return cached
         }
 
-        let eventPattern = #""type":"(session_meta|turn_context|token_count|function_call|custom_tool_call)""#
+        let baseEventPattern = #""type":"(session_meta|turn_context|token_count|function_call|custom_tool_call)""#
+        let inferenceEventPattern = #""type":"(session_meta|turn_context|token_count|function_call|custom_tool_call|function_call_output|custom_tool_call_output|tool_search_call|tool_search_output|web_search_call|mcp_tool_call_end|web_search_end|patch_apply_end|image_generation_end|reasoning|agent_message|agent_reasoning)"|"role":"assistant""#
+        let eventPattern = collectInference ? inferenceEventPattern : baseEventPattern
         let sessionMetaNeedle = Data(#""type":"session_meta""#.utf8)
         let turnContextNeedle = Data(#""type":"turn_context""#.utf8)
         let tokenCountNeedle = Data(#""type":"token_count""#.utf8)
         let functionCallNeedle = Data(#""type":"function_call""#.utf8)
         let customToolCallNeedle = Data(#""type":"custom_tool_call""#.utf8)
+        let inferenceBoundaryNeedles = [
+            Data(#""type":"function_call_output""#.utf8),
+            Data(#""type":"custom_tool_call_output""#.utf8),
+            Data(#""type":"tool_search_output""#.utf8),
+            Data(#""type":"mcp_tool_call_end""#.utf8),
+            Data(#""type":"web_search_end""#.utf8),
+            Data(#""type":"patch_apply_end""#.utf8),
+            Data(#""type":"image_generation_end""#.utf8)
+        ]
+        let modelOutputNeedles = [
+            Data(#""type":"reasoning""#.utf8),
+            Data(#""type":"agent_reasoning""#.utf8),
+            Data(#""type":"agent_message""#.utf8),
+            Data(#""role":"assistant""#.utf8),
+            functionCallNeedle,
+            customToolCallNeedle,
+            Data(#""type":"tool_search_call""#.utf8),
+            Data(#""type":"web_search_call""#.utf8)
+        ]
         if let parsed = parseSessionUsageWithGrep(
             url: url,
             eventPattern: eventPattern,
@@ -2444,6 +2522,8 @@ final class CodexUsageReader {
             tokenCountNeedle: tokenCountNeedle,
             functionCallNeedle: functionCallNeedle,
             customToolCallNeedle: customToolCallNeedle,
+            inferenceBoundaryNeedles: inferenceBoundaryNeedles,
+            modelOutputNeedles: modelOutputNeedles,
             fractionalFormatter: fractionalFormatter,
             plainFormatter: plainFormatter
         ) {
@@ -2454,6 +2534,8 @@ final class CodexUsageReader {
                 hasTokenEvents: parsed.hasTokenEvents,
                 tokenEventCount: parsed.tokenEventCount,
                 deltas: parsed.deltas,
+                inferenceSamples: parsed.inferenceSamples,
+                inferenceSchemaVersion: collectInference ? inferenceSampleSchemaVersion : nil,
                 toolCalls: parsed.toolCalls,
                 skillLoads: parsed.skillLoads
             )
@@ -2467,10 +2549,12 @@ final class CodexUsageReader {
         var buffer = Data()
         var forkedFromId: String?
         var activeModel: String?
+        var inferenceTracker = ModelInferenceCallTracker()
         var counterState = CodexTokenCounterState()
         var sawTokenEvent = false
         var tokenEventCount = 0
         var deltas: [SessionUsageDelta] = []
+        var inferenceSamples: [ModelInferenceSample] = []
         var toolCalls: [String: Int] = [:]
         var skillLoads: [SkillLoadEvent] = []
         let maximumSessionLineBytes = 4 * 1_024 * 1_024
@@ -2494,14 +2578,18 @@ final class CodexUsageReader {
                         tokenCountNeedle: tokenCountNeedle,
                         functionCallNeedle: functionCallNeedle,
                         customToolCallNeedle: customToolCallNeedle,
+                        inferenceBoundaryNeedles: inferenceBoundaryNeedles,
+                        modelOutputNeedles: modelOutputNeedles,
                         fractionalFormatter: fractionalFormatter,
                         plainFormatter: plainFormatter,
                         forkedFromId: &forkedFromId,
                         activeModel: &activeModel,
+                        inferenceTracker: &inferenceTracker,
                         counterState: &counterState,
                         sawTokenEvent: &sawTokenEvent,
                         tokenEventCount: &tokenEventCount,
                         deltas: &deltas,
+                        inferenceSamples: &inferenceSamples,
                         toolCalls: &toolCalls,
                         skillLoads: &skillLoads
                     )
@@ -2522,14 +2610,18 @@ final class CodexUsageReader {
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
+                inferenceBoundaryNeedles: inferenceBoundaryNeedles,
+                modelOutputNeedles: modelOutputNeedles,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
                 tokenEventCount: &tokenEventCount,
                 deltas: &deltas,
+                inferenceSamples: &inferenceSamples,
                 toolCalls: &toolCalls,
                 skillLoads: &skillLoads
             )
@@ -2542,6 +2634,8 @@ final class CodexUsageReader {
             hasTokenEvents: sawTokenEvent,
             tokenEventCount: tokenEventCount,
             deltas: deltas,
+            inferenceSamples: inferenceSamples,
+            inferenceSchemaVersion: collectInference ? inferenceSampleSchemaVersion : nil,
             toolCalls: toolCalls,
             skillLoads: skillLoads
         )
@@ -2585,9 +2679,11 @@ final class CodexUsageReader {
         tokenCountNeedle: Data,
         functionCallNeedle: Data,
         customToolCallNeedle: Data,
+        inferenceBoundaryNeedles: [Data],
+        modelOutputNeedles: [Data],
         fractionalFormatter: ISO8601DateFormatter,
         plainFormatter: ISO8601DateFormatter
-    ) -> (forkedFromId: String?, hasTokenEvents: Bool, tokenEventCount: Int, deltas: [SessionUsageDelta], toolCalls: [String: Int], skillLoads: [SkillLoadEvent])? {
+    ) -> (forkedFromId: String?, hasTokenEvents: Bool, tokenEventCount: Int, deltas: [SessionUsageDelta], inferenceSamples: [ModelInferenceSample], toolCalls: [String: Int], skillLoads: [SkillLoadEvent])? {
         let grepPath = "/usr/bin/grep"
         guard fileManager.isExecutableFile(atPath: grepPath) else { return nil }
 
@@ -2621,10 +2717,12 @@ final class CodexUsageReader {
         var buffer = data
         var forkedFromId: String?
         var activeModel: String?
+        var inferenceTracker = ModelInferenceCallTracker()
         var counterState = CodexTokenCounterState()
         var sawTokenEvent = false
         var tokenEventCount = 0
         var deltas: [SessionUsageDelta] = []
+        var inferenceSamples: [ModelInferenceSample] = []
         var toolCalls: [String: Int] = [:]
         var skillLoads: [SkillLoadEvent] = []
 
@@ -2638,14 +2736,18 @@ final class CodexUsageReader {
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
+                inferenceBoundaryNeedles: inferenceBoundaryNeedles,
+                modelOutputNeedles: modelOutputNeedles,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
                 tokenEventCount: &tokenEventCount,
                 deltas: &deltas,
+                inferenceSamples: &inferenceSamples,
                 toolCalls: &toolCalls,
                 skillLoads: &skillLoads
             )
@@ -2659,20 +2761,24 @@ final class CodexUsageReader {
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
+                inferenceBoundaryNeedles: inferenceBoundaryNeedles,
+                modelOutputNeedles: modelOutputNeedles,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
                 tokenEventCount: &tokenEventCount,
                 deltas: &deltas,
+                inferenceSamples: &inferenceSamples,
                 toolCalls: &toolCalls,
                 skillLoads: &skillLoads
             )
         }
 
-        return (forkedFromId, sawTokenEvent, tokenEventCount, deltas, toolCalls, skillLoads)
+        return (forkedFromId, sawTokenEvent, tokenEventCount, deltas, inferenceSamples, toolCalls, skillLoads)
     }
 
     private func processSessionLine(
@@ -2682,14 +2788,18 @@ final class CodexUsageReader {
         tokenCountNeedle: Data,
         functionCallNeedle: Data,
         customToolCallNeedle: Data,
+        inferenceBoundaryNeedles: [Data],
+        modelOutputNeedles: [Data],
         fractionalFormatter: ISO8601DateFormatter,
         plainFormatter: ISO8601DateFormatter,
         forkedFromId: inout String?,
         activeModel: inout String?,
+        inferenceTracker: inout ModelInferenceCallTracker,
         counterState: inout CodexTokenCounterState,
         sawTokenEvent: inout Bool,
         tokenEventCount: inout Int,
         deltas: inout [SessionUsageDelta],
+        inferenceSamples: inout [ModelInferenceSample],
         toolCalls: inout [String: Int],
         skillLoads: inout [SkillLoadEvent]
     ) {
@@ -2697,8 +2807,12 @@ final class CodexUsageReader {
         let isTurnContext = lineData.range(of: turnContextNeedle) != nil
         let isTokenEvent = lineData.range(of: tokenCountNeedle) != nil
         let isToolEvent = lineData.range(of: functionCallNeedle) != nil || lineData.range(of: customToolCallNeedle) != nil
-        guard isSessionMeta || isTurnContext || isTokenEvent || isToolEvent,
-              let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
+        let mightBeInferenceBoundary = inferenceBoundaryNeedles.contains { lineData.range(of: $0) != nil }
+        let mightBeModelOutput = modelOutputNeedles.contains { lineData.range(of: $0) != nil }
+        guard isSessionMeta || isTurnContext || isTokenEvent || isToolEvent || mightBeInferenceBoundary || mightBeModelOutput else {
+            return
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
               let payload = object["payload"] as? [String: Any]
         else { return }
 
@@ -2711,10 +2825,29 @@ final class CodexUsageReader {
 
         if object["type"] as? String == "turn_context" {
             applyTurnContextModel(payload["model"] as? String, to: &activeModel)
+            if let timestamp = object["timestamp"] as? String,
+               let date = fractionalFormatter.date(from: timestamp) ?? plainFormatter.date(from: timestamp) {
+                inferenceTracker.applyTurnContext(
+                    model: payload["model"] as? String,
+                    effort: payload["effort"] as? String,
+                    at: date
+                )
+            }
             return
         }
 
         guard let payloadType = payload["type"] as? String else { return }
+
+        if modelOutputPayloadTypes.contains(payloadType) || payload["role"] as? String == "assistant" {
+            inferenceTracker.observeModelOutput()
+        }
+
+        if inferenceBoundaryPayloadTypes.contains(payloadType),
+           let timestamp = object["timestamp"] as? String,
+           let date = fractionalFormatter.date(from: timestamp) ?? plainFormatter.date(from: timestamp) {
+            inferenceTracker.applyInputBoundary(at: date)
+            return
+        }
 
         if payloadType == "function_call" || payloadType == "custom_tool_call" {
             if let name = payload["name"] as? String, !name.isEmpty {
@@ -2746,6 +2879,18 @@ final class CodexUsageReader {
         sawTokenEvent = true
         tokenEventCount += 1
 
+        let eventIdentity = CodexTokenEventIdentity(
+            cumulative: cumulativeSample,
+            lastUsage: lastUsageSample
+        )
+        if let inferenceSample = inferenceTracker.consumeTokenEvent(
+            at: date,
+            lastUsage: lastUsageSample,
+            eventIdentity: eventIdentity
+        ) {
+            inferenceSamples.append(inferenceSample)
+        }
+
         guard let delta = CodexTokenCounterNormalizer.consume(
             cumulative: cumulativeSample,
             lastUsage: lastUsageSample,
@@ -2756,10 +2901,7 @@ final class CodexUsageReader {
                 date: date,
                 tokens: delta,
                 model: activeModel,
-                eventIdentity: CodexTokenEventIdentity(
-                    cumulative: cumulativeSample,
-                    lastUsage: lastUsageSample
-                )
+                eventIdentity: eventIdentity
             )
         )
     }
@@ -4197,7 +4339,16 @@ struct UsageWidgetView: View {
     private var dashboardTabContent: some View {
         switch selectedDashboardTab {
         case .tasks:
-            taskBoardContent
+            VStack(spacing: 8) {
+                if store.selectedRuntimeScope == .codex {
+                    TodayInferencePerformanceCard(
+                        performance: snapshot.local?.inferencePerformance,
+                        language: language
+                    )
+                    .frame(height: 184)
+                }
+                taskBoardContent
+            }
         case .leadership:
             LeadershipDashboardPanel(
                 snapshot: store.multiRuntimeSnapshot.leadership,
@@ -11687,6 +11838,10 @@ struct codexUMain {
 
         if CommandLine.arguments.contains("--self-test-model-usage-trend") {
             exit(ModelUsageTrendSelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-model-inference-performance") {
+            exit(ModelInferencePerformanceSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-app-server-pipe") {

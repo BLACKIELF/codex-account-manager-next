@@ -52,6 +52,7 @@ struct AgentUsageAggregator {
             recentThreads: Array(recentThreads),
             detailedUsage: detailedUsage,
             usageTrend: nil,
+            inferencePerformance: nil,
             projectBoard: projectBoard,
             toolUsages: toolUsages,
             skillUsages: skillUsages

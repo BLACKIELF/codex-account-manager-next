@@ -387,6 +387,7 @@ private final class ClaudeCodeTranscriptReader {
             recentThreads: recentThreads,
             detailedUsage: detailed,
             usageTrend: usageTrend,
+            inferencePerformance: nil,
             projectBoard: ProjectBoard(recentProjects: Array(projectUsages.prefix(8)), allProjects: projectUsages),
             toolUsages: toolUsages,
             skillUsages: skillUsages
@@ -685,6 +686,7 @@ private final class ClaudeCodeStatsCacheReader {
             recentThreads: [],
             detailedUsage: detailed,
             usageTrend: nil,
+            inferencePerformance: nil,
             projectBoard: nil,
             toolUsages: [],
             skillUsages: []
@@ -1051,6 +1053,7 @@ private func mergeClaudeLocalUsage(_ local: LocalUsage?, globalSkills: [SkillUsa
             recentThreads: [],
             detailedUsage: nil,
             usageTrend: nil,
+            inferencePerformance: nil,
             projectBoard: nil,
             toolUsages: [],
             skillUsages: globalSkills
@@ -1068,6 +1071,7 @@ private func mergeClaudeLocalUsage(_ local: LocalUsage?, globalSkills: [SkillUsa
         recentThreads: local.recentThreads,
         detailedUsage: local.detailedUsage,
         usageTrend: local.usageTrend,
+        inferencePerformance: local.inferencePerformance,
         projectBoard: local.projectBoard,
         toolUsages: local.toolUsages,
         skillUsages: mergedSkills
