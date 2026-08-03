@@ -13,7 +13,7 @@ codexU v1.2.0 turns a new OPC question—how many AI workers one person can lead
 - **Local and private:** evaluation stays on your Mac and does not upload usage, threads, paths, logs, or account data.
 
 > [!IMPORTANT]
-> **Upgrade to v1.2.0 or later.** v1.2.0 introduces the local AI Leadership assessment model while retaining the Codex branch token deduplication fix from v1.1.5. [Download the latest release](https://github.com/shanggqm/codexU/releases/latest).
+> **Upgrade to v1.2.1 or later.** v1.2.1 fixes a startup crash that could occur with sparse AI Leadership history and adds Codex model usage trends and an activity overview. [Download the latest release](https://github.com/shanggqm/codexU/releases/latest).
 
 codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, today's tasks, and local AI leadership. It keeps the information you check most in the menu bar and main window, so you can quickly see remaining quota, reset times, daily progress, and how much AI labor one person is directing.
 
@@ -48,7 +48,7 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - Organizes today's tasks according to each factual source: Codex uses Recent, To continue, Scheduled, and Archived today; Claude Code uses explicit local task states for Active, Pending, Planned, and Completed. Recent activity and archival are not presented as proof of running or success.
 - Task cards prioritize title, workspace, factual time, and trusted state. Automations show the next run only when it can be determined, and only cards with a valid session deep link expose whole-card click, hover, pointer, and keyboard-focus feedback.
 - Codex Usage Trend shows a six-month daily token heatmap and a model activity overview with the top model, active days, active model count, and range daily average. Claude Code does not yet support model attribution and retains the existing 7-day summary.
-- Adds a Codex-only model area chart with one color per visible model and a dashed total-usage line. It defaults to the last 30 days and can switch to 60, 90, or 180 days. It also summarizes the last-7-day total, daily average, and change versus the previous seven days. It shows the top eight models plus an "Other models" aggregate, and switches the y-axis between tokens and API-equivalent estimated cost. Cost mode is explicitly unavailable when the fallback thread source has no token split.
+- Adds a Codex-only model area chart with one color per visible model and a dashed total-usage line. It defaults to the last 30 days and can switch to 60, 90, or 180 days. It also summarizes the last-7-day total, daily average, and change versus the previous seven days. It shows the top eight models plus an "Other models" aggregate, and switches the y-axis between tokens and API-equivalent estimated cost. Models without a dedicated price are explicitly labeled as reference cost calculated with GPT-5.5 pricing. Cost mode is unavailable when the fallback thread source has no token split.
 - Shows recent and all-time project rankings with tokens, estimated value, thread counts, and recent activity.
 - Shows top tool calls and top Skill usage to explain the structure of local Codex work.
 - Runs as a standard macOS window with a compact default layout, resizing from 820 to 1280 points without changing card order or information structure, and restoration of the previous window size. It supports Dock, system window controls, minimization, and optional background running after the main window is closed; closing the main window hides the Dock icon and keeps the menu bar item.
@@ -146,10 +146,10 @@ make release-all
 Release artifacts are written to `dist/`, for example:
 
 ```text
-dist/codexU-1.2.0-mac-arm64.dmg
-dist/codexU-1.2.0-mac-arm64.dmg.sha256
-dist/codexU-1.2.0-mac-x86_64.dmg
-dist/codexU-1.2.0-mac-x86_64.dmg.sha256
+dist/codexU-1.2.1-mac-arm64.dmg
+dist/codexU-1.2.1-mac-arm64.dmg.sha256
+dist/codexU-1.2.1-mac-x86_64.dmg
+dist/codexU-1.2.1-mac-x86_64.dmg.sha256
 ```
 
 For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md).

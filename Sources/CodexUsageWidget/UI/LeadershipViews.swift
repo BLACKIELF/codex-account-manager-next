@@ -213,9 +213,26 @@ struct OverviewFactTile: View {
     @Environment(\.colorScheme) private var colorScheme
 }
 
+enum LeadershipCommandRadiusLayout {
+    static let maximumVisibleAgentNodes = 12
+
+    static func ringCount(for level: Int) -> Int {
+        switch level {
+        case ...0: 0
+        case 1: 1
+        case 2...4: 2
+        default: 3
+        }
+    }
+
+    static func visibleNodeCount(agentCount: Int, ringCount: Int) -> Int {
+        guard ringCount > 0 else { return 0 }
+        return min(max(agentCount, 0), maximumVisibleAgentNodes)
+    }
+}
+
 private struct LeadershipCommandRadiusGraphic: View {
     @Environment(\.visualTokens) private var visualTokens
-    static let maximumVisibleAgentNodes = 12
 
     let level: Int
     let agentCount: Int
@@ -259,7 +276,10 @@ private struct LeadershipCommandRadiusGraphic: View {
             )
         }
 
-        let visibleNodeCount = min(max(agentCount, 0), Self.maximumVisibleAgentNodes)
+        let visibleNodeCount = LeadershipCommandRadiusLayout.visibleNodeCount(
+            agentCount: agentCount,
+            ringCount: ringCount
+        )
         for index in 0..<visibleNodeCount {
             let ringIndex = index % max(ringCount, 1)
             let nodesOnRing = (visibleNodeCount + ringCount - 1 - ringIndex) / ringCount
@@ -422,12 +442,7 @@ private struct LeadershipCommandRadiusGraphic: View {
     }
 
     private var ringCount: Int {
-        switch level {
-        case ...0: 0
-        case 1: 1
-        case 2...4: 2
-        default: 3
-        }
+        LeadershipCommandRadiusLayout.ringCount(for: level)
     }
 }
 

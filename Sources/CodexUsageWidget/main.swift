@@ -428,6 +428,7 @@ private struct ModelTokenPrice {
     let inputPerMillion: Double
     let cachedInputPerMillion: Double
     let outputPerMillion: Double
+    let usesReferencePricing: Bool
 }
 
 private struct SessionUsageSource {
@@ -1149,7 +1150,7 @@ final class UsageStore: ObservableObject {
 
 final class CodexUsageReader {
     private let fileManager = FileManager.default
-    private let localAnalyticsCacheVersion = 11
+    private let localAnalyticsCacheVersion = 12
     private let sessionUsageCacheVersion = 8
     private static let memorySessionUsageCacheLimit = 64
     private static let persistentSessionUsageCacheLimit = 1_024
@@ -3364,35 +3365,48 @@ func estimateStaticTokens(_ text: String) -> Int64 {
 private func modelTokenPrice(for model: String?) -> ModelTokenPrice {
     let normalized = (model ?? "").lowercased()
 
+    if normalized.contains("gpt-5.6-sol") || normalized == "gpt-5.6" {
+        return ModelTokenPrice(model: "gpt-5.6-sol", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: false)
+    }
+    if normalized.contains("gpt-5.6-terra") {
+        return ModelTokenPrice(model: "gpt-5.6-terra", inputPerMillion: 2, cachedInputPerMillion: 0.2, outputPerMillion: 12, usesReferencePricing: false)
+    }
+    if normalized.contains("gpt-5.6-luna") {
+        return ModelTokenPrice(model: "gpt-5.6-luna", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.2, usesReferencePricing: false)
+    }
     if normalized.contains("gpt-5.5-pro") {
-        return ModelTokenPrice(model: "gpt-5.5-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180)
+        return ModelTokenPrice(model: "gpt-5.5-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.5") || normalized == "chat-latest" {
-        return ModelTokenPrice(model: "gpt-5.5", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30)
+        return ModelTokenPrice(model: "gpt-5.5", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.4-mini") {
-        return ModelTokenPrice(model: "gpt-5.4-mini", inputPerMillion: 0.75, cachedInputPerMillion: 0.075, outputPerMillion: 4.5)
+        return ModelTokenPrice(model: "gpt-5.4-mini", inputPerMillion: 0.75, cachedInputPerMillion: 0.075, outputPerMillion: 4.5, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.4-nano") {
-        return ModelTokenPrice(model: "gpt-5.4-nano", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.25)
+        return ModelTokenPrice(model: "gpt-5.4-nano", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.25, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.4-pro") {
-        return ModelTokenPrice(model: "gpt-5.4-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180)
+        return ModelTokenPrice(model: "gpt-5.4-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.4") {
-        return ModelTokenPrice(model: "gpt-5.4", inputPerMillion: 2.5, cachedInputPerMillion: 0.25, outputPerMillion: 15)
+        return ModelTokenPrice(model: "gpt-5.4", inputPerMillion: 2.5, cachedInputPerMillion: 0.25, outputPerMillion: 15, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.3-codex")
         || normalized.contains("gpt-5.2-codex")
         || normalized.contains("gpt-5.3-chat")
         || normalized.contains("gpt-5.2") {
-        return ModelTokenPrice(model: "gpt-5.2-codex", inputPerMillion: 1.75, cachedInputPerMillion: 0.175, outputPerMillion: 14)
+        return ModelTokenPrice(model: "gpt-5.2-codex", inputPerMillion: 1.75, cachedInputPerMillion: 0.175, outputPerMillion: 14, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5-codex") || normalized == "gpt-5" {
-        return ModelTokenPrice(model: "gpt-5", inputPerMillion: 1.25, cachedInputPerMillion: 0.125, outputPerMillion: 10)
+        return ModelTokenPrice(model: "gpt-5", inputPerMillion: 1.25, cachedInputPerMillion: 0.125, outputPerMillion: 10, usesReferencePricing: false)
     }
 
-    return ModelTokenPrice(model: "gpt-5.5", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30)
+    return ModelTokenPrice(model: "gpt-5.5", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: true)
+}
+
+func modelUsageUsesReferencePricing(_ model: String?) -> Bool {
+    modelTokenPrice(for: model).usesReferencePricing
 }
 
 func normalizedModelUsageName(_ model: String?) -> String? {
@@ -3418,6 +3432,46 @@ private func estimatedCostUSD(tokens: TokenBreakdown, price: ModelTokenPrice) ->
     let cachedInputCost = Double(tokens.billableCachedInputTokens) / 1_000_000 * price.cachedInputPerMillion
     let outputCost = Double(max(tokens.outputTokens, 0)) / 1_000_000 * price.outputPerMillion
     return uncachedInputCost + cachedInputCost + outputCost
+}
+
+private enum ModelPricingSelfTest {
+    static func run() -> Bool {
+        var failures: [String] = []
+        func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+            if !condition() { failures.append(message) }
+        }
+        func nearlyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+            abs(lhs - rhs) < 0.000_001
+        }
+
+        let sampleTokens = TokenBreakdown(
+            inputTokens: 1_000_000,
+            cachedInputTokens: 400_000,
+            outputTokens: 100_000,
+            reasoningOutputTokens: 0,
+            totalTokens: 1_100_000
+        )
+        let sol = modelTokenPrice(for: "gpt-5.6")
+        let terra = modelTokenPrice(for: "gpt-5.6-terra-2026-02-16")
+        let luna = modelTokenPrice(for: "GPT-5.6-LUNA")
+
+        expect(sol.model == "gpt-5.6-sol", "gpt-5.6 should resolve to gpt-5.6-sol")
+        expect(!sol.usesReferencePricing, "gpt-5.6 should use an explicit price")
+        expect(terra.model == "gpt-5.6-terra", "terra snapshots should preserve the terra price")
+        expect(luna.model == "gpt-5.6-luna", "luna matching should be case-insensitive")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: sol), 6.2), "Sol cached input estimate should use the split rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: terra), 2.48), "Terra should use the official standard API rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: luna), 0.248), "Luna should use the official standard API rates")
+        expect(!modelUsageUsesReferencePricing("gpt-5.6-luna"), "known GPT-5.6 models should not use reference pricing")
+        expect(modelUsageUsesReferencePricing("future-model"), "unknown models should retain reference pricing")
+
+        if failures.isEmpty {
+            print("model pricing self-test passed")
+            return true
+        }
+        failures.forEach { print("model pricing self-test failed: \($0)") }
+        return false
+    }
 }
 
 private func parseSimpleTOML(_ text: String) -> [String: String] {
@@ -7833,6 +7887,10 @@ struct ModelUsageAreaChartCard: View {
         }
     }
 
+    private var usesReferencePricing: Bool {
+        series.contains(where: \.usesReferencePricing)
+    }
+
     var body: some View {
         DashboardCard {
             VStack(alignment: .leading, spacing: dashboardCardContentSpacing) {
@@ -7861,7 +7919,10 @@ struct ModelUsageAreaChartCard: View {
                         Picker("", selection: $metric) {
                             Text(language.text("Token", "Tokens"))
                                 .tag(UsageTrendMetric.tokens)
-                            Text(language.text("估算费用", "Est. cost"))
+                            Text(language.text(
+                                usesReferencePricing ? "参考费用" : "估算费用",
+                                usesReferencePricing ? "Ref. cost" : "Est. cost"
+                            ))
                                 .tag(UsageTrendMetric.estimatedCostUSD)
                         }
                         .labelsHidden()
@@ -7927,6 +7988,12 @@ struct ModelUsageAreaChartCard: View {
 
     private var metricHelp: String {
         if costAvailable {
+            if usesReferencePricing {
+                return language.text(
+                    "部分模型没有独立价格，费用按 GPT-5.5 价格作参考折算；不代表官方账单。",
+                    "Some models have no dedicated price, so cost uses GPT-5.5 pricing as a reference; this is not an official bill."
+                )
+            }
             return language.text(
                 "切换每日 token 与 API 等效估算费用；费用不代表官方账单。",
                 "Switch between daily tokens and API-equivalent estimated cost; this is not an official bill."
@@ -8713,7 +8780,6 @@ struct ModelActivityOverviewCard: View {
     let trend: UsageTrend
     let language: WidgetLanguage
     let window: UsageTrendWindow
-    @Environment(\.visualTokens) private var visualTokens
 
     private var visibleBuckets: [UsageDayBucket] {
         ModelUsageAreaSeriesBuilder.dateBuckets(from: trend, window: window)
@@ -8760,7 +8826,7 @@ struct ModelActivityOverviewCard: View {
                     )
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: dashboardListRowSpacing) {
                     activityRow(
                         title: language.text("用量最高模型", "Top model"),
                         value: topModelSeries.map { modelUsageLabel($0.model, language: language) }
@@ -8809,11 +8875,10 @@ struct ModelActivityOverviewCard: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(dashboardRowPadding)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(visualTokens.data.zero.color.opacity(0.32))
+            RoundedRectangle(cornerRadius: dashboardRowCornerRadius, style: .continuous)
+                .fill(FixedVisualPalette.surfaceTrack.opacity(0.42))
         )
     }
 }
@@ -11614,6 +11679,10 @@ struct codexUMain {
 
         if CommandLine.arguments.contains("--self-test-token-counter") {
             exit(CodexTokenCounterNormalizerSelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-model-pricing") {
+            exit(ModelPricingSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-model-usage-trend") {

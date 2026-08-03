@@ -83,6 +83,10 @@ enum LeadershipModelSelfTest {
                 activeDays: 1,
                 evidenceCoverage: 0.69
             ) == nil
+        let commandRadiusHandlesMissingRank = LeadershipCommandRadiusLayout.ringCount(for: 0) == 0
+            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 1, ringCount: 0) == 0
+            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 12, ringCount: 3) == 12
+            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 13, ringCount: 3) == 12
 
         let passed = oneDayScore != nil
             && oneDayScore! <= 33
@@ -97,6 +101,7 @@ enum LeadershipModelSelfTest {
             && autonomyPositive
             && rootAutonomy == 0
             && confidenceSeparate
+            && commandRadiusHandlesMissingRank
         print(passed ? "leadership model self-test passed" : "leadership model self-test failed")
         return passed
     }
