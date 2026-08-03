@@ -125,7 +125,7 @@ private struct InferencePerformanceScatterPlot: View {
                     pointLabel(
                         group,
                         color: color,
-                        medianX: medianX,
+                        p90X: p90X,
                         y: y,
                         plotWidth: width,
                         isHovered: isHovered
@@ -222,20 +222,16 @@ private struct InferencePerformanceScatterPlot: View {
     private func pointLabel(
         _ group: ModelInferencePerformanceGroup,
         color: Color,
-        medianX: CGFloat,
+        p90X: CGFloat,
         y: CGFloat,
         plotWidth: CGFloat,
         isHovered: Bool
     ) -> some View {
-        let placeBefore = medianX > plotLeft + plotWidth * 0.72
+        let labelRightX = min(max(p90X, plotLeft), plotLeft + plotWidth)
+        let labelTop = max(plotTop, y - 20)
         return HStack(spacing: 4) {
-            if placeBefore {
-                labelText(group)
-                Circle().fill(color).frame(width: 5, height: 5)
-            } else {
-                Circle().fill(color).frame(width: 5, height: 5)
-                labelText(group)
-            }
+            Circle().fill(color).frame(width: 5, height: 5)
+            labelText(group)
         }
         .padding(.horizontal, 5)
         .padding(.vertical, 3)
@@ -244,10 +240,8 @@ private struct InferencePerformanceScatterPlot: View {
                 .fill(isHovered ? color.opacity(0.18) : FixedVisualPalette.surfaceTrack.opacity(0.58))
         )
         .fixedSize()
-        .position(
-            x: medianX + (placeBefore ? -54 : 54),
-            y: y
-        )
+        .frame(width: labelRightX, alignment: .trailing)
+        .offset(y: labelTop)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pointAccessibilityLabel(group))
@@ -304,7 +298,7 @@ private struct InferencePerformanceScatterPlot: View {
 
     private func bubbleDiameter(callCount: Int, maximumCalls: Int) -> CGFloat {
         let normalized = sqrt(Double(callCount) / Double(maximumCalls))
-        return 9 + CGFloat(normalized) * 11
+        return 7 + CGFloat(normalized) * 9
     }
 
     private func updateHover(
