@@ -688,6 +688,224 @@ body {
     min-height: 0;
   }
 
+  .dashboard-home-primary-card {
+    min-height: 100%;
+  }
+
+  .dashboard-overview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.65rem;
+  }
+
+  .dashboard-overview-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .dashboard-overview-heading > div {
+    min-width: 0;
+  }
+
+  .dashboard-overview-heading h3 {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 0.75rem;
+    font-weight: 750;
+    line-height: 1.15;
+  }
+
+  .dashboard-overview-heading p {
+    overflow: hidden;
+    margin: 0.18rem 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.62rem;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-overview-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.65rem;
+    height: 1.65rem;
+    border: 1px solid color-mix(in oklab, var(--accent) 34%, var(--border));
+    border-radius: 0.6rem;
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 10%, var(--surface-inset));
+  }
+
+  .dashboard-overview-status {
+    max-width: 7.5rem;
+    padding: 0.18rem 0.42rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 88%, transparent);
+    border-radius: 999px;
+    color: var(--text-tertiary);
+    background: var(--surface-inset);
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.15;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dashboard-overview-status-confirmed {
+    border-color: color-mix(in oklab, var(--status-ok) 32%, var(--border));
+    color: var(--status-ok);
+    background: color-mix(in oklab, var(--status-ok) 9%, var(--surface-inset));
+  }
+
+  .quota-overview-state {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 10rem;
+    margin-top: 0.35rem;
+    padding: 0.7rem;
+    border: 1px solid color-mix(in oklab, var(--border) 78%, transparent);
+    border-radius: 0.85rem;
+    color: var(--text-tertiary);
+    background: color-mix(in oklab, var(--surface-inset) 74%, transparent);
+    text-align: center;
+  }
+
+  .quota-overview-state > svg {
+    flex: 0 0 auto;
+    color: var(--accent);
+  }
+
+  .quota-overview-state-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .quota-overview-state-copy > svg {
+    flex: 0 0 auto;
+    width: 3rem;
+    height: 3rem;
+    padding: 0.72rem;
+    border: 1px solid color-mix(in oklab, var(--accent) 32%, var(--border));
+    border-radius: 999px;
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 10%, var(--surface));
+  }
+
+  .quota-overview-state-confirmed > .quota-overview-state-copy > svg {
+    border-color: color-mix(in oklab, var(--status-ok) 32%, var(--border));
+    color: var(--status-ok);
+    background: color-mix(in oklab, var(--status-ok) 9%, var(--surface));
+  }
+
+  .quota-overview-state-copy > div {
+    min-width: 0;
+  }
+
+  .quota-overview-state strong {
+    display: block;
+    color: var(--text-primary);
+    font-size: 0.76rem;
+    font-weight: 750;
+    line-height: 1.25;
+  }
+
+  .quota-overview-state p {
+    margin: 0.2rem 0 0;
+    color: var(--text-tertiary);
+    font-size: 0.62rem;
+    line-height: 1.3;
+  }
+
+  .quota-overview-refresh {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 0.3rem;
+    margin-left: auto;
+    padding: 0.35rem 0.52rem;
+    font-size: 0.6rem;
+    white-space: nowrap;
+  }
+
+  .quota-overview-state-empty {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .quota-overview-state-empty .quota-overview-refresh {
+    align-self: center;
+    margin-left: 0;
+  }
+
+  .quota-overview-windows {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.25rem;
+  }
+
+  .quota-overview-window {
+    padding: 0.55rem 0.65rem;
+    border: 1px solid color-mix(in oklab, var(--border) 76%, transparent);
+    border-radius: 0.75rem;
+    background: color-mix(in oklab, var(--surface-inset) 70%, transparent);
+  }
+
+  .quota-overview-window-heading,
+  .quota-overview-window-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .quota-overview-window-heading {
+    color: var(--text-secondary);
+    font-size: 0.64rem;
+  }
+
+  .quota-overview-window-heading strong {
+    color: var(--text-primary);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .quota-overview-track {
+    height: 0.42rem;
+    margin-top: 0.42rem;
+    overflow: hidden;
+    border: 1px solid color-mix(in oklab, var(--border) 72%, transparent);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--surface) 86%, var(--text-tertiary));
+  }
+
+  .quota-overview-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--quota-primary-start), var(--quota-primary-end));
+    box-shadow: 0 4px 14px -8px color-mix(in oklab, var(--accent) 70%, transparent);
+    transition: width 180ms ease;
+  }
+
+  .quota-overview-window-meta {
+    margin-top: 0.35rem;
+    color: var(--text-tertiary);
+    font-size: 0.58rem;
+  }
+
   .usage-panel-heading {
     display: flex;
     align-items: flex-start;
@@ -911,7 +1129,7 @@ body {
   .dashboard-home-overview {
     grid-template-columns: minmax(154px, 0.72fr) minmax(154px, 0.72fr) minmax(0, 2.1fr);
     grid-template-areas: "command quota metrics" "command quota month";
-    align-items: start;
+    align-items: stretch;
   }
 
   .dashboard-home.space-y-4 {

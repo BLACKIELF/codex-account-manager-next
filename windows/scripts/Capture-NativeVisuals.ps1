@@ -619,7 +619,7 @@ function Get-PreflightManifest {
     activation_mode = 'non-activating'
     foreground_policy = 'preserve active window'
     z_order_policy = 'background'
-    startup_window_mode = 'visible non-activating capture window'
+    startup_window_mode = 'hidden until explicitly shown; background activation forbidden'
     capture_argument = '--codexu-native-capture-background'
     taskbar_policy = 'excluded'
     alt_tab_policy = 'excluded'
@@ -931,19 +931,39 @@ function Get-ExactExecutableProcesses {
 }
 
 function Wait-TaskWindow {
-  param([System.Diagnostics.Process] $Process)
+  param(
+    [System.Diagnostics.Process] $Process,
+    [IntPtr] $ExpectedForeground
+  )
   $deadline = (Get-Date).AddSeconds(60)
   do {
     if ($Process.HasExited) {
       throw 'The task application exited before its main window was ready.'
     }
-    Start-Sleep -Milliseconds 200
+    Start-Sleep -Milliseconds 25
+    Assert-ForegroundPreserved `
+      -ExpectedForeground $ExpectedForeground `
+      -Stage 'startup polling before window preparation'
     $Process.Refresh()
   } while ($Process.MainWindowHandle -eq [IntPtr]::Zero -and (Get-Date) -lt $deadline)
   if ($Process.MainWindowHandle -eq [IntPtr]::Zero) {
     throw 'Timed out waiting for the task application main window.'
   }
   return $Process.MainWindowHandle
+}
+
+function Assert-ForegroundPreserved {
+  param(
+    [IntPtr] $ExpectedForeground,
+    [string] $Stage
+  )
+  if ($ExpectedForeground -eq [IntPtr]::Zero) {
+    return
+  }
+  $actualForeground = [NativeVisualCaptureDriver]::GetForegroundWindowHandle()
+  if ($actualForeground -ne $ExpectedForeground) {
+    throw "Background capture changed the active foreground window during $Stage."
+  }
 }
 
 function Find-ElementByAutomationId {
@@ -983,7 +1003,7 @@ function Select-DashboardTab {
     [System.Windows.Automation.SelectionItemPattern]::Pattern
   )
   $pattern.Select()
-  [void](Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 8)
+  [void](Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 20)
 }
 
 function Move-DashboardScrollToTop {
@@ -1016,13 +1036,29 @@ function Move-RendererToLeft {
   Start-Sleep -Milliseconds 250
 }
 
+$script:dashboardPanelElementCache = @{}
+
 function Get-DashboardPanelObservation {
   param(
     [IntPtr] $Window,
     [string] $PanelId
   )
   $client = Get-ClientScreenBounds -Window $Window
-  $panel = Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 5
+  # WebView2 can briefly rebuild the accessibility subtree after a wheel scroll.
+  # Keep this wait bounded, but do not treat that normal rebuild window as a
+  # missing Dashboard panel.
+  try {
+    $panel = Wait-ForElement -Window $Window -AutomationId $PanelId -TimeoutSeconds 20
+    $script:dashboardPanelElementCache[$PanelId] = $panel
+  } catch {
+    if (-not $script:dashboardPanelElementCache.ContainsKey($PanelId)) {
+      throw
+    }
+    # WebView2 may replace the accessibility node while processing a wheel
+    # event. The first successful AutomationElement remains a valid live
+    # provider for Current.BoundingRectangle during that transition.
+    $panel = $script:dashboardPanelElementCache[$PanelId]
+  }
   $panelRect = $panel.Current.BoundingRectangle
   $panelVisible = (
     -not $panel.Current.IsOffscreen -and
@@ -1373,7 +1409,12 @@ function Invoke-MaximizedCapture {
     $stderrTask = $process.StandardError.ReadToEndAsync()
     Update-TaskProcessRecords -RootProcessId $process.Id -Records $records
 
-    $window = Wait-TaskWindow -Process $process
+    $window = Wait-TaskWindow `
+      -Process $process `
+      -ExpectedForeground $foregroundBefore
+    Assert-ForegroundPreserved `
+      -ExpectedForeground $foregroundBefore `
+      -Stage 'startup before window preparation'
     $sizeRecord.window = Set-MaximizedWindow `
       -Window $window `
       -ExpectedForeground $foregroundBefore
@@ -1514,7 +1555,7 @@ $script:workflowManifest = [ordered]@{
   activation_mode = 'non-activating'
   foreground_policy = 'preserve active window'
   z_order_policy = 'background'
-  startup_window_mode = 'visible non-activating capture window'
+  startup_window_mode = 'hidden until explicitly shown; background activation forbidden'
   capture_argument = '--codexu-native-capture-background'
   taskbar_policy = 'excluded'
   alt_tab_policy = 'excluded'

@@ -1,60 +1,10 @@
-﻿import type { ThemeMode } from '../types/settings';
-import lightTokens from '../../../../../../Resources/Palettes/codexu.default/tokens/light.json';
-import darkTokens from '../../../../../../Resources/Palettes/codexu.default/tokens/dark.json';
-
-type PaletteTokens = {
-  accent: {
-    primary: string;
-    primaryStrong: string;
-    primaryLight: string;
-    secondary: string;
-    secondaryStrong: string;
-    highlight: string;
-  };
-  quota: {
-    primary: {
-      start: string;
-      end: string;
-      track: string;
-      label: string;
-    };
-    secondary: {
-      start: string;
-      end: string;
-      track: string;
-      label: string;
-    };
-  };
-  data: {
-    tokenInput: string;
-    tokenCached: string;
-    tokenOutput: string;
-    zero?: string;
-    series: string[];
-    modelSeries: string[];
-    heatmap: string[];
-    valueProgress: string[];
-    milestones: string[];
-    tokenInputLabel?: string;
-  };
-  selection: {
-    foreground: string;
-    fill: string;
-    stroke: string;
-    focusRing: string;
-  };
-  ornament: {
-    ink: string;
-    inkSoft: string;
-    secondaryInk: string;
-    highlight: string;
-    metal: string;
-  };
-  surfaceTint: {
-    color: string;
-    maximumOpacity: number;
-  };
-};
+import type { ThemeMode } from '../types/settings';
+import {
+  DEFAULT_PALETTE_ID,
+  resolvePalette,
+  type PaletteId,
+  type PaletteTokens,
+} from './paletteCatalog';
 
 const FIXED_VISUAL_TOKENS = {
   light: {
@@ -102,14 +52,24 @@ const clampHexAlpha = (hex: string, alpha: number): string => {
     .toUpperCase()}`;
 };
 
-const applyPaletteVariables = (theme: ThemeMode) => {
+const applySeriesVariables = (root: HTMLElement, palette: PaletteTokens) => {
+  palette.data.series.forEach((color, index) => {
+    root.style.setProperty(`--data-series-${index + 1}`, color);
+  });
+  palette.data.modelSeries.forEach((color, index) => {
+    root.style.setProperty(`--data-model-${index + 1}`, color);
+  });
+};
+
+const applyPaletteVariables = (theme: ThemeMode, paletteId: PaletteId) => {
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   const isDark = theme === 'dark' || (theme === 'system' && prefersDark);
-  const palette = (isDark ? darkTokens : lightTokens) as PaletteTokens;
-
+  const paletteDescriptor = resolvePalette(paletteId);
+  const palette = (isDark ? paletteDescriptor.dark : paletteDescriptor.light) as PaletteTokens;
   const root = document.documentElement;
 
   root.classList.toggle('dark', isDark);
+  root.dataset.palette = paletteDescriptor.id;
 
   root.style.setProperty('--accent', palette.accent.primary);
   root.style.setProperty('--accent-secondary', palette.accent.secondary);
@@ -128,11 +88,12 @@ const applyPaletteVariables = (theme: ThemeMode) => {
   root.style.setProperty('--data-primary', palette.data.tokenInput);
   root.style.setProperty('--data-secondary', palette.data.tokenCached);
   root.style.setProperty('--data-tertiary', palette.data.tokenOutput);
-  root.style.setProperty('--data-series-1', palette.data.series[0] ?? palette.data.tokenInput);
-  root.style.setProperty('--data-series-2', palette.data.series[1] ?? palette.data.tokenCached);
-  root.style.setProperty('--data-series-3', palette.data.series[2] ?? palette.data.tokenOutput);
   root.style.setProperty('--data-zero', palette.data.zero ?? 'transparent');
-  root.style.setProperty('--data-heatmap-strong', palette.data.heatmap?.[palette.data.heatmap.length - 1] ?? clampHexAlpha(palette.accent.primary, 0.96));
+  root.style.setProperty(
+    '--data-heatmap-strong',
+    palette.data.heatmap?.[palette.data.heatmap.length - 1] ?? clampHexAlpha(palette.accent.primary, 0.96),
+  );
+  applySeriesVariables(root, palette);
 
   root.style.setProperty('--selection-foreground', palette.selection.foreground);
   root.style.setProperty('--selection-fill', palette.selection.fill);
@@ -144,9 +105,10 @@ const applyPaletteVariables = (theme: ThemeMode) => {
   root.style.setProperty('--ornament-secondary', palette.ornament.secondaryInk);
   root.style.setProperty('--ornament-highlight', palette.ornament.highlight);
   root.style.setProperty('--ornament-metal', palette.ornament.metal);
+  root.style.setProperty('--palette-surface-tint', palette.surfaceTint.color);
+  root.style.setProperty('--palette-surface-tint-opacity', String(palette.surfaceTint.maximumOpacity));
 
   const paletteVisual = isDark ? FIXED_VISUAL_TOKENS.dark : FIXED_VISUAL_TOKENS.light;
-
   root.style.setProperty('--surface', paletteVisual.surface);
   root.style.setProperty('--surface-elevated', paletteVisual.surfaceElevated);
   root.style.setProperty('--surface-elevated-strong', paletteVisual.surfaceElevatedStrong);
@@ -162,6 +124,6 @@ const applyPaletteVariables = (theme: ThemeMode) => {
   root.style.setProperty('--page-bg', paletteVisual.pageBg);
 };
 
-export function applyAppTheme(theme: ThemeMode) {
-  applyPaletteVariables(theme);
+export function applyAppTheme(theme: ThemeMode, paletteId: PaletteId = DEFAULT_PALETTE_ID) {
+  applyPaletteVariables(theme, paletteId);
 }

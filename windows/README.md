@@ -1,10 +1,18 @@
-# Phase 2：Codex RuntimeProvider（当前）
+# Windows 版本：Phase 4 Dashboard UI（当前）
 
-在 Phase 1 基础上读取 `state_5.sqlite` 补充线程元数据：
+当前 checkout 已包含 Phase 1/2 的本地数据管线和 Phase 4 Dashboard UI：
+
+- Rust reader 读取本机 Codex transcript、`state_5.sqlite` 和 automation 元数据
+- Tauri IPC、额度状态、用量、任务、项目、Skills 和 AI Leadership Dashboard
+- 中英文设置、Light/Dark/System 外观和六套语义 palette catalog
+- Windows 原生 exact-HWND、后台不抢前台的视觉采集 workflow
+
+任务快照读取并展示：
 
 - 线程标题、项目路径、模型、归档状态、Git 信息
 - SQLite 读取失败时自动降级为 JSONL-only
-- 标题自动截断到 200 字符，避免保存完整 prompt
+- 标题优先使用 `title`，为空时回退到 `preview`，展示前归一化并截断到 48 个字符
+- 工作区只展示路径尾名，automation 优先使用配置中的 `name`
 
 ## 快速开始
 
@@ -102,6 +110,9 @@ windows/
             └── main.rs                    ← CLI 入口
 ```
 
-## 下一步
+## 下一阶段（只记录，不实施）
 
-进入 Phase 4：Windows UI（跳过 Phase 3 Claude Code provider）。
+- 定义 prompt-like session 标题、完整路径和敏感片段的脱敏策略。
+- 对默认蓝紫、一套冷色和一套暖色做 Light/Dark 原生视觉矩阵。
+- 补齐 Settings、空数据、错误状态和长中文标题的原生验收。
+- 单独处理 Windows 安装包、签名、更新器和发布流程。

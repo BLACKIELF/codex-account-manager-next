@@ -5,6 +5,7 @@ import { DashboardHome } from '../components/DashboardHome';
 import { useSettings } from '../hooks/useSettings';
 import { useUsage } from '../hooks/useUsage';
 import { applyAppTheme } from '../utils/appTheme';
+import { DEFAULT_PALETTE_ID } from '../utils/paletteCatalog';
 import { useI18n } from '../i18n/I18nProvider';
 
 export function Dashboard() {
@@ -13,8 +14,11 @@ export function Dashboard() {
   const { settings, update } = useSettings();
 
   useEffect(() => {
-    applyAppTheme(settings?.config.theme ?? 'system');
-  }, [settings?.config.theme]);
+    applyAppTheme(
+      settings?.config.theme ?? 'system',
+      settings?.config.palette_id ?? DEFAULT_PALETTE_ID,
+    );
+  }, [settings?.config.theme, settings?.config.palette_id]);
 
   const localUsage = dashboard?.codex?.snapshot?.local ?? null;
   const lastUpdated =
@@ -33,7 +37,7 @@ export function Dashboard() {
 
   const handleThemeChange = async (theme: 'system' | 'light' | 'dark') => {
     await update({ theme });
-    applyAppTheme(theme);
+    applyAppTheme(theme, settings?.config.palette_id ?? DEFAULT_PALETTE_ID);
   };
 
   if (error) {

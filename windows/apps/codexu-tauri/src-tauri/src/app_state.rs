@@ -25,6 +25,9 @@ pub struct AppConfig {
     /// Theme preference.
     #[serde(default)]
     pub theme: ThemeMode,
+    /// Semantic color palette identifier.
+    #[serde(default = "default_palette_id")]
+    pub palette_id: String,
     /// Auto-refresh interval in seconds.
     #[serde(default = "default_refresh_interval_secs")]
     pub refresh_interval_secs: u64,
@@ -45,6 +48,7 @@ impl Default for AppConfig {
                 .unwrap_or_else(|| home.join(".cache"))
                 .join("codexU"),
             theme: ThemeMode::System,
+            palette_id: default_palette_id(),
             refresh_interval_secs: default_refresh_interval_secs(),
             tray_density: TrayDensity::Classic,
             language: InterfaceLanguage::Auto,
@@ -54,6 +58,10 @@ impl Default for AppConfig {
 
 fn default_refresh_interval_secs() -> u64 {
     60
+}
+
+fn default_palette_id() -> String {
+    "codexu.default".to_string()
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -430,6 +438,7 @@ mod tests {
 
         let config = AppConfig::load(&app_data_dir);
         assert_eq!(config.language, InterfaceLanguage::Auto);
+        assert_eq!(config.palette_id, "codexu.default");
     }
 
     fn create_snapshot(now: DateTime<Utc>) -> CodexDashboardSnapshot {
@@ -573,6 +582,7 @@ mod tests {
                     codex_root: old_root.clone(),
                     cache_dir: cache_dir.clone(),
                     theme: ThemeMode::System,
+                    palette_id: "codexu.default".to_string(),
                     refresh_interval_secs: 60,
                     tray_density: TrayDensity::Classic,
                     language: InterfaceLanguage::Auto,

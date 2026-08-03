@@ -17,7 +17,6 @@ use crate::models::{TaskBoard, TaskColumn, TaskItem};
 
 const ACTIVE_WINDOW: Duration = Duration::hours(2);
 const MAX_AUTOMATION_SCAN_DEPTH: usize = 3;
-const THREAD_ACTIVITY_TITLE: &str = "Codex activity";
 
 /// Reads only local Codex task state appropriate for presentation.
 pub struct CodexTaskBoardReader {
@@ -45,6 +44,9 @@ impl CodexTaskBoardReader {
 #[derive(Debug)]
 struct ThreadRecord {
     id: String,
+    title: Option<String>,
+    preview: Option<String>,
+    cwd: Option<String>,
     activity_at: Option<DateTime<Utc>>,
     archived_at: Option<DateTime<Utc>>,
     archived: bool,
@@ -53,6 +55,7 @@ struct ThreadRecord {
 #[derive(Debug, Default)]
 struct AutomationRecord {
     id: String,
+    name: String,
     detail: String,
     chip: String,
 }
@@ -100,6 +103,21 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     } else {
         "NULL"
     };
+    let title_expr = if columns.contains("title") {
+        "title"
+    } else {
+        "NULL"
+    };
+    let preview_expr = if columns.contains("preview") {
+        "preview"
+    } else {
+        "NULL"
+    };
+    let cwd_expr = if columns.contains("cwd") {
+        "cwd"
+    } else {
+        "NULL"
+    };
     let archived_at_expr = if columns.contains("archived_at") {
         "archived_at"
     } else {
@@ -107,7 +125,7 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     };
 
     let active_query = format!(
-        "SELECT id, updated_at, {recency_expr}, created_at
+        "SELECT id, {title_expr}, {preview_expr}, {cwd_expr}, updated_at, {recency_expr}, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 0
            {source_clause}
@@ -115,7 +133,7 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
          ORDER BY MAX(COALESCE({recency_expr}, 0), COALESCE(updated_at, 0), COALESCE(created_at, 0)) DESC"
     );
     let archived_query = format!(
-        "SELECT id, {archived_at_expr}, updated_at, created_at
+        "SELECT id, {title_expr}, {preview_expr}, {cwd_expr}, {archived_at_expr}, updated_at, created_at
          FROM threads
          WHERE COALESCE(archived, 0) = 1
            {source_clause}
@@ -128,10 +146,13 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let active_rows = active_statement.query_map([day_start], |row| {
         Ok(ThreadRecord {
             id: row.get(0)?,
+            title: row.get(1)?,
+            preview: row.get(2)?,
+            cwd: row.get(3)?,
             activity_at: latest_timestamp([
-                row.get::<_, Option<i64>>(1)?,
-                row.get::<_, Option<i64>>(2)?,
-                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+                row.get::<_, Option<i64>>(5)?,
+                row.get::<_, Option<i64>>(6)?,
             ]),
             archived_at: None,
             archived: false,
@@ -144,12 +165,15 @@ fn read_thread_records(path: &Path, now: DateTime<Utc>) -> Result<Vec<ThreadReco
     let mut archived_statement = connection.prepare(&archived_query)?;
     let archived_rows = archived_statement.query_map([day_start], |row| {
         let archived_at = latest_timestamp([
-            row.get::<_, Option<i64>>(1)?,
-            row.get::<_, Option<i64>>(2)?,
-            row.get::<_, Option<i64>>(3)?,
+            row.get::<_, Option<i64>>(4)?,
+            row.get::<_, Option<i64>>(5)?,
+            row.get::<_, Option<i64>>(6)?,
         ]);
         Ok(ThreadRecord {
             id: row.get(0)?,
+            title: row.get(1)?,
+            preview: row.get(2)?,
+            cwd: row.get(3)?,
             activity_at: archived_at,
             archived_at,
             archived: true,
@@ -202,8 +226,8 @@ fn build_task_board(
         .into_iter()
         .map(|automation| TaskItem {
             id: opaque_task_id("automation", &automation.id),
-            code: "LOCAL-AUTOMATION".to_string(),
-            title: "Local Codex automation".to_string(),
+            code: format!("AUTO-{}", short_task_token(&automation.id)[..4].to_string()),
+            title: automation.name,
             detail: automation.detail,
             chip: automation.chip,
             updated_at: None,
@@ -249,16 +273,13 @@ fn thread_task_item(
     TaskItem {
         id: opaque_task_id(kind, &record.id),
         code: "LOCAL-THREAD".to_string(),
-        // `threads.title` is a user/session label and has no provenance that
-        // proves it is safe agent-generated task text. Keep the activity card
-        // and its factual state while using a non-content label at this boundary.
-        title: THREAD_ACTIVITY_TITLE.to_string(),
-        detail: String::new(),
+        title: normalize_task_title(record.title.as_deref(), record.preview.as_deref()),
+        detail: short_workspace_name(record.cwd.as_deref()),
         chip: display_state.to_string(),
         updated_at: factual_time,
         tokens: None,
         kind: kind.to_string(),
-        thread_id: None,
+        thread_id: Some(record.id.clone()),
         runtime_state: "recorded".to_string(),
         source_kind: "codexThread".to_string(),
         display_state: display_state.to_string(),
@@ -275,6 +296,36 @@ fn task_column(id: &str, title: &str, items: Vec<TaskItem>) -> TaskColumn {
         count: items.len() as i64,
         items,
     }
+}
+
+fn short_task_token(source_id: &str) -> String {
+    let hash = source_id.bytes().fold(0x811c9dc5_u32, |hash, byte| {
+        (hash ^ u32::from(byte)).wrapping_mul(0x01000193)
+    });
+    format!("{:06X}", hash & 0x00FF_FFFF)
+}
+
+fn normalize_task_title(title: Option<&str>, fallback: Option<&str>) -> String {
+    let raw = [title, fallback]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .unwrap_or("Untitled");
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() <= 48 {
+        return normalized;
+    }
+    format!("{}...", normalized.chars().take(45).collect::<String>())
+}
+
+fn short_workspace_name(path: Option<&str>) -> String {
+    path.unwrap_or("")
+        .trim()
+        .rsplit(['\\', '/'])
+        .find(|part| !part.is_empty())
+        .unwrap_or("")
+        .to_string()
 }
 
 fn sort_task_items(items: &mut [TaskItem]) {
@@ -319,6 +370,7 @@ fn find_automation_files(directory: &Path, depth: usize, files: &mut Vec<PathBuf
 
 fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
     let mut id = None;
+    let mut name = None;
     let mut status = None;
     let mut kind = None;
     let mut rrule = None;
@@ -332,6 +384,7 @@ fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
         let value = value.trim().trim_matches('"').trim_matches('\'').trim();
         match key.trim() {
             "id" => id = non_empty(value),
+            "name" => name = non_empty(value),
             "status" => status = non_empty(value),
             "kind" => kind = non_empty(value),
             "rrule" => rrule = non_empty(value),
@@ -351,6 +404,7 @@ fn parse_active_automation(contents: &str) -> Option<AutomationRecord> {
 
     let id = id.map(str::to_owned).unwrap_or_else(|| "local".to_string());
     Some(AutomationRecord {
+        name: name.map(str::to_owned).unwrap_or_else(|| id.clone()),
         id,
         detail: if is_heartbeat {
             "Active heartbeat".to_string()

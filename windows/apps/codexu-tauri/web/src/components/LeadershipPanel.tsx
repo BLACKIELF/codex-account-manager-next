@@ -85,13 +85,13 @@ export function LeadershipOverviewCard({
 
   return (
     <button
-      className="dashboard-home-command glass-panel p-4 leadership-overview-card"
+      className="dashboard-home-command dashboard-home-primary-card glass-panel p-4 leadership-overview-card"
       type="button"
       onClick={onOpen}
       aria-controls="dashboard-home-panel-leadership"
       aria-label={accessibilityLabel}
     >
-      <div className="leadership-overview-header">
+      <div className="dashboard-overview-header leadership-overview-header">
         <span>{t('leadership.title')}</span>
         <span className="leadership-period-badge">{t('leadership.period')}</span>
       </div>

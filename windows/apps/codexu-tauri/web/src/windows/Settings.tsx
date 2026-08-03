@@ -1,22 +1,30 @@
 import { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { FolderOpen, RefreshCw, Trash2 } from 'lucide-react';
+import { FolderOpen, Palette, RefreshCw, Trash2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useSettings } from '../hooks/useSettings';
 import type { InterfaceLanguage, ThemeMode, TrayDensity } from '../types/settings';
 import { isTauriRuntimeAvailable, requireTauriRuntime } from '../utils/tauri';
 import { applyAppTheme } from '../utils/appTheme';
+import {
+  DEFAULT_PALETTE_ID,
+  PALETTE_CATALOG,
+  type PaletteId,
+} from '../utils/paletteCatalog';
 import { useI18n } from '../i18n/I18nProvider';
 
 export function Settings() {
   const canInvokeTauri = isTauriRuntimeAvailable();
   const { settings, update, error } = useSettings();
-  const { t, preference, setPreference } = useI18n();
+  const { t, language, preference, setPreference } = useI18n();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    applyAppTheme(settings?.config.theme ?? 'system');
-  }, [settings?.config.theme]);
+    applyAppTheme(
+      settings?.config.theme ?? 'system',
+      settings?.config.palette_id ?? DEFAULT_PALETTE_ID,
+    );
+  }, [settings?.config.theme, settings?.config.palette_id]);
 
   if (!settings) {
     if (error) {
@@ -77,7 +85,18 @@ export function Settings() {
 
     await runUpdate(async () => {
       await update({ theme });
-      applyAppTheme(theme);
+      applyAppTheme(theme, config.palette_id ?? DEFAULT_PALETTE_ID);
+    });
+  };
+
+  const handlePalette = async (palette_id: PaletteId) => {
+    if (!canInvokeTauri) {
+      return;
+    }
+
+    await runUpdate(async () => {
+      await update({ palette_id });
+      applyAppTheme(config.theme, palette_id);
     });
   };
 
@@ -179,6 +198,47 @@ export function Settings() {
                       : t('common.system')}
                 </button>
               ))}
+            </div>
+            <div className="mt-5">
+              <div className="flex items-center gap-2 text-sm text-secondary mb-1">
+                <Palette size={14} />
+                <span>{t('settings.palette')}</span>
+              </div>
+              <p className="text-xs text-tertiary mb-3">{t('settings.paletteDescription')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                {PALETTE_CATALOG.map((palette) => {
+                  const selected = config.palette_id === palette.id;
+                  return (
+                    <button
+                      key={palette.id}
+                      onClick={() => handlePalette(palette.id)}
+                      disabled={!canInvokeTauri}
+                      className={`text-left rounded-xl px-3 py-2 transition-all ${
+                        selected ? 'glass-button-solid' : 'text-secondary glass-button'
+                      }`}
+                      aria-pressed={selected}
+                    >
+                      <span className="flex items-center gap-1.5 mb-1" aria-hidden="true">
+                        {[palette.light.accent.primary, palette.light.accent.secondary, palette.light.accent.highlight].map(
+                          (color) => (
+                            <span
+                              key={color}
+                              className="w-3 h-3 rounded-full border border-white/50"
+                              style={{ backgroundColor: color }}
+                            />
+                          ),
+                        )}
+                      </span>
+                      <span className="block text-xs font-medium">
+                        {palette.displayName[language]}
+                      </span>
+                      <span className="block text-[11px] text-tertiary mt-0.5">
+                        {palette.shortDescription[language]}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="mt-4">
               <p className="block text-sm text-secondary mb-2">{t('settings.interfaceLanguage')}</p>

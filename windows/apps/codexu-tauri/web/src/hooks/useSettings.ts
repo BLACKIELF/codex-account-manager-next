@@ -20,6 +20,7 @@ export function useSettings() {
       refresh_interval_secs: payload.refresh_interval_secs,
       tray_density: payload.tray_density,
       language: payload.language ?? 'auto',
+      palette_id: payload.palette_id ?? 'codexu.default',
     },
     app_data_dir: payload.app_data_dir,
   });

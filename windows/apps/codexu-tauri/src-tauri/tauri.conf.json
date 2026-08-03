@@ -20,7 +20,7 @@
         "minWidth": 720,
         "minHeight": 540,
         "center": true,
-        "visible": true,
+        "visible": false,
         "decorations": true,
         "transparent": false,
         "focus": false

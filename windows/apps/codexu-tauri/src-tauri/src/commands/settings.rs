@@ -61,6 +61,7 @@ pub struct UpdateSettingsRequest {
     pub codex_root: Option<PathBuf>,
     pub cache_dir: Option<PathBuf>,
     pub theme: Option<ThemeMode>,
+    pub palette_id: Option<String>,
     pub refresh_interval_secs: Option<u64>,
     pub tray_density: Option<TrayDensity>,
     pub language: Option<InterfaceLanguage>,
@@ -82,6 +83,12 @@ pub async fn set_settings(
             }
             if let Some(theme) = req.theme {
                 config.theme = theme;
+            }
+            if let Some(palette_id) = req.palette_id {
+                let palette_id = palette_id.trim();
+                if !palette_id.is_empty() {
+                    config.palette_id = palette_id.to_string();
+                }
             }
             if let Some(interval) = req.refresh_interval_secs {
                 config.refresh_interval_secs = interval.clamp(10, 3600);

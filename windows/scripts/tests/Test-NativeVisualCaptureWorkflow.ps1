@@ -18,12 +18,36 @@ function Assert-Sequence {
 
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $entry = Join-Path $repositoryRoot 'windows\scripts\Capture-NativeVisuals.ps1'
+$windowConfig = Join-Path $repositoryRoot 'windows\apps\codexu-tauri\src-tauri\tauri.conf.json'
+$mainSource = Join-Path $repositoryRoot 'windows\apps\codexu-tauri\src-tauri\src\main.rs'
 $powershell = (Get-Command powershell.exe -ErrorAction Stop).Source
 $preflightOutput = Join-Path $repositoryRoot (
   '.local-artifacts\windows-visual-captures\preflight-contract-' + [guid]::NewGuid().ToString('N')
 )
 
 Assert-True (Test-Path -LiteralPath $entry -PathType Leaf) 'The formal native visual capture entry point is missing.'
+Assert-True (Test-Path -LiteralPath $windowConfig -PathType Leaf) 'The Tauri window configuration is missing.'
+Assert-True (Test-Path -LiteralPath $mainSource -PathType Leaf) 'The Tauri startup source is missing.'
+
+$config = Get-Content -LiteralPath $windowConfig -Raw -Encoding UTF8 | ConvertFrom-Json
+$mainWindow = @($config.app.windows | Where-Object { $_.label -eq 'main' })[0]
+Assert-True ($null -ne $mainWindow) 'The Tauri main window configuration is missing.'
+Assert-True (-not [bool]$mainWindow.visible) 'The main window must be hidden until startup explicitly shows it.'
+Assert-True (-not [bool]$mainWindow.focus) 'The main window must not request focus during native capture startup.'
+$mainSourceText = Get-Content -LiteralPath $mainSource -Raw -Encoding UTF8
+Assert-True (
+  $mainSourceText -match '(?s)if background_capture.*?prepare_background_capture_window\(\&window\).*?show_background_capture_window\(\&window\).*?else.*?window\.show\(\).*?window\.set_focus\(\)'
+) 'Startup must use the native non-activating show path for capture, while only normal startup requests focus.'
+Assert-True (
+  $mainSourceText -match '(?s)fn show_background_capture_window.*?SW_SHOWNOACTIVATE.*?HWND_BOTTOM.*?SWP_NOACTIVATE'
+) 'Background startup must show the exact HWND with Win32 non-activation flags before the capture workflow can observe it.'
+$backgroundBranch = [regex]::Match(
+  $mainSourceText,
+  '(?s)if background_capture\s*\{.*?\}\s*else'
+).Value
+Assert-True (
+  $backgroundBranch -notmatch 'window\.show\(\)'
+) 'Background startup must not call Tauri window.show, because that asynchronous path can activate the window before z-order correction.'
 
 $output = @(
   & $powershell -NoProfile -ExecutionPolicy Bypass -File $entry `
@@ -55,8 +79,8 @@ Assert-True (
   $manifest.z_order_policy -eq 'background'
 ) 'Preflight did not require background window layering.'
 Assert-True (
-  $manifest.startup_window_mode -eq 'visible non-activating capture window'
-) 'Preflight did not require a visible but non-activating capture window.'
+  $manifest.startup_window_mode -eq 'hidden until explicitly shown; background activation forbidden'
+) 'Preflight did not require hidden startup with explicit background activation protection.'
 Assert-True (
   $manifest.capture_argument -eq '--codexu-native-capture-background'
 ) 'Preflight did not declare the capture-only background argument.'
