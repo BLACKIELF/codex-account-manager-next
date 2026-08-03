@@ -393,6 +393,16 @@ private struct InferencePerformanceScatterPlot: View {
                     id: "throughput",
                     label: language.text("有效吞吐", "Throughput"),
                     value: "\(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s"
+                ),
+                ChartTooltipRow(
+                    id: "throughput-basis",
+                    label: language.text("吞吐口径", "Throughput basis"),
+                    value: language.text("全部输出 ÷ 完整耗时", "All output ÷ full duration")
+                ),
+                ChartTooltipRow(
+                    id: "reasoning-share",
+                    label: "Reasoning tokens",
+                    value: reasoningTokenDisclosure(group)
                 )
             ]
         )
@@ -400,9 +410,22 @@ private struct InferencePerformanceScatterPlot: View {
 
     private func pointAccessibilityLabel(_ group: ModelInferencePerformanceGroup) -> String {
         language.text(
-            "\(group.model)，推理强度 \(displayEffort(group.effort))，跨 Session 汇总 \(group.callCount) 次模型调用，平均耗时 \(formatDuration(group.averageDurationSeconds))，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒",
-            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(group.callCount) model calls aggregated across sessions, average \(formatDuration(group.averageDurationSeconds)), P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second"
+            "\(group.model)，推理强度 \(displayEffort(group.effort))，跨 Session 汇总 \(group.callCount) 次模型调用，平均耗时 \(formatDuration(group.averageDurationSeconds))，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒，口径为全部输出 tokens 除以完整耗时，Reasoning tokens 占 \(formatPercentage(reasoningTokenShare(group)))",
+            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(group.callCount) model calls aggregated across sessions, average \(formatDuration(group.averageDurationSeconds)), P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second using all output tokens divided by full duration, reasoning tokens are \(formatPercentage(reasoningTokenShare(group)))"
         )
+    }
+
+    private func reasoningTokenDisclosure(_ group: ModelInferencePerformanceGroup) -> String {
+        "\(TokenFormatter.format(group.reasoningOutputTokens)) / \(TokenFormatter.format(group.outputTokens)) · \(formatPercentage(reasoningTokenShare(group)))"
+    }
+
+    private func reasoningTokenShare(_ group: ModelInferencePerformanceGroup) -> Double {
+        guard group.outputTokens > 0 else { return 0 }
+        return Double(group.reasoningOutputTokens) / Double(group.outputTokens)
+    }
+
+    private func formatPercentage(_ ratio: Double) -> String {
+        "\(Int((min(max(ratio, 0), 1) * 100).rounded()))%"
     }
 
     private func formatDuration(_ seconds: Double) -> String {
