@@ -30,8 +30,8 @@ struct TodayInferencePerformanceCard: View {
 
     private var chartAlgorithmHelp: String {
         language.text(
-            "数据：按模型 × 推理强度汇总今天本机完成的模型调用。\n横轴：完整调用耗时 P50；横线延伸至 P90，上限为所有组合最大 P90 的 2 倍。\n纵轴：全部输出 tokens（含 Reasoning）÷ 完整调用耗时。\n气泡：面积代表跨 Session 汇总的模型调用数；不是 Session、线程或工具调用数。\n说明：Reasoning 占比是 token 占比，不是耗时占比；指标不是 TTFT 或可见文本解码 TPS。",
-            "Data: today's completed on-device model calls grouped by model × reasoning effort.\nX: P50 full-call duration; whiskers extend to P90, with the axis capped at 2× the largest P90.\nY: all output tokens, including reasoning, divided by full-call duration.\nBubble: area represents model calls aggregated across sessions—not session, thread, or tool-call counts.\nNote: reasoning share is a token share, not a duration share; this is not TTFT or visible-text decode TPS."
+            "数据：按模型 × 推理强度汇总今天本机完成的模型调用。\n横轴：完整调用耗时 P50；横线延伸至 P90，上限为所有组合最大 P90 的 1.4 倍。\n纵轴：全部输出 tokens（含 Reasoning）÷ 完整调用耗时。\n气泡：面积代表跨 Session 汇总的模型调用数；不是 Session、线程或工具调用数。\n说明：Reasoning 占比是 token 占比，不是耗时占比；指标不是 TTFT 或可见文本解码 TPS。",
+            "Data: today's completed on-device model calls grouped by model × reasoning effort.\nX: P50 full-call duration; whiskers extend to P90, with the axis capped at 1.4× the largest P90.\nY: all output tokens, including reasoning, divided by full-call duration.\nBubble: area represents model calls aggregated across sessions—not session, thread, or tool-call counts.\nNote: reasoning share is a token share, not a duration share; this is not TTFT or visible-text decode TPS."
         )
     }
 
@@ -79,7 +79,7 @@ private struct InferencePerformanceScatterPlot: View {
             let size = proxy.size
             let width = max(size.width - plotLeft - plotRight, 1)
             let height = max(size.height - plotTop - plotBottom, 1)
-            let maximumDuration = max((groups.map(\.p90DurationSeconds).max() ?? 1) * 2, 1)
+            let maximumDuration = max((groups.map(\.p90DurationSeconds).max() ?? 1) * 1.4, 1)
             let maximumThroughput = max((groups.map(\.effectiveOutputTokensPerSecond).max() ?? 1) * 1.16, 1)
             let maximumCalls = max(groups.map(\.callCount).max() ?? 1, 1)
 
