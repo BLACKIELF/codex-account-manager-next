@@ -1,12 +1,13 @@
 # codexU Distribution
 
-This app is distributed outside the Mac App Store as a downloadable DMG.
+This app is distributed outside the Mac App Store as a downloadable DMG. The repository also contains an independent Windows desktop implementation distributed as MSI and NSIS installers.
 
 ## Supported targets
 
 - macOS 13 or later.
 - Apple Silicon Macs with the `arm64` DMG.
 - Intel Macs with the `x86_64` DMG.
+- Windows 10/11 x86_64 with the MSVC toolchain. Windows ARM64 is not packaged yet.
 - `make release` builds the current host architecture by default. Use the explicit architecture targets below when preparing GitHub Release artifacts.
 - A local Codex installation and a signed-in Codex account are required for account quota data.
 
@@ -65,6 +66,31 @@ make release
 
 This creates the DMG and a `SHA-256` checksum file next to it.
 
+## Windows local installer
+
+The Windows package uses Tauri's MSI and NSIS targets. Run this on a Windows machine or Windows CI runner with Rust, rustup, Node.js, and npm installed:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows-release.ps1 -Version 1.2.1
+```
+
+The script pins the MSVC Rust toolchain, runs the Windows workspace tests and frontend build, builds both installers, and writes these files under `dist/windows/`:
+
+```text
+codexU-<version>-windows-x86_64.msi
+codexU-<version>-windows-x86_64.msi.sha256
+codexU-<version>-windows-x86_64-setup.exe
+codexU-<version>-windows-x86_64-setup.exe.sha256
+```
+
+The current Tauri configuration uses the WebView2 download bootstrapper. The Windows installers are not code-signed by this repository's default workflow; public distribution should add Windows code-signing credentials and verification before claiming a signed release.
+
+The repository target is also available as:
+
+```sh
+make release-windows VERSION=1.2.1
+```
+
 ## Deterministic release verification
 
 For a formal release, prefer the repository wrappers instead of manually repeating build and verification commands:
@@ -89,6 +115,22 @@ make release-check
 ```
 
 This reruns the memory-risk gate and validates version/document consistency, release assets, checksums, release notes, and tag/release conflicts. It intentionally does not tag, push, or publish; those external writes remain explicit steps documented in `AGENTS.md` and `.agents/skills/codexu-release/SKILL.md`.
+
+## Dual-platform release workflow
+
+After updating the version and release notes, run the existing macOS package gate on a Mac:
+
+```sh
+make release-package VERSION=<version>
+```
+
+Then push the annotated `v<version>` tag. `.github/workflows/release-packages.yml` builds and verifies the macOS arm64/x86_64 DMGs and the Windows x86_64 MSI/NSIS installers in parallel. A final Ubuntu job downloads both platform outputs and runs:
+
+```sh
+make release-cross-platform-check VERSION=<version>
+```
+
+The workflow intentionally produces artifacts but does not create or publish a GitHub Release. After reviewing the verified artifact bundle, create the release manually with these eight exact assets: four installers and their four `.sha256` files. This keeps tag, release notes, and publication as explicit human-controlled steps.
 
 ## Developer ID signed build
 

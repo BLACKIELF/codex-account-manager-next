@@ -202,24 +202,16 @@ private func runtimeJSONObject(_ local: LocalUsage) -> [String: Any] {
         ] as [String: Any]
     }
 
-    if let performance = local.inferencePerformance {
+    if let history = local.inferencePerformance {
         object["inferencePerformance"] = [
             "source": "local-rollout-observed-call",
-            "totalCallCount": performance.totalCallCount,
-            "groups": performance.groups.map { group in
-                [
-                    "id": group.id,
-                    "model": group.model,
-                    "effort": group.effort,
-                    "callCount": group.callCount,
-                    "averageDurationSeconds": group.averageDurationSeconds,
-                    "p50DurationSeconds": group.p50DurationSeconds,
-                    "p90DurationSeconds": group.p90DurationSeconds,
-                    "effectiveOutputTokensPerSecond": group.effectiveOutputTokensPerSecond,
-                    "outputTokens": group.outputTokens,
-                    "reasoningOutputTokens": group.reasoningOutputTokens
-                ] as [String: Any]
-            }
+            "storage": "local-application-support",
+            "recordingStartedAt": runtimeISOString(history.recordingStartedAt) ?? "",
+            "periods": [
+                "today": history.today.map { runtimeJSONObject($0) } ?? NSNull(),
+                "sevenDays": history.sevenDays.map { runtimeJSONObject($0) } ?? NSNull(),
+                "twentyEightDays": history.twentyEightDays.map { runtimeJSONObject($0) } ?? NSNull()
+            ] as [String: Any]
         ] as [String: Any]
     }
 
@@ -291,6 +283,29 @@ private func runtimeJSONObject(_ local: LocalUsage) -> [String: Any] {
     return object
 }
 
+private func runtimeJSONObject(_ performance: ModelInferencePerformance) -> [String: Any] {
+    [
+        "period": performance.period.rawValue,
+        "coverageDayCount": performance.coverageDayCount,
+        "totalCallCount": performance.totalCallCount,
+        "groups": performance.groups.map { group in
+            [
+                "id": group.id,
+                "model": group.model,
+                "effort": group.effort,
+                "callCount": group.callCount,
+                "averageDailyCallCount": group.averageDailyCallCount,
+                "averageDurationSeconds": group.averageDurationSeconds,
+                "p50DurationSeconds": group.p50DurationSeconds,
+                "p90DurationSeconds": group.p90DurationSeconds,
+                "effectiveOutputTokensPerSecond": group.effectiveOutputTokensPerSecond,
+                "outputTokens": group.outputTokens,
+                "reasoningOutputTokens": group.reasoningOutputTokens
+            ] as [String: Any]
+        }
+    ] as [String: Any]
+}
+
 private func runtimeJSONObject(_ taskBoard: TaskBoard) -> [String: Any] {
     [
         "refreshedAt": runtimeISOString(taskBoard.refreshedAt) ?? "",
@@ -328,13 +343,15 @@ private func runtimeJSONObject(_ usage: PricedTokenUsage) -> [String: Any] {
         "tokens": [
             "inputTokens": usage.tokens.inputTokens,
             "cachedInputTokens": usage.tokens.cachedInputTokens,
+            "cacheWriteInputTokens": usage.tokens.cacheWriteInputTokens,
             "uncachedInputTokens": usage.tokens.uncachedInputTokens,
             "outputTokens": usage.tokens.outputTokens,
             "reasoningOutputTokens": usage.tokens.reasoningOutputTokens,
             "totalTokens": usage.tokens.totalTokens,
             "visibleTotalTokens": usage.tokens.visibleTotalTokens
         ] as [String: Any],
-        "estimatedCostUSD": usage.estimatedCostUSD
+        "estimatedCostUSD": usage.estimatedCostUSD,
+        "usesReferencePricing": usage.usesReferencePricing
     ] as [String: Any]
 }
 

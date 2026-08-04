@@ -33,7 +33,9 @@ else
 CODESIGN_FLAGS := --force --deep --options runtime --timestamp --sign "$(SIGN_IDENTITY)" $(CODESIGN_EXTRA_FLAGS)
 endif
 
-.PHONY: build run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-task-runtime test-leadership-model test-leadership-assets test-claude-skill-paths test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-check notarize verify clean clean-dist
+POWERSHELL ?= powershell.exe
+
+.PHONY: build run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-task-runtime test-leadership-model test-leadership-assets test-claude-skill-paths test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
 
 build: test-leadership-assets
 	rm -rf "$(APP_DIR)"
@@ -172,6 +174,12 @@ release-all: clean-dist
 
 release-package: memory-risk-check
 	./scripts/build-release-artifacts.sh "$(VERSION)"
+
+release-windows:
+	$(POWERSHELL) -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-release.ps1 -Version "$(VERSION)"
+
+release-cross-platform-check:
+	./scripts/check-cross-platform-release-assets.sh "$(VERSION)" "$(DIST_DIR)"
 
 release-check: memory-risk-check
 	./scripts/check-release-ready.sh "$(VERSION)"

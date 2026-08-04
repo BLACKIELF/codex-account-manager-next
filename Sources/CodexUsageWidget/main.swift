@@ -83,9 +83,26 @@ enum UsageSourceQuality: String, Equatable, Codable {
 struct TokenBreakdown: Equatable, Codable {
     var inputTokens: Int64
     var cachedInputTokens: Int64
+    var cacheWriteInputTokens: Int64
     var outputTokens: Int64
     var reasoningOutputTokens: Int64
     var totalTokens: Int64
+
+    init(
+        inputTokens: Int64,
+        cachedInputTokens: Int64,
+        cacheWriteInputTokens: Int64 = 0,
+        outputTokens: Int64,
+        reasoningOutputTokens: Int64,
+        totalTokens: Int64
+    ) {
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteInputTokens = cacheWriteInputTokens
+        self.outputTokens = outputTokens
+        self.reasoningOutputTokens = reasoningOutputTokens
+        self.totalTokens = totalTokens
+    }
 
     static let zero = TokenBreakdown(
         inputTokens: 0,
@@ -103,6 +120,14 @@ struct TokenBreakdown: Equatable, Codable {
         max(0, inputTokens - billableCachedInputTokens)
     }
 
+    var billableCacheWriteInputTokens: Int64 {
+        min(max(cacheWriteInputTokens, 0), uncachedInputTokens)
+    }
+
+    var ordinaryUncachedInputTokens: Int64 {
+        max(0, uncachedInputTokens - billableCacheWriteInputTokens)
+    }
+
     var visibleTotalTokens: Int64 {
         max(totalTokens, inputTokens + outputTokens)
     }
@@ -114,6 +139,7 @@ struct TokenBreakdown: Equatable, Codable {
     var isZero: Bool {
         inputTokens == 0
             && cachedInputTokens == 0
+            && cacheWriteInputTokens == 0
             && outputTokens == 0
             && reasoningOutputTokens == 0
             && totalTokens == 0
@@ -122,6 +148,7 @@ struct TokenBreakdown: Equatable, Codable {
     mutating func add(_ other: TokenBreakdown) {
         inputTokens += other.inputTokens
         cachedInputTokens += other.cachedInputTokens
+        cacheWriteInputTokens += other.cacheWriteInputTokens
         outputTokens += other.outputTokens
         reasoningOutputTokens += other.reasoningOutputTokens
         totalTokens += other.totalTokens
@@ -131,6 +158,7 @@ struct TokenBreakdown: Equatable, Codable {
         TokenBreakdown(
             inputTokens: inputTokens - previous.inputTokens,
             cachedInputTokens: cachedInputTokens - previous.cachedInputTokens,
+            cacheWriteInputTokens: cacheWriteInputTokens - previous.cacheWriteInputTokens,
             outputTokens: outputTokens - previous.outputTokens,
             reasoningOutputTokens: reasoningOutputTokens - previous.reasoningOutputTokens,
             totalTokens: totalTokens - previous.totalTokens
@@ -141,12 +169,24 @@ struct TokenBreakdown: Equatable, Codable {
 struct PricedTokenUsage: Equatable, Codable {
     var tokens: TokenBreakdown
     var estimatedCostUSD: Double
+    var usesReferencePricing: Bool
 
-    static let zero = PricedTokenUsage(tokens: .zero, estimatedCostUSD: 0)
+    init(tokens: TokenBreakdown, estimatedCostUSD: Double, usesReferencePricing: Bool = false) {
+        self.tokens = tokens
+        self.estimatedCostUSD = estimatedCostUSD
+        self.usesReferencePricing = usesReferencePricing
+    }
 
-    mutating func add(tokens addedTokens: TokenBreakdown, costUSD: Double) {
+    static let zero = PricedTokenUsage(tokens: .zero, estimatedCostUSD: 0, usesReferencePricing: false)
+
+    mutating func add(
+        tokens addedTokens: TokenBreakdown,
+        costUSD: Double,
+        usesReferencePricing addedUsesReferencePricing: Bool = false
+    ) {
         tokens.add(addedTokens)
         estimatedCostUSD += costUSD
+        usesReferencePricing = usesReferencePricing || addedUsesReferencePricing
     }
 }
 
@@ -258,7 +298,7 @@ struct LocalUsage: Equatable {
     let recentThreads: [LocalThread]
     let detailedUsage: DetailedUsage?
     let usageTrend: UsageTrend?
-    let inferencePerformance: ModelInferencePerformance?
+    let inferencePerformance: ModelInferencePerformanceHistory?
     let projectBoard: ProjectBoard?
     let toolUsages: [ToolUsage]
     let skillUsages: [SkillUsage]
@@ -428,8 +468,34 @@ private struct ModelTokenPrice {
     let model: String
     let inputPerMillion: Double
     let cachedInputPerMillion: Double
+    let cacheWriteInputPerMillion: Double
     let outputPerMillion: Double
+    let fastModeMultiplier: Double?
+    let longContextInputMultiplier: Double?
+    let longContextOutputMultiplier: Double?
     let usesReferencePricing: Bool
+
+    init(
+        model: String,
+        inputPerMillion: Double,
+        cachedInputPerMillion: Double,
+        outputPerMillion: Double,
+        cacheWriteInputPerMillion: Double? = nil,
+        fastModeMultiplier: Double? = nil,
+        longContextInputMultiplier: Double? = nil,
+        longContextOutputMultiplier: Double? = nil,
+        usesReferencePricing: Bool
+    ) {
+        self.model = model
+        self.inputPerMillion = inputPerMillion
+        self.cachedInputPerMillion = cachedInputPerMillion
+        self.cacheWriteInputPerMillion = cacheWriteInputPerMillion ?? inputPerMillion
+        self.outputPerMillion = outputPerMillion
+        self.fastModeMultiplier = fastModeMultiplier
+        self.longContextInputMultiplier = longContextInputMultiplier
+        self.longContextOutputMultiplier = longContextOutputMultiplier
+        self.usesReferencePricing = usesReferencePricing
+    }
 }
 
 private struct SessionUsageSource {
@@ -444,6 +510,7 @@ private struct SessionUsageDelta: Codable {
     let date: Date
     let tokens: TokenBreakdown
     let model: String?
+    let serviceTier: String?
     let eventIdentity: CodexTokenEventIdentity
 }
 
@@ -506,20 +573,21 @@ private struct DetailedUsageAccumulator {
         _ tokens: TokenBreakdown,
         at date: Date,
         price: ModelTokenPrice,
+        serviceTier: String?,
         dayStart: Date,
         sevenDayStart: Date,
         monthStart: Date
     ) {
-        let cost = estimatedCostUSD(tokens: tokens, price: price)
-        lifetime.add(tokens: tokens, costUSD: cost)
+        let cost = estimatedCostUSD(tokens: tokens, price: price, serviceTier: serviceTier)
+        lifetime.add(tokens: tokens, costUSD: cost, usesReferencePricing: price.usesReferencePricing)
         if date >= monthStart {
-            month.add(tokens: tokens, costUSD: cost)
+            month.add(tokens: tokens, costUSD: cost, usesReferencePricing: price.usesReferencePricing)
         }
         if date >= sevenDayStart {
-            sevenDay.add(tokens: tokens, costUSD: cost)
+            sevenDay.add(tokens: tokens, costUSD: cost, usesReferencePricing: price.usesReferencePricing)
         }
         if date >= dayStart {
-            today.add(tokens: tokens, costUSD: cost)
+            today.add(tokens: tokens, costUSD: cost, usesReferencePricing: price.usesReferencePricing)
         }
     }
 
@@ -629,7 +697,7 @@ private struct SkillUsageAccumulator {
 private struct LocalAnalytics: Equatable, Codable {
     let detailedUsage: DetailedUsage?
     let usageTrend: UsageTrend?
-    let inferencePerformance: ModelInferencePerformance?
+    let inferencePerformance: ModelInferencePerformanceHistory?
     let recentProjects: [ProjectUsage]
     let toolUsages: [ToolUsage]
     let skillUsages: [SkillUsage]
@@ -1178,9 +1246,9 @@ final class UsageStore: ObservableObject {
 
 final class CodexUsageReader {
     private let fileManager = FileManager.default
-    private let localAnalyticsCacheVersion = 12
-    private let sessionUsageCacheVersion = 8
-    private let inferenceSampleSchemaVersion = 1
+    private let localAnalyticsCacheVersion = 15
+    private let sessionUsageCacheVersion = 10
+    private let inferenceSampleSchemaVersion = 2
     private static let memorySessionUsageCacheLimit = 64
     private static let persistentSessionUsageCacheLimit = 1_024
     private static let maximumPersistentCacheBytes: Int64 = 128 * 1_024 * 1_024
@@ -1779,7 +1847,7 @@ final class CodexUsageReader {
         return LocalAnalytics(
             detailedUsage: nil,
             usageTrend: nil,
-            inferencePerformance: nil,
+            inferencePerformance: analytics.inferencePerformance,
             recentProjects: [],
             toolUsages: analytics.toolUsages.map { usage in
                 ToolUsage(
@@ -1806,6 +1874,33 @@ final class CodexUsageReader {
     ) -> LocalAnalytics {
         let calendar = statistics.calendar
         let trendStart = calendar.date(byAdding: .day, value: -190, to: dayStart) ?? sevenDayStart
+        let inferenceHistoryStart = calendar.date(byAdding: .day, value: -27, to: dayStart) ?? dayStart
+        let inferenceRetentionStart = calendar.date(byAdding: .day, value: -34, to: dayStart)
+            ?? inferenceHistoryStart
+        var inferenceArchive = ModelInferenceHistoryStore.load(fileManager: fileManager, now: dayStart)
+        let loadedInferenceArchive = inferenceArchive
+        inferenceArchive.compact(
+            retainingSince: inferenceRetentionStart,
+            maximumSampleCount: ModelInferenceHistoryStore.maximumSampleCount
+        )
+        if inferenceArchive != loadedInferenceArchive,
+           !ModelInferenceHistoryStore.save(inferenceArchive, fileManager: fileManager) {
+            messages.append("推理表现历史清理后暂时无法写入本机")
+        }
+        let inferenceArchiveBeforeCollection = inferenceArchive
+
+        func makeInferenceHistory() -> ModelInferencePerformanceHistory? {
+            ModelInferencePerformanceBuilder.makeHistory(
+                samples: inferenceArchive.samples,
+                recordingStartedAt: inferenceArchive.recordingStartedAt,
+                dayStart: dayStart,
+                calendar: calendar
+            )
+        }
+
+        func shouldCollectInference(for source: SessionUsageSource) -> Bool {
+            source.updatedAt.map { $0 >= inferenceHistoryStart } ?? true
+        }
         let sourceQuery = """
         SELECT id, rollout_path AS rolloutPath, model, cwd, updated_at AS updatedAt
         FROM threads
@@ -1821,7 +1916,10 @@ final class CodexUsageReader {
                 return nil
             }
             return SessionUsageSource(
-                threadId: object["id"] as? String ?? path,
+                threadId: ModelInferenceHistoryStore.sourceIdentifier(
+                    threadID: object["id"] as? String,
+                    rolloutPath: path
+                ),
                 rolloutPath: path,
                 model: object["model"] as? String,
                 cwd: object["cwd"] as? String ?? "",
@@ -1834,7 +1932,7 @@ final class CodexUsageReader {
             return LocalAnalytics(
                 detailedUsage: nil,
                 usageTrend: nil,
-                inferencePerformance: nil,
+                inferencePerformance: makeInferenceHistory(),
                 recentProjects: [],
                 toolUsages: [],
                 skillUsages: [],
@@ -1900,7 +1998,6 @@ final class CodexUsageReader {
         var recentProjectUsage: [String: ProjectUsageAccumulator] = [:]
         var toolUsage: [String: ToolUsageAccumulator] = [:]
         var skillUsage: [String: SkillUsageAccumulator] = [:]
-        var inferenceSamples: [ModelInferenceSample] = []
 
         let sourceByThreadId = Dictionary(
             uniqueKeysWithValues: sources.map { ($0.threadId, $0) }
@@ -1910,9 +2007,10 @@ final class CodexUsageReader {
         var forkBaselineTokensByThreadId: [String: Int64] = [:]
 
         for source in sources {
+            let collectSourceInference = shouldCollectInference(for: source)
             guard let entry = cachedSessionUsage(
                 source: source,
-                collectInference: source.updatedAt.map { $0 >= dayStart } ?? false,
+                inferenceStart: collectSourceInference ? inferenceHistoryStart : nil,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ),
@@ -1920,7 +2018,9 @@ final class CodexUsageReader {
             let parentSource = sourceByThreadId[parentId],
             let parentEntry = cachedSessionUsage(
                 source: parentSource,
-                collectInference: parentSource.updatedAt.map { $0 >= dayStart } ?? false,
+                inferenceStart: (collectSourceInference || shouldCollectInference(for: parentSource))
+                    ? inferenceHistoryStart
+                    : nil,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ) else { continue }
@@ -1945,16 +2045,23 @@ final class CodexUsageReader {
         }
 
         for source in sources {
+            let collectInference = shouldCollectInference(for: source)
             guard let entry = cachedSessionUsage(
                 source: source,
-                collectInference: source.updatedAt.map { $0 >= dayStart } ?? false,
+                inferenceStart: collectInference ? inferenceHistoryStart : nil,
                 fractionalFormatter: fractionalFormatter,
                 plainFormatter: plainFormatter
             ) else { continue }
             let inheritedPrefixLength = inheritedPrefixLengthByThreadId[source.threadId] ?? 0
             let effectiveDeltas = entry.deltas.dropFirst(inheritedPrefixLength)
             let inheritedInferencePrefixLength = inheritedInferencePrefixLengthByThreadId[source.threadId] ?? 0
-            inferenceSamples.append(contentsOf: entry.resolvedInferenceSamples.dropFirst(inheritedInferencePrefixLength))
+            if collectInference {
+                inferenceArchive.replaceSamples(
+                    for: source.threadId,
+                    with: Array(entry.resolvedInferenceSamples.dropFirst(inheritedInferencePrefixLength)),
+                    retainingSince: inferenceRetentionStart
+                )
+            }
 
             if entry.hasTokenEvents {
                 accumulator.parsedFileCount += 1
@@ -1965,12 +2072,17 @@ final class CodexUsageReader {
             for delta in effectiveDeltas {
                 let model = resolvedModelUsageName(turnContextModel: delta.model, threadModel: source.model)
                 let price = modelTokenPrice(for: model)
-                let cost = estimatedCostUSD(tokens: delta.tokens, price: price)
-                sessionUsage.add(tokens: delta.tokens, costUSD: cost)
+                let cost = estimatedCostUSD(tokens: delta.tokens, price: price, serviceTier: delta.serviceTier)
+                sessionUsage.add(
+                    tokens: delta.tokens,
+                    costUSD: cost,
+                    usesReferencePricing: price.usesReferencePricing
+                )
                 accumulator.add(
                     delta.tokens,
                     at: delta.date,
                     price: price,
+                    serviceTier: delta.serviceTier,
                     dayStart: dayStart,
                     sevenDayStart: sevenDayStart,
                     monthStart: monthStart
@@ -1979,13 +2091,21 @@ final class CodexUsageReader {
                 if delta.date >= trendStart {
                     let key = statistics.dayKey(for: delta.date)
                     var usage = dailyUsage[key] ?? .zero
-                    usage.add(tokens: delta.tokens, costUSD: cost)
+                    usage.add(
+                        tokens: delta.tokens,
+                        costUSD: cost,
+                        usesReferencePricing: price.usesReferencePricing
+                    )
                     dailyUsage[key] = usage
 
                     let modelID = modelUsageIdentifier(for: model)
                     var modelUsage = dailyUsageByModel[modelID] ?? [:]
                     var modelDayUsage = modelUsage[key] ?? .zero
-                    modelDayUsage.add(tokens: delta.tokens, costUSD: cost)
+                    modelDayUsage.add(
+                        tokens: delta.tokens,
+                        costUSD: cost,
+                        usesReferencePricing: price.usesReferencePricing
+                    )
                     modelUsage[key] = modelDayUsage
                     dailyUsageByModel[modelID] = modelUsage
                     if let model {
@@ -2030,6 +2150,15 @@ final class CodexUsageReader {
             }
         }
 
+        inferenceArchive.compact(
+            retainingSince: inferenceRetentionStart,
+            maximumSampleCount: ModelInferenceHistoryStore.maximumSampleCount
+        )
+        if inferenceArchive != inferenceArchiveBeforeCollection,
+           !ModelInferenceHistoryStore.save(inferenceArchive, fileManager: fileManager) {
+            messages.append("推理表现历史暂时无法写入本机")
+        }
+
         writePersistentSessionUsageCache()
         let skillUsages = makeSkillUsages(
             from: skillUsage,
@@ -2041,7 +2170,7 @@ final class CodexUsageReader {
             let analytics = LocalAnalytics(
                 detailedUsage: nil,
                 usageTrend: nil,
-                inferencePerformance: nil,
+                inferencePerformance: makeInferenceHistory(),
                 recentProjects: [],
                 toolUsages: toolUsage.values
                     .map { $0.makeUsage() }
@@ -2060,8 +2189,6 @@ final class CodexUsageReader {
             return analytics
         }
 
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
-            ?? dayStart.addingTimeInterval(24 * 60 * 60)
         let analytics = LocalAnalytics(
             detailedUsage: accumulator.makeUsage(),
             usageTrend: makeUsageTrend(
@@ -2074,11 +2201,7 @@ final class CodexUsageReader {
                 modelDailyUsage: dailyUsageByModel,
                 modelNamesByID: modelNamesByID
             ),
-            inferencePerformance: ModelInferencePerformanceBuilder.make(
-                samples: inferenceSamples,
-                dayStart: dayStart,
-                dayEnd: dayEnd
-            ),
+            inferencePerformance: makeInferenceHistory(),
             recentProjects: recentProjectUsage.values
                 .map { $0.makeUsage() }
                 .filter { $0.tokens > 0 }
@@ -2134,13 +2257,21 @@ final class CodexUsageReader {
 
         for bucket in buckets {
             if bucket.date >= sevenDayStart {
-                sevenDay.add(tokens: bucket.usage.tokens, costUSD: bucket.usage.estimatedCostUSD)
+                sevenDay.add(
+                    tokens: bucket.usage.tokens,
+                    costUSD: bucket.usage.estimatedCostUSD,
+                    usesReferencePricing: bucket.usage.usesReferencePricing
+                )
             } else if bucket.date >= previousSevenDayStart {
                 previousSevenDayTokens += bucket.tokens
             }
 
             if bucket.date >= monthStart {
-                month.add(tokens: bucket.usage.tokens, costUSD: bucket.usage.estimatedCostUSD)
+                month.add(
+                    tokens: bucket.usage.tokens,
+                    costUSD: bucket.usage.estimatedCostUSD,
+                    usesReferencePricing: bucket.usage.usesReferencePricing
+                )
             }
         }
 
@@ -2464,10 +2595,16 @@ final class CodexUsageReader {
 
     private func cachedSessionUsage(
         source: SessionUsageSource,
-        collectInference: Bool,
+        inferenceStart: Date?,
         fractionalFormatter: ISO8601DateFormatter,
         plainFormatter: ISO8601DateFormatter
     ) -> SessionUsageCacheEntry? {
+        let collectInference = inferenceStart != nil
+        func retainedInferenceSamples(_ samples: [ModelInferenceSample]) -> [ModelInferenceSample] {
+            guard let inferenceStart else { return [] }
+            return samples.filter { $0.completedAt >= inferenceStart }
+        }
+
         let url = URL(fileURLWithPath: source.rolloutPath)
         guard let attributes = try? fileManager.attributesOfItem(atPath: url.path),
               let fileSize = (attributes[.size] as? NSNumber)?.int64Value
@@ -2487,11 +2624,12 @@ final class CodexUsageReader {
             return cached
         }
 
-        let baseEventPattern = #""type":"(session_meta|turn_context|token_count|function_call|custom_tool_call)""#
-        let inferenceEventPattern = #""type":"(session_meta|turn_context|token_count|function_call|custom_tool_call|function_call_output|custom_tool_call_output|tool_search_call|tool_search_output|web_search_call|mcp_tool_call_end|web_search_end|patch_apply_end|image_generation_end|reasoning|agent_message|agent_reasoning)"|"role":"assistant""#
+        let baseEventPattern = #""type":"(session_meta|turn_context|thread_settings_applied|token_count|function_call|custom_tool_call)""#
+        let inferenceEventPattern = #""type":"(session_meta|turn_context|thread_settings_applied|token_count|function_call|custom_tool_call|function_call_output|custom_tool_call_output|tool_search_call|tool_search_output|web_search_call|mcp_tool_call_end|web_search_end|patch_apply_end|image_generation_end|reasoning|agent_message|agent_reasoning)"|"role":"assistant""#
         let eventPattern = collectInference ? inferenceEventPattern : baseEventPattern
         let sessionMetaNeedle = Data(#""type":"session_meta""#.utf8)
         let turnContextNeedle = Data(#""type":"turn_context""#.utf8)
+        let threadSettingsNeedle = Data(#""type":"thread_settings_applied""#.utf8)
         let tokenCountNeedle = Data(#""type":"token_count""#.utf8)
         let functionCallNeedle = Data(#""type":"function_call""#.utf8)
         let customToolCallNeedle = Data(#""type":"custom_tool_call""#.utf8)
@@ -2519,6 +2657,7 @@ final class CodexUsageReader {
             eventPattern: eventPattern,
             sessionMetaNeedle: sessionMetaNeedle,
             turnContextNeedle: turnContextNeedle,
+            threadSettingsNeedle: threadSettingsNeedle,
             tokenCountNeedle: tokenCountNeedle,
             functionCallNeedle: functionCallNeedle,
             customToolCallNeedle: customToolCallNeedle,
@@ -2534,7 +2673,7 @@ final class CodexUsageReader {
                 hasTokenEvents: parsed.hasTokenEvents,
                 tokenEventCount: parsed.tokenEventCount,
                 deltas: parsed.deltas,
-                inferenceSamples: parsed.inferenceSamples,
+                inferenceSamples: retainedInferenceSamples(parsed.inferenceSamples),
                 inferenceSchemaVersion: collectInference ? inferenceSampleSchemaVersion : nil,
                 toolCalls: parsed.toolCalls,
                 skillLoads: parsed.skillLoads
@@ -2549,6 +2688,7 @@ final class CodexUsageReader {
         var buffer = Data()
         var forkedFromId: String?
         var activeModel: String?
+        var activeServiceTier: String?
         var inferenceTracker = ModelInferenceCallTracker()
         var counterState = CodexTokenCounterState()
         var sawTokenEvent = false
@@ -2575,6 +2715,7 @@ final class CodexUsageReader {
                         lineData,
                         sessionMetaNeedle: sessionMetaNeedle,
                         turnContextNeedle: turnContextNeedle,
+                        threadSettingsNeedle: threadSettingsNeedle,
                         tokenCountNeedle: tokenCountNeedle,
                         functionCallNeedle: functionCallNeedle,
                         customToolCallNeedle: customToolCallNeedle,
@@ -2584,6 +2725,7 @@ final class CodexUsageReader {
                         plainFormatter: plainFormatter,
                         forkedFromId: &forkedFromId,
                         activeModel: &activeModel,
+                        activeServiceTier: &activeServiceTier,
                         inferenceTracker: &inferenceTracker,
                         counterState: &counterState,
                         sawTokenEvent: &sawTokenEvent,
@@ -2607,6 +2749,7 @@ final class CodexUsageReader {
                 buffer,
                 sessionMetaNeedle: sessionMetaNeedle,
                 turnContextNeedle: turnContextNeedle,
+                threadSettingsNeedle: threadSettingsNeedle,
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
@@ -2616,6 +2759,7 @@ final class CodexUsageReader {
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                activeServiceTier: &activeServiceTier,
                 inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
@@ -2634,7 +2778,7 @@ final class CodexUsageReader {
             hasTokenEvents: sawTokenEvent,
             tokenEventCount: tokenEventCount,
             deltas: deltas,
-            inferenceSamples: inferenceSamples,
+            inferenceSamples: retainedInferenceSamples(inferenceSamples),
             inferenceSchemaVersion: collectInference ? inferenceSampleSchemaVersion : nil,
             toolCalls: toolCalls,
             skillLoads: skillLoads
@@ -2676,6 +2820,7 @@ final class CodexUsageReader {
         eventPattern: String,
         sessionMetaNeedle: Data,
         turnContextNeedle: Data,
+        threadSettingsNeedle: Data,
         tokenCountNeedle: Data,
         functionCallNeedle: Data,
         customToolCallNeedle: Data,
@@ -2717,6 +2862,7 @@ final class CodexUsageReader {
         var buffer = data
         var forkedFromId: String?
         var activeModel: String?
+        var activeServiceTier: String?
         var inferenceTracker = ModelInferenceCallTracker()
         var counterState = CodexTokenCounterState()
         var sawTokenEvent = false
@@ -2733,6 +2879,7 @@ final class CodexUsageReader {
                 lineData,
                 sessionMetaNeedle: sessionMetaNeedle,
                 turnContextNeedle: turnContextNeedle,
+                threadSettingsNeedle: threadSettingsNeedle,
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
@@ -2742,6 +2889,7 @@ final class CodexUsageReader {
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                activeServiceTier: &activeServiceTier,
                 inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
@@ -2758,6 +2906,7 @@ final class CodexUsageReader {
                 buffer,
                 sessionMetaNeedle: sessionMetaNeedle,
                 turnContextNeedle: turnContextNeedle,
+                threadSettingsNeedle: threadSettingsNeedle,
                 tokenCountNeedle: tokenCountNeedle,
                 functionCallNeedle: functionCallNeedle,
                 customToolCallNeedle: customToolCallNeedle,
@@ -2767,6 +2916,7 @@ final class CodexUsageReader {
                 plainFormatter: plainFormatter,
                 forkedFromId: &forkedFromId,
                 activeModel: &activeModel,
+                activeServiceTier: &activeServiceTier,
                 inferenceTracker: &inferenceTracker,
                 counterState: &counterState,
                 sawTokenEvent: &sawTokenEvent,
@@ -2785,6 +2935,7 @@ final class CodexUsageReader {
         _ lineData: Data,
         sessionMetaNeedle: Data,
         turnContextNeedle: Data,
+        threadSettingsNeedle: Data,
         tokenCountNeedle: Data,
         functionCallNeedle: Data,
         customToolCallNeedle: Data,
@@ -2794,6 +2945,7 @@ final class CodexUsageReader {
         plainFormatter: ISO8601DateFormatter,
         forkedFromId: inout String?,
         activeModel: inout String?,
+        activeServiceTier: inout String?,
         inferenceTracker: inout ModelInferenceCallTracker,
         counterState: inout CodexTokenCounterState,
         sawTokenEvent: inout Bool,
@@ -2805,11 +2957,12 @@ final class CodexUsageReader {
     ) {
         let isSessionMeta = lineData.range(of: sessionMetaNeedle) != nil
         let isTurnContext = lineData.range(of: turnContextNeedle) != nil
+        let isThreadSettings = lineData.range(of: threadSettingsNeedle) != nil
         let isTokenEvent = lineData.range(of: tokenCountNeedle) != nil
         let isToolEvent = lineData.range(of: functionCallNeedle) != nil || lineData.range(of: customToolCallNeedle) != nil
         let mightBeInferenceBoundary = inferenceBoundaryNeedles.contains { lineData.range(of: $0) != nil }
         let mightBeModelOutput = modelOutputNeedles.contains { lineData.range(of: $0) != nil }
-        guard isSessionMeta || isTurnContext || isTokenEvent || isToolEvent || mightBeInferenceBoundary || mightBeModelOutput else {
+        guard isSessionMeta || isTurnContext || isThreadSettings || isTokenEvent || isToolEvent || mightBeInferenceBoundary || mightBeModelOutput else {
             return
         }
         guard let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
@@ -2820,6 +2973,12 @@ final class CodexUsageReader {
             if let parentId = payload["forked_from_id"] as? String, !parentId.isEmpty {
                 forkedFromId = parentId
             }
+            return
+        }
+
+        if payload["type"] as? String == "thread_settings_applied",
+           let settings = payload["thread_settings"] as? [String: Any] {
+            activeServiceTier = normalizedServiceTier(settings["service_tier"] as? String)
             return
         }
 
@@ -2901,6 +3060,7 @@ final class CodexUsageReader {
                 date: date,
                 tokens: delta,
                 model: activeModel,
+                serviceTier: activeServiceTier,
                 eventIdentity: eventIdentity
             )
         )
@@ -3321,6 +3481,7 @@ private func tokenCounterSample(from usage: [String: Any]) -> CodexTokenCounterS
     CodexTokenCounterSample(
         inputTokens: int64Value(usage["input_tokens"]),
         cachedInputTokens: int64Value(usage["cached_input_tokens"]),
+        cacheWriteInputTokens: int64Value(usage["cache_write_input_tokens"]),
         outputTokens: int64Value(usage["output_tokens"]),
         reasoningOutputTokens: int64Value(usage["reasoning_output_tokens"]),
         totalTokens: int64Value(usage["total_tokens"])
@@ -3508,34 +3669,123 @@ private func modelTokenPrice(for model: String?) -> ModelTokenPrice {
     let normalized = (model ?? "").lowercased()
 
     if normalized.contains("gpt-5.6-sol") || normalized == "gpt-5.6" {
-        return ModelTokenPrice(model: "gpt-5.6-sol", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.6-sol",
+            inputPerMillion: 5,
+            cachedInputPerMillion: 0.5,
+            outputPerMillion: 30,
+            cacheWriteInputPerMillion: 6.25,
+            fastModeMultiplier: 2,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.6-terra") {
-        return ModelTokenPrice(model: "gpt-5.6-terra", inputPerMillion: 2, cachedInputPerMillion: 0.2, outputPerMillion: 12, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.6-terra",
+            inputPerMillion: 2,
+            cachedInputPerMillion: 0.2,
+            outputPerMillion: 12,
+            cacheWriteInputPerMillion: 2.5,
+            fastModeMultiplier: 2,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.6-luna") {
-        return ModelTokenPrice(model: "gpt-5.6-luna", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.2, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.6-luna",
+            inputPerMillion: 0.2,
+            cachedInputPerMillion: 0.02,
+            outputPerMillion: 1.2,
+            cacheWriteInputPerMillion: 0.25,
+            fastModeMultiplier: 2,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.5-pro") {
-        return ModelTokenPrice(model: "gpt-5.5-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.5-pro",
+            inputPerMillion: 30,
+            cachedInputPerMillion: 30,
+            outputPerMillion: 180,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.5") || normalized == "chat-latest" {
-        return ModelTokenPrice(model: "gpt-5.5", inputPerMillion: 5, cachedInputPerMillion: 0.5, outputPerMillion: 30, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.5",
+            inputPerMillion: 5,
+            cachedInputPerMillion: 0.5,
+            outputPerMillion: 30,
+            fastModeMultiplier: 2.5,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.4-mini") {
-        return ModelTokenPrice(model: "gpt-5.4-mini", inputPerMillion: 0.75, cachedInputPerMillion: 0.075, outputPerMillion: 4.5, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.4-mini",
+            inputPerMillion: 0.75,
+            cachedInputPerMillion: 0.075,
+            outputPerMillion: 4.5,
+            fastModeMultiplier: 2,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.4-nano") {
         return ModelTokenPrice(model: "gpt-5.4-nano", inputPerMillion: 0.2, cachedInputPerMillion: 0.02, outputPerMillion: 1.25, usesReferencePricing: false)
     }
     if normalized.contains("gpt-5.4-pro") {
-        return ModelTokenPrice(model: "gpt-5.4-pro", inputPerMillion: 30, cachedInputPerMillion: 30, outputPerMillion: 180, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.4-pro",
+            inputPerMillion: 30,
+            cachedInputPerMillion: 30,
+            outputPerMillion: 180,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
     if normalized.contains("gpt-5.4") {
-        return ModelTokenPrice(model: "gpt-5.4", inputPerMillion: 2.5, cachedInputPerMillion: 0.25, outputPerMillion: 15, usesReferencePricing: false)
+        return ModelTokenPrice(
+            model: "gpt-5.4",
+            inputPerMillion: 2.5,
+            cachedInputPerMillion: 0.25,
+            outputPerMillion: 15,
+            fastModeMultiplier: 2,
+            longContextInputMultiplier: 2,
+            longContextOutputMultiplier: 1.5,
+            usesReferencePricing: false
+        )
     }
-    if normalized.contains("gpt-5.3-codex")
-        || normalized.contains("gpt-5.2-codex")
+    if normalized.contains("gpt-5.3-codex-spark") {
+        return ModelTokenPrice(
+            model: "gpt-5.3-codex-spark",
+            inputPerMillion: 5,
+            cachedInputPerMillion: 0.5,
+            outputPerMillion: 30,
+            usesReferencePricing: true
+        )
+    }
+    if normalized.contains("gpt-5.3-codex") {
+        return ModelTokenPrice(
+            model: "gpt-5.3-codex",
+            inputPerMillion: 1.75,
+            cachedInputPerMillion: 0.175,
+            outputPerMillion: 14,
+            fastModeMultiplier: 2,
+            usesReferencePricing: false
+        )
+    }
+    if normalized.contains("gpt-5.2-codex")
         || normalized.contains("gpt-5.3-chat")
         || normalized.contains("gpt-5.2") {
         return ModelTokenPrice(model: "gpt-5.2-codex", inputPerMillion: 1.75, cachedInputPerMillion: 0.175, outputPerMillion: 14, usesReferencePricing: false)
@@ -3569,11 +3819,49 @@ func resolvedModelUsageName(turnContextModel: String?, threadModel: String?) -> 
     normalizedModelUsageName(turnContextModel) ?? normalizedModelUsageName(threadModel)
 }
 
-private func estimatedCostUSD(tokens: TokenBreakdown, price: ModelTokenPrice) -> Double {
-    let uncachedInputCost = Double(tokens.uncachedInputTokens) / 1_000_000 * price.inputPerMillion
-    let cachedInputCost = Double(tokens.billableCachedInputTokens) / 1_000_000 * price.cachedInputPerMillion
-    let outputCost = Double(max(tokens.outputTokens, 0)) / 1_000_000 * price.outputPerMillion
-    return uncachedInputCost + cachedInputCost + outputCost
+private func normalizedServiceTier(_ serviceTier: String?) -> String? {
+    guard let serviceTier else { return nil }
+    let normalized = serviceTier.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized.isEmpty ? nil : normalized
+}
+
+private func isFastServiceTier(_ serviceTier: String?) -> Bool {
+    let normalized = normalizedServiceTier(serviceTier)
+    return normalized == "priority" || normalized == "fast"
+}
+
+private func estimatedCostUSD(
+    tokens: TokenBreakdown,
+    price: ModelTokenPrice,
+    serviceTier: String? = nil
+) -> Double {
+    let usesLongContextPricing = tokens.inputTokens > 272_000
+        && price.longContextInputMultiplier != nil
+        && price.longContextOutputMultiplier != nil
+    let inputMultiplier: Double
+    let outputMultiplier: Double
+    if usesLongContextPricing {
+        // Fast mode does not support long-context requests, so the published
+        // long-context rates are the only applicable API-equivalent basis.
+        inputMultiplier = price.longContextInputMultiplier ?? 1
+        outputMultiplier = price.longContextOutputMultiplier ?? 1
+    } else if isFastServiceTier(serviceTier), let fastModeMultiplier = price.fastModeMultiplier {
+        inputMultiplier = fastModeMultiplier
+        outputMultiplier = fastModeMultiplier
+    } else {
+        inputMultiplier = 1
+        outputMultiplier = 1
+    }
+
+    let uncachedInputCost = Double(tokens.ordinaryUncachedInputTokens) / 1_000_000
+        * price.inputPerMillion * inputMultiplier
+    let cachedInputCost = Double(tokens.billableCachedInputTokens) / 1_000_000
+        * price.cachedInputPerMillion * inputMultiplier
+    let cacheWriteInputCost = Double(tokens.billableCacheWriteInputTokens) / 1_000_000
+        * price.cacheWriteInputPerMillion * inputMultiplier
+    let outputCost = Double(max(tokens.outputTokens, 0)) / 1_000_000
+        * price.outputPerMillion * outputMultiplier
+    return uncachedInputCost + cachedInputCost + cacheWriteInputCost + outputCost
 }
 
 private enum ModelPricingSelfTest {
@@ -3587,24 +3875,58 @@ private enum ModelPricingSelfTest {
         }
 
         let sampleTokens = TokenBreakdown(
-            inputTokens: 1_000_000,
-            cachedInputTokens: 400_000,
-            outputTokens: 100_000,
+            inputTokens: 100_000,
+            cachedInputTokens: 40_000,
+            outputTokens: 10_000,
             reasoningOutputTokens: 0,
-            totalTokens: 1_100_000
+            totalTokens: 110_000
         )
         let sol = modelTokenPrice(for: "gpt-5.6")
         let terra = modelTokenPrice(for: "gpt-5.6-terra-2026-02-16")
         let luna = modelTokenPrice(for: "GPT-5.6-LUNA")
+        let gpt55 = modelTokenPrice(for: "gpt-5.5")
+        let gpt54 = modelTokenPrice(for: "gpt-5.4")
+        let gpt54Mini = modelTokenPrice(for: "gpt-5.4-mini")
+        let gpt53Codex = modelTokenPrice(for: "gpt-5.3-codex")
+        let spark = modelTokenPrice(for: "gpt-5.3-codex-spark")
 
         expect(sol.model == "gpt-5.6-sol", "gpt-5.6 should resolve to gpt-5.6-sol")
         expect(!sol.usesReferencePricing, "gpt-5.6 should use an explicit price")
         expect(terra.model == "gpt-5.6-terra", "terra snapshots should preserve the terra price")
         expect(luna.model == "gpt-5.6-luna", "luna matching should be case-insensitive")
-        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: sol), 6.2), "Sol cached input estimate should use the split rates")
-        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: terra), 2.48), "Terra should use the official standard API rates")
-        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: luna), 0.248), "Luna should use the official standard API rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: sol), 0.62), "Sol cached input estimate should use the split rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: terra), 0.248), "Terra should use the official standard API rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: luna), 0.0248), "Luna should use the official standard API rates")
+        expect(nearlyEqual(gpt55.inputPerMillion, 5) && nearlyEqual(gpt55.cachedInputPerMillion, 0.5) && nearlyEqual(gpt55.outputPerMillion, 30), "GPT-5.5 should use the official standard API rates")
+        expect(nearlyEqual(gpt54.inputPerMillion, 2.5) && nearlyEqual(gpt54.cachedInputPerMillion, 0.25) && nearlyEqual(gpt54.outputPerMillion, 15), "GPT-5.4 should use the official standard API rates")
+        expect(nearlyEqual(gpt54Mini.inputPerMillion, 0.75) && nearlyEqual(gpt54Mini.cachedInputPerMillion, 0.075) && nearlyEqual(gpt54Mini.outputPerMillion, 4.5), "GPT-5.4 mini should use the official standard API rates")
+        expect(nearlyEqual(gpt53Codex.inputPerMillion, 1.75) && nearlyEqual(gpt53Codex.cachedInputPerMillion, 0.175) && nearlyEqual(gpt53Codex.outputPerMillion, 14), "GPT-5.3 Codex should use its explicit API rates")
+        expect(spark.model == "gpt-5.3-codex-spark" && spark.usesReferencePricing, "Codex Spark should remain reference-priced until official rates are final")
+
+        let cacheWriteTokens = TokenBreakdown(
+            inputTokens: 100_000,
+            cachedInputTokens: 40_000,
+            cacheWriteInputTokens: 10_000,
+            outputTokens: 10_000,
+            reasoningOutputTokens: 0,
+            totalTokens: 110_000
+        )
+        expect(nearlyEqual(estimatedCostUSD(tokens: cacheWriteTokens, price: sol), 0.6325), "GPT-5.6 cache writes should use the 1.25x write rate")
+        expect(nearlyEqual(estimatedCostUSD(tokens: cacheWriteTokens, price: sol, serviceTier: "priority"), 1.265), "GPT-5.6 Fast mode should use the published 2x API rates")
+        expect(nearlyEqual(estimatedCostUSD(tokens: cacheWriteTokens, price: gpt55, serviceTier: "fast"), 1.55), "GPT-5.5 Fast mode should use the published 2.5x API rates")
+
+        let longContextTokens = TokenBreakdown(
+            inputTokens: 300_000,
+            cachedInputTokens: 100_000,
+            cacheWriteInputTokens: 100_000,
+            outputTokens: 100_000,
+            reasoningOutputTokens: 0,
+            totalTokens: 400_000
+        )
+        expect(nearlyEqual(estimatedCostUSD(tokens: longContextTokens, price: sol), 6.85), "GPT-5.6 long context should use 2x input and 1.5x output rates")
+        expect(isFastServiceTier("priority") && isFastServiceTier("FAST") && !isFastServiceTier("default"), "service tier normalization should distinguish Fast mode")
         expect(!modelUsageUsesReferencePricing("gpt-5.6-luna"), "known GPT-5.6 models should not use reference pricing")
+        expect(modelUsageUsesReferencePricing("gpt-5.3-codex-spark"), "Codex Spark should not inherit GPT-5.3 Codex pricing")
         expect(modelUsageUsesReferencePricing("future-model"), "unknown models should retain reference pricing")
 
         if failures.isEmpty {
@@ -4077,6 +4399,7 @@ enum DashboardTab: String, CaseIterable, Equatable, Identifiable {
     case tasks
     case leadership
     case usage
+    case inference
     case projects
     case skills
 
@@ -4339,16 +4662,7 @@ struct UsageWidgetView: View {
     private var dashboardTabContent: some View {
         switch selectedDashboardTab {
         case .tasks:
-            VStack(spacing: 8) {
-                if store.selectedRuntimeScope == .codex {
-                    TodayInferencePerformanceCard(
-                        performance: snapshot.local?.inferencePerformance,
-                        language: language
-                    )
-                    .frame(height: 184)
-                }
-                taskBoardContent
-            }
+            taskBoardContent
         case .leadership:
             LeadershipDashboardPanel(
                 snapshot: store.multiRuntimeSnapshot.leadership,
@@ -4361,6 +4675,12 @@ struct UsageWidgetView: View {
                 language: language,
                 window: $settings.usageTrendWindow
             )
+        case .inference:
+            TodayInferencePerformanceCard(
+                history: snapshot.local?.inferencePerformance,
+                language: language
+            )
+            .frame(height: 368)
         case .projects:
             ProjectBoardPanel(
                 projectBoard: snapshot.local?.projectBoard,
@@ -4444,6 +4764,15 @@ struct UsageWidgetView: View {
             guard let trend = snapshot.local?.usageTrend else { return language.text("读取中", "Loading") }
             let quality = trend.sourceQuality == .approximate ? language.text("粗略统计", "Approx.") : language.text("精细统计", "Detailed")
             return language.text("\(trend.activeDayCount) 活跃日 · \(quality)", "\(trend.activeDayCount) active days · \(quality)")
+        case .inference:
+            guard let history = snapshot.local?.inferencePerformance else {
+                return language.text("正在建立记录", "Building history")
+            }
+            let groupCount = history.twentyEightDays?.groups.count
+                ?? history.sevenDays?.groups.count
+                ?? history.today?.groups.count
+                ?? 0
+            return language.text("\(groupCount) 组合 · 近 28 日", "\(groupCount) combinations · 28 days")
         case .projects:
             let activeCount = snapshot.local?.projectBoard?.recentProjects.count ?? 0
             let totalCount = snapshot.local?.projectBoard?.allProjects.count ?? 0
@@ -5460,7 +5789,10 @@ struct DashboardTabSwitch: View {
                 )
         )
         .fixedSize(horizontal: true, vertical: false)
-        .help(language.text("切换今日任务、AI 领导力、用量趋势和项目排行", "Switch between tasks, AI leadership, usage, and project rankings"))
+        .help(language.text(
+            "切换今日任务、AI 领导力、用量趋势、推理性能、项目排行和 Skill",
+            "Switch between tasks, AI leadership, usage, inference performance, projects, and skills"
+        ))
         .accessibilityElement(children: .contain)
     }
 }
@@ -7364,7 +7696,8 @@ private let subscriptionMilestones: [SubscriptionMilestone] = [
     SubscriptionMilestone(id: "pro200", title: "Pro200", amountUSD: 200)
 ]
 
-// Used only for the full-quota monthly ceiling. Actual usage still uses per-session model prices and token splits.
+// Used only as a stable monthly reference ceiling. Actual usage still uses
+// per-request model, service-tier, context-length, cache-write, and token splits.
 private let quotaValueDailyTokenLimit: Double = 200_000_000
 private let quotaValueBillingDays: Double = 30
 private let quotaValueUncachedInputShare = 0.30
@@ -7387,6 +7720,10 @@ struct WoolProgressCard: View {
         usage?.estimatedCostUSD ?? 0
     }
 
+    private var usesReferencePricing: Bool {
+        usage?.usesReferencePricing == true
+    }
+
     private var maxValue: Double {
         max(quotaValueMonthlyMaxUSD, subscriptionMilestones.map(\.amountUSD).max() ?? 200)
     }
@@ -7407,9 +7744,15 @@ struct WoolProgressCard: View {
                 Text(language.text("羊毛进度", "Value progress"))
                     .font(.system(size: 12, weight: .semibold))
                 Spacer(minLength: 8)
-                Text(formatUSD(usage?.estimatedCostUSD))
+                Text((usesReferencePricing ? "≈" : "") + formatUSD(usage?.estimatedCostUSD))
                     .font(.system(size: 16, weight: .bold, design: .rounded))
                     .monospacedDigit()
+                    .help(usesReferencePricing
+                        ? language.text(
+                            "包含尚无官方价格的模型；相关用量按 GPT-5.5 参考价折算",
+                            "Includes models without official pricing; those tokens use the GPT-5.5 reference rate"
+                        )
+                        : language.text("按对应模型的官方 API 价格估算", "Estimated with each model's official API price"))
                 Text("/ \(formatCompactUSD(maxValue))")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -7435,7 +7778,7 @@ struct WoolProgressCard: View {
                     }
                 }
                 Spacer(minLength: 4)
-                Text("\(language.text("满额", "Cap")) \(formatCompactUSD(maxValue))")
+                Text("\(language.text("参考上限", "Reference ceiling")) \(formatCompactUSD(maxValue))")
                     .font(.system(size: 8.5, weight: .bold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
@@ -7656,16 +7999,18 @@ struct ChartTooltipView: View {
         .padding(.horizontal, compact ? 8 : 9)
         .padding(.vertical, compact ? 6 : 8)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(
-                    prefersOpaqueSurface
-                        ? FixedVisualPalette.tooltipFill(colorScheme)
-                        : FixedVisualPalette.cardFill(colorScheme, elevated: true)
-                )
-                .overlay(
+            ZStack {
+                if prefersOpaqueSurface {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .strokeBorder(FixedVisualPalette.cardStroke(colorScheme, elevated: true), lineWidth: 0.9)
-                )
+                        .fill(.ultraThickMaterial)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(FixedVisualPalette.controlSelectedFill(colorScheme))
+                }
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(FixedVisualPalette.cardFill(colorScheme, elevated: true))
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(FixedVisualPalette.cardStroke(colorScheme, elevated: true), lineWidth: 0.9)
+            }
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.26 : 0.12), radius: 10, x: 0, y: 5)
         )
         .allowsHitTesting(false)
@@ -10161,12 +10506,6 @@ enum FixedVisualPalette {
         return Color.white.opacity(elevated ? 0.680 : 0.520)
     }
 
-    static func tooltipFill(_ colorScheme: ColorScheme) -> Color {
-        colorScheme == .dark
-            ? Color.black.opacity(0.41)
-            : Color.white.opacity(0.46)
-    }
-
     static func leadershipPlaqueFill(_ colorScheme: ColorScheme) -> Color {
         Color.black.opacity(colorScheme == .dark ? 0.58 : 0.52)
     }
@@ -10372,6 +10711,8 @@ private func localizedDashboardTitle(_ tab: DashboardTab, language: WidgetLangua
         return language.text("AI 领导力", "AI leadership")
     case .usage:
         return language.text("用量趋势", "Usage trend")
+    case .inference:
+        return language.text("推理性能", "Inference performance")
     case .projects:
         return language.text("项目排行", "Project ranking")
     case .skills:
@@ -10387,6 +10728,8 @@ private func localizedDashboardTabLabel(_ tab: DashboardTab, language: WidgetLan
         return language.text("AI 领导力", "Leadership")
     case .usage:
         return language.text("用量趋势", "Usage")
+    case .inference:
+        return language.text("推理性能", "Inference")
     case .projects:
         return language.text("项目排行", "Projects")
     case .skills:
@@ -10402,6 +10745,8 @@ private func dashboardTabIcon(_ tab: DashboardTab) -> String {
         return "scope"
     case .usage:
         return "calendar"
+    case .inference:
+        return "gauge.with.dots.needle.50percent"
     case .projects:
         return "folder"
     case .skills:

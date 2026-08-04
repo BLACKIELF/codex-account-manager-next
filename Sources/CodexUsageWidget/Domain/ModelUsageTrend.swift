@@ -202,7 +202,11 @@ enum ModelUsageAreaSeriesBuilder {
         let lookup = trends.reduce(into: [String: UsageDayBucket]()) { result, trend in
             for bucket in trend.dayBuckets {
                 var usage = result[bucket.id]?.usage ?? .zero
-                usage.add(tokens: bucket.usage.tokens, costUSD: bucket.usage.estimatedCostUSD)
+                usage.add(
+                    tokens: bucket.usage.tokens,
+                    costUSD: bucket.usage.estimatedCostUSD,
+                    usesReferencePricing: bucket.usage.usesReferencePricing
+                )
                 result[bucket.id] = UsageDayBucket(
                     id: bucket.id,
                     date: bucket.date,
@@ -265,7 +269,11 @@ enum ModelUsageTrendSelfTest {
 
         func aggregateUsage(_ buckets: [UsageDayBucket]) -> PricedTokenUsage {
             buckets.reduce(into: PricedTokenUsage.zero) { result, bucket in
-                result.add(tokens: bucket.usage.tokens, costUSD: bucket.usage.estimatedCostUSD)
+                result.add(
+                    tokens: bucket.usage.tokens,
+                    costUSD: bucket.usage.estimatedCostUSD,
+                    usesReferencePricing: bucket.usage.usesReferencePricing
+                )
             }
         }
 

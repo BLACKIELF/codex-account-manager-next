@@ -1,38 +1,44 @@
 import SwiftUI
 
 struct TodayInferencePerformanceCard: View {
-    let performance: ModelInferencePerformance?
+    let history: ModelInferencePerformanceHistory?
     let language: WidgetLanguage
 
+    @State private var period: ModelInferencePeriod = .today
+
+    private var performance: ModelInferencePerformance? {
+        history?.performance(for: period)
+    }
+
     private var groups: [ModelInferencePerformanceGroup] {
-        performance?.displayGroups(limit: 6) ?? []
+        performance?.displayGroups() ?? []
     }
 
     var body: some View {
         DashboardCard {
             VStack(alignment: .leading, spacing: 6) {
                 DashboardCardHeader(
-                    title: language.text("今日实测推理表现", "Today's observed inference"),
+                    title: language.text("实测推理表现", "Observed inference"),
                     systemName: "gauge.with.dots.needle.50percent",
                     helpTitle: language.text("统计规则与观看方法", "Statistics and chart guide"),
                     helpText: chartAlgorithmHelp
                 ) {
-                    EmptyView()
+                    InferencePeriodControl(selection: $period, language: language)
                 }
 
                 if groups.isEmpty {
                     compactEmptyState
-                } else {
-                    InferencePerformanceScatterPlot(groups: groups, language: language)
+                } else if let performance {
+                    InferencePerformanceScatterPlot(performance: performance, language: language)
                 }
             }
         }
     }
 
     private var chartAlgorithmHelp: String {
-        language.text(
-            "数据：按模型 × 推理强度汇总今天本机完成的模型调用。\n横轴：完整调用耗时 P50；横线延伸至 P90，上限为所有组合最大 P90 的 1.4 倍。\n纵轴：全部输出 tokens（含 Reasoning）÷ 完整调用耗时。\n气泡：面积代表跨 Session 汇总的模型调用数；不是 Session、线程或工具调用数。\n说明：Reasoning 占比是 token 占比，不是耗时占比；指标不是 TTFT 或可见文本解码 TPS。",
-            "Data: today's completed on-device model calls grouped by model × reasoning effort.\nX: P50 full-call duration; whiskers extend to P90, with the axis capped at 1.4× the largest P90.\nY: all output tokens, including reasoning, divided by full-call duration.\nBubble: area represents model calls aggregated across sessions—not session, thread, or tool-call counts.\nNote: reasoning share is a token share, not a duration share; this is not TTFT or visible-text decode TPS."
+        return language.text(
+            "数据：按模型 × 推理强度汇总所选周期内本机完成的模型调用；历史样本只保存在本机。\n横轴：窗口内完整调用耗时 P50；横线延伸至 P90，上限为所有组合最大 P90 的 1.4 倍。\n纵轴：窗口内全部输出 tokens（含 Reasoning）÷ 完整调用耗时。\n气泡：今日代表调用数，7 日与 28 日代表记录覆盖期内的日均调用数；不是 Session、线程或工具调用数。\n说明：Reasoning 占比是 token 占比，不是耗时占比；指标不是 TTFT 或可见文本解码 TPS。",
+            "Data: completed on-device calls in the selected window, grouped by model × reasoning effort; history stays on this Mac.\nX: full-call duration P50 within the window; whiskers extend to P90, with the axis capped at 1.4× the largest P90.\nY: all output tokens, including reasoning, divided by full-call duration within the window.\nBubble: call count for Today, and daily-average calls over recorded coverage for 7 and 28 days—not session, thread, or tool-call counts.\nNote: reasoning share is a token share, not a duration share; this is not TTFT or visible-text decode TPS."
         )
     }
 
@@ -42,12 +48,12 @@ struct TodayInferencePerformanceCard: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.tertiary)
             VStack(alignment: .leading, spacing: 3) {
-                Text(language.text("今天还没有足够记录", "Not enough records today"))
+                Text(emptyStateTitle)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text(language.text(
-                    "完成一次带推理强度的 Codex 调用后显示",
-                    "Shown after a Codex call with reasoning effort completes"
+                    "完成带推理强度的 Codex 调用后，本机会持续记录",
+                    "This Mac keeps recording completed Codex calls with reasoning effort"
                 ))
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
@@ -58,12 +64,75 @@ struct TodayInferencePerformanceCard: View {
         .padding(.horizontal, 10)
         .accessibilityElement(children: .combine)
     }
+
+    private var emptyStateTitle: String {
+        switch period {
+        case .today:
+            language.text("今天还没有足够记录", "Not enough records today")
+        case .sevenDays:
+            language.text("最近 7 日还没有足够记录", "Not enough records in the last 7 days")
+        case .twentyEightDays:
+            language.text("最近 28 日还没有足够记录", "Not enough records in the last 28 days")
+        }
+    }
+}
+
+private struct InferencePeriodControl: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.visualTokens) private var visualTokens
+    @Binding var selection: ModelInferencePeriod
+    let language: WidgetLanguage
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(ModelInferencePeriod.allCases) { period in
+                Button {
+                    selection = period
+                } label: {
+                    Text(label(for: period))
+                        .font(.system(size: 9, weight: selection == period ? .semibold : .medium))
+                        .foregroundStyle(selection == period ? Color.white : Color.secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .frame(height: 22)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(selection == period ? visualTokens.accent.primary.color : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selection == period ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(FixedVisualPalette.controlFill(colorScheme))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(FixedVisualPalette.controlStroke(colorScheme), lineWidth: 0.8)
+                )
+        )
+    }
+
+    private func label(for period: ModelInferencePeriod) -> String {
+        switch period {
+        case .today: language.text("今日", "Today")
+        case .sevenDays: language.text("7 日均", "7d avg")
+        case .twentyEightDays: language.text("28 日均", "28d avg")
+        }
+    }
 }
 
 private struct InferencePerformanceScatterPlot: View {
-    let groups: [ModelInferencePerformanceGroup]
+    let performance: ModelInferencePerformance
     let language: WidgetLanguage
 
+    private var groups: [ModelInferencePerformanceGroup] {
+        performance.displayGroups()
+    }
+
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.visualTokens) private var visualTokens
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hoveredGroupID: String?
@@ -74,6 +143,7 @@ private struct InferencePerformanceScatterPlot: View {
     private let plotTop: CGFloat = 8
     private let plotBottom: CGFloat = 20
     private let tooltipWidth: CGFloat = 188
+    private let axisDivisionCount = 4
 
     var body: some View {
         GeometryReader { proxy in
@@ -82,7 +152,7 @@ private struct InferencePerformanceScatterPlot: View {
             let height = max(size.height - plotTop - plotBottom, 1)
             let maximumDuration = max((groups.map(\.p90DurationSeconds).max() ?? 1) * 1.4, 1)
             let maximumThroughput = max((groups.map(\.effectiveOutputTokensPerSecond).max() ?? 1) * 1.16, 1)
-            let maximumCalls = max(groups.map(\.callCount).max() ?? 1, 1)
+            let maximumCalls = max(groups.map(\.averageDailyCallCount).max() ?? 1, 1)
 
             ZStack(alignment: .topLeading) {
                 chartGrid(size: size, width: width, height: height)
@@ -96,7 +166,10 @@ private struct InferencePerformanceScatterPlot: View {
                     let medianX = xPosition(group.p50DurationSeconds, width: width, maximum: maximumDuration)
                     let p90X = xPosition(group.p90DurationSeconds, width: width, maximum: maximumDuration)
                     let color = modelColor(group.model)
-                    let diameter = bubbleDiameter(callCount: group.callCount, maximumCalls: maximumCalls)
+                    let diameter = bubbleDiameter(
+                        averageDailyCallCount: group.averageDailyCallCount,
+                        maximumCalls: maximumCalls
+                    )
                     let isHovered = hoveredGroupID == group.id
 
                     Path { path in
@@ -191,29 +264,43 @@ private struct InferencePerformanceScatterPlot: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: hoveredGroupID)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(language.text("今日模型推理表现散点图", "Today's model inference scatter plot"))
+        .accessibilityLabel(chartAccessibilityLabel)
     }
 
     private func chartGrid(size: CGSize, width: CGFloat, height: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(0...2, id: \.self) { index in
-                let fraction = CGFloat(index) / 2
+            ForEach(0...axisDivisionCount, id: \.self) { index in
+                let fraction = CGFloat(index) / CGFloat(axisDivisionCount)
                 Path { path in
                     let x = plotLeft + width * fraction
                     path.move(to: CGPoint(x: x, y: plotTop))
                     path.addLine(to: CGPoint(x: x, y: plotTop + height))
                 }
-                .stroke(FixedVisualPalette.surfaceTrack.opacity(0.70), style: StrokeStyle(lineWidth: 0.8, dash: [2, 3]))
+                .stroke(
+                    FixedVisualPalette.cardStroke(
+                        colorScheme,
+                        elevated: true,
+                        increasedContrast: true
+                    ),
+                    style: StrokeStyle(lineWidth: 0.9, dash: [3, 3])
+                )
             }
 
-            ForEach(0...2, id: \.self) { index in
-                let fraction = CGFloat(index) / 2
+            ForEach(0...axisDivisionCount, id: \.self) { index in
+                let fraction = CGFloat(index) / CGFloat(axisDivisionCount)
                 Path { path in
                     let y = plotTop + height * fraction
                     path.move(to: CGPoint(x: plotLeft, y: y))
                     path.addLine(to: CGPoint(x: plotLeft + width, y: y))
                 }
-                .stroke(FixedVisualPalette.surfaceTrack.opacity(0.70), style: StrokeStyle(lineWidth: 0.8, dash: [2, 3]))
+                .stroke(
+                    FixedVisualPalette.cardStroke(
+                        colorScheme,
+                        elevated: true,
+                        increasedContrast: true
+                    ),
+                    style: StrokeStyle(lineWidth: 0.9, dash: [3, 3])
+                )
             }
         }
         .frame(width: size.width, height: size.height)
@@ -228,8 +315,10 @@ private struct InferencePerformanceScatterPlot: View {
         plotWidth: CGFloat,
         isHovered: Bool
     ) -> some View {
-        let labelRightX = min(max(p90X, plotLeft), plotLeft + plotWidth)
-        let labelTop = max(plotTop, y - 20)
+        let plotRight = plotLeft + plotWidth
+        let labelLeadingX = min(max(p90X + 6, plotLeft), plotRight)
+        let availableWidth = max(plotRight - labelLeadingX, 1)
+        let labelFrameHeight: CGFloat = 18
         return HStack(spacing: 4) {
             Circle().fill(color).frame(width: 5, height: 5)
             labelText(group)
@@ -241,8 +330,8 @@ private struct InferencePerformanceScatterPlot: View {
                 .fill(isHovered ? color.opacity(0.18) : FixedVisualPalette.surfaceTrack.opacity(0.58))
         )
         .fixedSize()
-        .frame(width: labelRightX, alignment: .trailing)
-        .offset(y: labelTop)
+        .frame(width: availableWidth, height: labelFrameHeight, alignment: .leading)
+        .offset(x: labelLeadingX, y: y - labelFrameHeight / 2)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(pointAccessibilityLabel(group))
@@ -263,28 +352,28 @@ private struct InferencePerformanceScatterPlot: View {
         maximumThroughput: Double
     ) -> some View {
         ZStack(alignment: .topLeading) {
-            Text(formatAxisValue(maximumThroughput))
-                .position(x: plotLeft - 16, y: plotTop + 4)
-            Text(formatAxisValue(maximumThroughput / 2))
-                .position(x: plotLeft - 16, y: plotTop + height / 2)
-            Text("0")
-                .position(x: plotLeft - 16, y: plotTop + height)
+            ForEach(0...axisDivisionCount, id: \.self) { index in
+                let fraction = CGFloat(index) / CGFloat(axisDivisionCount)
+                let value = maximumThroughput * (1 - Double(fraction))
+                Text(formatAxisValue(value))
+                    .position(x: plotLeft - 16, y: plotTop + height * fraction)
+            }
 
-            Text("0")
-                .position(x: plotLeft, y: plotTop + height + 12)
-            Text("\(formatAxisValue(maximumDuration / 2))s")
-                .position(x: plotLeft + width / 2, y: plotTop + height + 12)
-            Text("\(formatAxisValue(maximumDuration))s")
-                .position(x: plotLeft + width, y: plotTop + height + 12)
+            ForEach(0...axisDivisionCount, id: \.self) { index in
+                let fraction = CGFloat(index) / CGFloat(axisDivisionCount)
+                let value = maximumDuration * Double(fraction)
+                Text(index == 0 ? "0" : "\(formatAxisValue(value))s")
+                    .position(x: plotLeft + width * fraction, y: plotTop + height + 12)
+            }
 
             Text("tok/s")
                 .position(x: plotLeft + 18, y: plotTop + 4)
             Text(language.text("P50 完整调用耗时", "P50 full-call duration"))
                 .position(x: plotLeft + width - 60, y: plotTop + height + 12)
         }
-        .font(.system(size: 8, weight: .medium, design: .rounded))
+        .font(.system(size: 8.5, weight: .semibold, design: .rounded))
         .monospacedDigit()
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.secondary)
         .frame(width: size.width, height: size.height)
         .accessibilityHidden(true)
     }
@@ -297,8 +386,8 @@ private struct InferencePerformanceScatterPlot: View {
         plotTop + height * CGFloat(1 - min(max(value / maximum, 0), 1))
     }
 
-    private func bubbleDiameter(callCount: Int, maximumCalls: Int) -> CGFloat {
-        let normalized = sqrt(Double(callCount) / Double(maximumCalls))
+    private func bubbleDiameter(averageDailyCallCount: Double, maximumCalls: Double) -> CGFloat {
+        let normalized = sqrt(max(averageDailyCallCount, 0) / max(maximumCalls, 1))
         return 7 + CGFloat(normalized) * 9
     }
 
@@ -308,7 +397,7 @@ private struct InferencePerformanceScatterPlot: View {
         height: CGFloat,
         maximumDuration: Double,
         maximumThroughput: Double,
-        maximumCalls: Int
+        maximumCalls: Double
     ) {
         var nearest: (group: ModelInferencePerformanceGroup, point: CGPoint, distance: CGFloat)?
 
@@ -318,7 +407,10 @@ private struct InferencePerformanceScatterPlot: View {
                 y: yPosition(group.effectiveOutputTokensPerSecond, height: height, maximum: maximumThroughput)
             )
             let distance = hypot(location.x - point.x, location.y - point.y)
-            let diameter = bubbleDiameter(callCount: group.callCount, maximumCalls: maximumCalls)
+            let diameter = bubbleDiameter(
+                averageDailyCallCount: group.averageDailyCallCount,
+                maximumCalls: maximumCalls
+            )
             let hitRadius = max(18, diameter / 2 + 8)
             guard distance <= hitRadius else { continue }
             if nearest == nil || distance < (nearest?.distance ?? .greatestFiniteMagnitude) {
@@ -357,44 +449,71 @@ private struct InferencePerformanceScatterPlot: View {
     }
 
     private func tooltipPayload(_ group: ModelInferencePerformanceGroup) -> ChartTooltipPayload {
-        ChartTooltipPayload(
-            title: "\(group.model) · \(displayEffort(group.effort))",
-            rows: [
+        var rows = [
+            ChartTooltipRow(
+                id: "model-calls",
+                label: language.text("模型调用", "Model calls"),
+                value: language.text("\(group.callCount) 次 · 跨 Session", "\(group.callCount) · across sessions")
+            )
+        ]
+        if performance.period != .today {
+            rows.append(
                 ChartTooltipRow(
-                    id: "model-calls",
-                    label: language.text("模型调用", "Model calls"),
-                    value: language.text("\(group.callCount) 次 · 跨 Session", "\(group.callCount) · across sessions")
-                ),
-                ChartTooltipRow(
-                    id: "average",
-                    label: language.text("平均耗时", "Average"),
-                    value: formatDuration(group.averageDurationSeconds)
-                ),
-                ChartTooltipRow(id: "p50", label: "P50", value: formatDuration(group.p50DurationSeconds)),
-                ChartTooltipRow(id: "p90", label: "P90", value: formatDuration(group.p90DurationSeconds)),
-                ChartTooltipRow(
-                    id: "throughput",
-                    label: language.text("有效吞吐", "Throughput"),
-                    value: "\(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s"
-                ),
-                ChartTooltipRow(
-                    id: "throughput-basis",
-                    label: language.text("吞吐口径", "Throughput basis"),
-                    value: language.text("全部输出 ÷ 完整耗时", "All output ÷ full duration")
-                ),
-                ChartTooltipRow(
-                    id: "reasoning-share",
-                    label: "Reasoning tokens",
-                    value: reasoningTokenDisclosure(group)
+                    id: "daily-average-calls",
+                    label: language.text("日均调用", "Daily avg calls"),
+                    value: language.text(
+                        "\(formatCallAverage(group.averageDailyCallCount)) 次 · \(performance.coverageDayCount) 日记录",
+                        "\(formatCallAverage(group.averageDailyCallCount)) · \(performance.coverageDayCount)d recorded"
+                    )
                 )
-            ]
+            )
+        }
+        rows.append(contentsOf: [
+            ChartTooltipRow(
+                id: "average",
+                label: language.text("平均耗时", "Average"),
+                value: formatDuration(group.averageDurationSeconds)
+            ),
+            ChartTooltipRow(id: "p50", label: "P50", value: formatDuration(group.p50DurationSeconds)),
+            ChartTooltipRow(id: "p90", label: "P90", value: formatDuration(group.p90DurationSeconds)),
+            ChartTooltipRow(
+                id: "throughput",
+                label: language.text("有效吞吐", "Throughput"),
+                value: "\(formatThroughput(group.effectiveOutputTokensPerSecond)) tok/s"
+            ),
+            ChartTooltipRow(
+                id: "throughput-basis",
+                label: language.text("吞吐口径", "Throughput basis"),
+                value: language.text("全部输出 ÷ 完整耗时", "All output ÷ full duration")
+            ),
+            ChartTooltipRow(
+                id: "reasoning-share",
+                label: "Reasoning tokens",
+                value: reasoningTokenDisclosure(group)
+            )
+        ])
+        return ChartTooltipPayload(
+            title: "\(group.model) · \(displayEffort(group.effort))",
+            rows: rows
         )
     }
 
     private func pointAccessibilityLabel(_ group: ModelInferencePerformanceGroup) -> String {
-        language.text(
-            "\(group.model)，推理强度 \(displayEffort(group.effort))，跨 Session 汇总 \(group.callCount) 次模型调用，平均耗时 \(formatDuration(group.averageDurationSeconds))，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒，口径为全部输出 tokens 除以完整耗时，Reasoning tokens 占 \(formatPercentage(reasoningTokenShare(group)))",
-            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(group.callCount) model calls aggregated across sessions, average \(formatDuration(group.averageDurationSeconds)), P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second using all output tokens divided by full duration, reasoning tokens are \(formatPercentage(reasoningTokenShare(group)))"
+        let callSummary: String
+        if performance.period == .today {
+            callSummary = language.text(
+                "跨 Session 汇总 \(group.callCount) 次模型调用",
+                "\(group.callCount) model calls aggregated across sessions"
+            )
+        } else {
+            callSummary = language.text(
+                "跨 Session 汇总 \(group.callCount) 次模型调用，记录覆盖期日均 \(formatCallAverage(group.averageDailyCallCount)) 次",
+                "\(group.callCount) model calls aggregated across sessions, \(formatCallAverage(group.averageDailyCallCount)) daily average over recorded coverage"
+            )
+        }
+        return language.text(
+            "\(group.model)，推理强度 \(displayEffort(group.effort))，\(callSummary)，平均耗时 \(formatDuration(group.averageDurationSeconds))，P50 \(formatDuration(group.p50DurationSeconds))，P90 \(formatDuration(group.p90DurationSeconds))，有效吞吐 \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens 每秒，口径为全部输出 tokens 除以完整耗时，Reasoning tokens 占 \(formatPercentage(reasoningTokenShare(group)))",
+            "\(group.model), reasoning effort \(displayEffort(group.effort)), \(callSummary), average \(formatDuration(group.averageDurationSeconds)), P50 \(formatDuration(group.p50DurationSeconds)), P90 \(formatDuration(group.p90DurationSeconds)), effective throughput \(formatThroughput(group.effectiveOutputTokensPerSecond)) tokens per second using all output tokens divided by full duration, reasoning tokens are \(formatPercentage(reasoningTokenShare(group)))"
         )
     }
 
@@ -417,6 +536,21 @@ private struct InferencePerformanceScatterPlot: View {
 
     private func formatThroughput(_ value: Double) -> String {
         value < 10 ? String(format: "%.1f", value) : String(format: "%.0f", value)
+    }
+
+    private func formatCallAverage(_ value: Double) -> String {
+        value < 10 ? String(format: "%.1f", value) : String(format: "%.0f", value)
+    }
+
+    private var chartAccessibilityLabel: String {
+        switch performance.period {
+        case .today:
+            language.text("今日模型推理表现散点图", "Today's model inference scatter plot")
+        case .sevenDays:
+            language.text("最近 7 日平均模型推理表现散点图", "7-day average model inference scatter plot")
+        case .twentyEightDays:
+            language.text("最近 28 日平均模型推理表现散点图", "28-day average model inference scatter plot")
+        }
     }
 
     private func formatAxisValue(_ value: Double) -> String {

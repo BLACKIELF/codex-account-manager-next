@@ -3,12 +3,29 @@ import Foundation
 struct CodexTokenCounterSample: Equatable {
     let inputTokens: Int64?
     let cachedInputTokens: Int64?
+    let cacheWriteInputTokens: Int64?
     let outputTokens: Int64?
     let reasoningOutputTokens: Int64?
     let totalTokens: Int64?
 
+    init(
+        inputTokens: Int64?,
+        cachedInputTokens: Int64?,
+        cacheWriteInputTokens: Int64? = nil,
+        outputTokens: Int64?,
+        reasoningOutputTokens: Int64?,
+        totalTokens: Int64?
+    ) {
+        self.inputTokens = inputTokens
+        self.cachedInputTokens = cachedInputTokens
+        self.cacheWriteInputTokens = cacheWriteInputTokens
+        self.outputTokens = outputTokens
+        self.reasoningOutputTokens = reasoningOutputTokens
+        self.totalTokens = totalTokens
+    }
+
     var hasNegativeValue: Bool {
-        [inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens, totalTokens]
+        [inputTokens, cachedInputTokens, cacheWriteInputTokens, outputTokens, reasoningOutputTokens, totalTokens]
             .compactMap { $0 }
             .contains { $0 < 0 }
     }
@@ -17,6 +34,7 @@ struct CodexTokenCounterSample: Equatable {
         TokenBreakdown(
             inputTokens: max(inputTokens ?? previous.inputTokens, 0),
             cachedInputTokens: max(cachedInputTokens ?? previous.cachedInputTokens, 0),
+            cacheWriteInputTokens: max(cacheWriteInputTokens ?? previous.cacheWriteInputTokens, 0),
             outputTokens: max(outputTokens ?? previous.outputTokens, 0),
             reasoningOutputTokens: max(reasoningOutputTokens ?? previous.reasoningOutputTokens, 0),
             totalTokens: max(totalTokens ?? previous.totalTokens, 0)
@@ -42,10 +60,11 @@ struct CodexTokenEventIdentity: Codable, Equatable {
     }
 
     private static func values(from sample: CodexTokenCounterSample?) -> [Int64?] {
-        guard let sample else { return [nil, nil, nil, nil, nil] }
+        guard let sample else { return [nil, nil, nil, nil, nil, nil] }
         return [
             sample.inputTokens,
             sample.cachedInputTokens,
+            sample.cacheWriteInputTokens,
             sample.outputTokens,
             sample.reasoningOutputTokens,
             sample.totalTokens
@@ -117,6 +136,7 @@ enum CodexTokenCounterNormalizer {
         let highWater = TokenBreakdown(
             inputTokens: max(previous.inputTokens, observed.inputTokens),
             cachedInputTokens: max(previous.cachedInputTokens, observed.cachedInputTokens),
+            cacheWriteInputTokens: max(previous.cacheWriteInputTokens, observed.cacheWriteInputTokens),
             outputTokens: max(previous.outputTokens, observed.outputTokens),
             reasoningOutputTokens: max(previous.reasoningOutputTokens, observed.reasoningOutputTokens),
             totalTokens: max(previous.totalTokens, observed.totalTokens)
@@ -180,6 +200,7 @@ enum CodexTokenCounterNormalizerSelfTest {
         func sample(
             input: Int64? = nil,
             cached: Int64? = nil,
+            cacheWrite: Int64? = nil,
             output: Int64? = nil,
             reasoning: Int64? = nil,
             total: Int64? = nil
@@ -187,6 +208,7 @@ enum CodexTokenCounterNormalizerSelfTest {
             CodexTokenCounterSample(
                 inputTokens: input,
                 cachedInputTokens: cached,
+                cacheWriteInputTokens: cacheWrite,
                 outputTokens: output,
                 reasoningOutputTokens: reasoning,
                 totalTokens: total
@@ -200,6 +222,20 @@ enum CodexTokenCounterNormalizerSelfTest {
             state: &state
         )
         expect(first?.totalTokens == 100, "first cumulative event should be counted once")
+
+        var cacheWriteState = CodexTokenCounterState()
+        let cacheWriteFirst = CodexTokenCounterNormalizer.consume(
+            cumulative: sample(input: 100, cached: 50, cacheWrite: 20, output: 10, total: 110),
+            lastUsage: sample(input: 100, cached: 50, cacheWrite: 20, output: 10, total: 110),
+            state: &cacheWriteState
+        )
+        expect(cacheWriteFirst?.cacheWriteInputTokens == 20, "cache-write input should be preserved in event deltas")
+        let cacheWriteGrowth = CodexTokenCounterNormalizer.consume(
+            cumulative: sample(input: 140, cached: 70, cacheWrite: 30, output: 15, total: 155),
+            lastUsage: sample(input: 40, cached: 20, cacheWrite: 10, output: 5, total: 45),
+            state: &cacheWriteState
+        )
+        expect(cacheWriteGrowth?.cacheWriteInputTokens == 10, "cache-write growth should prefer last_token_usage")
 
         let sparse = CodexTokenCounterNormalizer.consume(
             cumulative: sample(input: 120, cached: 70, output: 25, total: 145),

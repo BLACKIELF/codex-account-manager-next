@@ -4,7 +4,7 @@
 
 ## 全网首推：AI 领导力评估模型
 
-codexU v1.2.0 首次把“一个人能领导多少 AI、这些 AI 工作了多久、形成了怎样的编排与自主运行能力”变成一套本地、可解释、可持续积累的评估模型。它将 Codex 与 Claude Code 的真实 Worker 记录合并到同一条时间轴，以滚动 28 天的管理半径、劳动力杠杆、编排能力和自主运行为四个核心维度，给出 0–100 分 AI 领导力得分与中英双语七级称号。
+codexU v1.3.0 在 AI 领导力模型之外新增本机推理性能监测：从最近 28 天 Codex rollout 中按模型与推理强度聚合完整调用耗时、P50/P90、有效吞吐和 reasoning token 占比。所有数据仍在本机处理，并与既有额度、用量和任务口径保持独立。
 
 - **一眼看懂 AI 组织规模**：主视觉同时展示领导力得分、28 天领导 Agent 数、AI 工时和峰值并发；轨道节点随今日 Agent 动态运行。
 - **不是靠 token 刷分**：只使用本机可验证或可推导的 Agent 生命周期、父子关系、并发与自主运行证据；不可靠的成本、交付和估算区间不进入得分。
@@ -13,7 +13,7 @@ codexU v1.2.0 首次把“一个人能领导多少 AI、这些 AI 工作了多�
 - **本地优先、隐私优先**：评分全程在 Mac 本机完成，不上传 usage、线程、路径、日志或账户数据。
 
 > [!IMPORTANT]
-> **建议升级到 v1.2.1 或更高版本。** v1.2.1 修复少量领导力记录下可能出现的启动崩溃，并新增 Codex 模型用量趋势与活动概览。[下载最新版本](https://github.com/shanggqm/codexU/releases/latest)。
+> **建议升级到 v1.3.0 或更高版本。** v1.3.0 新增本机推理性能监测，可查看模型 × 推理强度的平均耗时、P50、P90 和有效吞吐。[下载最新版本](https://github.com/shanggqm/codexU/releases/latest)。
 
 [产品官网](https://shanggqm.github.io/codexU-site/) · [下载最新版本](https://github.com/shanggqm/codexU/releases/latest) · [English](README.en.md)
 
@@ -58,7 +58,7 @@ codexU 是一个 macOS 菜单栏与桌面应用，用来查看 OpenAI Codex / Ch
 - 在顶部概览最左侧用“等级徽章 + 指挥半径轨道”展示滚动 28 天 AI 领导力：徽章固定在圆心，得分、近 28 天领导 Agent、近 28 天 AI 工时和峰值并发使用 2×2 指标矩阵；轨道节点仍按今日 Agent 动态变化。双环紧随其右并保持原尺寸，左上角明确标注“用量”。
 - 下方仪表盘支持今日任务、AI 领导力、用量趋势、项目排行和 Skill 使用视图。AI 领导力始终评估 Codex 与 Claude Code 的合计表现；详情顶部用完整徽章路径展示全部等级节点，分值直接标在进度条上，再以四个核心指标、四维能力、每日 AI 工时/Agent/峰值组合趋势和项目贡献解释得分。
 - 今日任务按事实源自适应组织：Codex 使用“最近活跃、待继续、定时、今日归档”，Claude Code 使用本机 task 的“进行中、待处理、计划中、已完成”；近期活动与归档都不会被包装成仍在执行或成功完成。
-- Codex 今日任务顶部按“模型 × 推理强度”展示本机实测散点图：横轴为完整调用耗时 P50、横线延伸到 P90，横轴上限为所有组合最大 P90 的 1.4 倍；纵轴为输出 tokens 除以完整调用耗时，气泡大小代表跨 Session 汇总的模型调用数；它不是 Session、线程或工具调用数。气泡使用紧凑尺寸减少近似数据点遮挡，模型标签固定在线段右上方并与 P90 端点右对齐。标题后的信息按钮集中解释完整算法，悬停立即展示、点击可固定打开；卡片右侧不重复展示数据来源与调用总数。悬停气泡可查看模型调用数、平均/P50/P90、有效吞吐、吞吐计算口径，以及 reasoning tokens 在全部输出中的数量和占比。该指标用于比较当天客观体感，不冒充 TTFT 或可见文本解码 TPS。
+- Codex 今日任务顶部按“模型 × 推理强度”展示本机实测散点图，并可在右上角切换今日（默认）、7 日均和 28 日均。横轴为所选窗口内完整调用耗时 P50、横线延伸到 P90，横轴上限为所有组合最大 P90 的 1.4 倍；纵轴为输出 tokens 除以完整调用耗时。今日气泡大小代表模型调用数，7/28 日气泡使用记录覆盖期内的日均调用数，避免周期长度放大气泡；它们都不是 Session、线程或工具调用数。样本会持久化到本机 Application Support，并从最近 28 天 rollout 回填，不记录 prompt、回复或路径。悬停气泡可查看总调用数、日均调用数、平均/P50/P90、有效吞吐、吞吐计算口径，以及 reasoning tokens 在全部输出中的数量和占比。该指标用于持续比较客观体感，不冒充 TTFT 或可见文本解码 TPS。
 - 任务卡片优先展示标题、工作区、事实时间和可信状态；可确定时显示 automation 下次运行时间，只有存在有效 Session Deep Link 的卡片才提供整卡点击、hover、手型和键盘焦点反馈。
 - Codex 用量趋势展示最近半年的每日 token 热力图和模型活动概览，概览包含当前范围内的用量最高模型、活跃日期数、活跃模型数和范围日均用量；Claude Code 暂不支持模型归因，保留原有近 7 日摘要。
 - 在 Codex 用量趋势下方展示按模型分色的时间序列面积图，默认显示最近 30 天，可切换最近 60/90/180 天；图中同时显示总用量虚线、近 7 日总量、日均和较前 7 日变化。默认显示 Top 8 模型并将其余模型合并为“其他模型”。纵轴可切换 Token 或 API 等效估算费用；模型没有独立价格时明确显示为按 GPT-5.5 价格折算的参考费用。粗略线程口径没有费用拆分时，费用模式会明确标记为不可用。
@@ -72,18 +72,21 @@ codexU 是一个 macOS 菜单栏与桌面应用，用来查看 OpenAI Codex / Ch
 
 ## 羊毛进度
 
-“羊毛进度”是 codexU 对本月 Codex 使用量的 API 等效价值估算。它把本机解析到的未缓存输入、命中缓存输入和输出 token，按对应模型的 OpenAI API token 单价折算成美元金额，并和 Plus、Pro 100、Pro 200 以及满额月价值做对比。这个指标解决的问题是：Codex 额度本身通常只显示百分比和重置时间，token 数量也不容易直观看出“用了多少价值”；羊毛进度提供一个统一的金额口径，帮助你判断本月订阅成本大致回收到了哪个区间。
+“羊毛进度”是 codexU 对本月 Codex 使用量的 API 等效价值估算。它把本机解析到的普通输入、cache write、命中缓存输入和输出 token，按对应模型及实际 service tier 的 OpenAI API token 单价折算成美元金额，并和 Plus、Pro 100、Pro 200 以及参考月上限做对比。这个指标解决的问题是：Codex 额度本身通常只显示百分比和重置时间，token 数量也不容易直观看出“用了多少价值”；羊毛进度提供一个统一的金额口径，帮助你判断本月订阅成本大致回收到了哪个区间。
 
 单次 token 用量的估算公式为：
 
 ```text
 API 等效价值 =
-  未缓存输入 tokens / 1,000,000 * 模型未缓存输入单价
+  普通未缓存输入 tokens / 1,000,000 * 模型输入单价
++ cache write tokens / 1,000,000 * 模型 cache write 单价
 + 缓存输入 tokens / 1,000,000 * 模型缓存输入单价
 + 输出 tokens / 1,000,000 * 模型输出单价
 ```
 
-其中 `未缓存输入 tokens = 输入 tokens - 缓存输入 tokens`，缓存输入按不超过输入 tokens 的数量计入。本月羊毛进度会累计当月所有本机 session 的 API 等效价值。进度条的满额终点使用 `2 亿 tokens/天 * 30 天` 估算，并按 30% 未缓存输入、50% 缓存输入、20% 输出的参考 token mix 折算；当前参考价约为 `$7.75 / 1M tokens`，满额月价值约 `$46,500`。进度条采用分段非线性刻度：Plus / Pro 节点保留在前段，超过 Pro 200 后用对数比例映射到满额终点，因此条宽用于扫视阶段进展，不等同于线性美元占比。该金额只是基于 API 价格的等效估算，不代表实际账单或官方返现金额。
+其中 cache write 和缓存命中都按不超过输入 tokens 的数量计入，避免重复计价。解析到 `service_tier = priority/fast` 时使用官方 Fast mode API 单价；支持长上下文计价的模型在单次输入超过 272K tokens 时使用官方长上下文单价。推理强度不会被额外乘一次，因为 reasoning tokens 已包含在输出 token 中。价格来源以 OpenAI 的[实时 API 定价页](https://developers.openai.com/api/docs/pricing)和对应模型页为准。
+
+本月羊毛进度会累计当月所有本机 session 的 API 等效价值。GPT-5.3-Codex-Spark 仍是 research preview，官方尚未公布最终费率；这类模型及未知模型继续按 GPT-5.5 参考价折算，并用 `≈` 明确标记为参考估算，而不会冒充官方价格。进度条的参考终点使用 `2 亿 tokens/天 * 30 天` 估算，并按 30% 未缓存输入、50% 缓存输入、20% 输出的参考 token mix 折算；当前参考价约为 `$7.75 / 1M tokens`，参考月上限约 `$46,500`。进度条采用分段非线性刻度：Plus / Pro 节点保留在前段，超过 Pro 200 后用对数比例映射到参考终点，因此条宽用于扫视阶段进展，不等同于线性美元占比。该金额只是基于 API 价格的等效估算，不代表实际账单或官方返现金额。
 
 ## 快捷键和操作
 
@@ -174,10 +177,10 @@ make release-all
 产物会写入 `dist/`，例如：
 
 ```text
-dist/codexU-1.2.1-mac-arm64.dmg
-dist/codexU-1.2.1-mac-arm64.dmg.sha256
-dist/codexU-1.2.1-mac-x86_64.dmg
-dist/codexU-1.2.1-mac-x86_64.dmg.sha256
+dist/codexU-1.3.0-mac-arm64.dmg
+dist/codexU-1.3.0-mac-arm64.dmg.sha256
+dist/codexU-1.3.0-mac-x86_64.dmg
+dist/codexU-1.3.0-mac-x86_64.dmg.sha256
 ```
 
 Developer ID 签名和 Apple notarization 流程见 [DISTRIBUTION.md](DISTRIBUTION.md)。
@@ -188,7 +191,7 @@ Developer ID 签名和 Apple notarization 流程见 [DISTRIBUTION.md](DISTRIBUTI
 - 本机 token 总量：`~/.codex/state_5.sqlite`。
 - 精细 token 拆分：`~/.codex/sessions/**/rollout-*.jsonl` 和 `~/.codex/archived_sessions/*.jsonl` 中的 `token_count` 事件。
 - 今日任务看板：本机 SQLite 中未归档和今日归档的 Codex 线程；两小时活动窗口只表达“最近活跃”，归档只表达记录归档，不代表运行或成功。
-- 今日实测推理表现：从今天更新的本机 Codex rollout 中识别带 `model`、`reasoning_effort` 和增量输出 token 的完整模型调用，按模型与推理强度聚合 P50、P90、平均调用耗时和有效吞吐；不读取 prompt 或回复正文用于展示，也不把该口径标为 TTFT 或可见文本解码 TPS。
+- 实测推理表现：从最近 28 天本机 Codex rollout 中识别带 `model`、`reasoning_effort` 和增量输出 token 的完整模型调用，排除低于 100ms 的时间戳噪声后，按模型与推理强度聚合今日、7 日、28 日的 P50、P90、平均调用耗时和有效吞吐。去重样本有界保存在 `~/Library/Application Support/codexU/inference-performance-v1.json`，即使原 rollout 后续移出线程列表也可继续进入滚动窗口；不保存 prompt、回复或路径，也不把该口径标为 TTFT 或可见文本解码 TPS。
 - 用量趋势和项目排行：本机 session `token_count` 事件聚合；模型曲线优先按同一 session 中、位于 token 事件之前最近的 `turn_context.model` 归因。该 turn context 未记录模型时不会沿用上一轮，而是回退到线程模型。缺失精细事件时，日归因整体回退到线程更新时间的粗略口径；模型面积图在 Codex runtime 中按 Top 8 + 其他模型展示，并叠加全局总用量虚线，费用口径始终是本地 API 等效估算。Claude Code 暂不提供模型归因或模型面积图。
 - 工具和 Skill 使用：本机 session 事件中的工具调用与 Skill 加载记录。
 - 定时任务：`~/.codex/automations/**/automation.toml` 中启用的 automation 元数据；周期、时区和时间足够明确时在本机计算下次运行，规则不完整时不猜测。

@@ -1,5 +1,7 @@
 import Foundation
 
+let modelInferenceMinimumCallDurationSeconds: Double = 0.1
+
 struct ModelInferenceSample: Equatable, Codable {
     let completedAt: Date
     let durationSeconds: Double
@@ -10,11 +12,28 @@ struct ModelInferenceSample: Equatable, Codable {
     let eventIdentity: CodexTokenEventIdentity
 }
 
+enum ModelInferencePeriod: String, Codable, CaseIterable, Identifiable, Equatable {
+    case today
+    case sevenDays
+    case twentyEightDays
+
+    var id: String { rawValue }
+
+    var dayCount: Int {
+        switch self {
+        case .today: 1
+        case .sevenDays: 7
+        case .twentyEightDays: 28
+        }
+    }
+}
+
 struct ModelInferencePerformanceGroup: Identifiable, Equatable, Codable {
     let id: String
     let model: String
     let effort: String
     let callCount: Int
+    let averageDailyCallCount: Double
     let averageDurationSeconds: Double
     let p50DurationSeconds: Double
     let p90DurationSeconds: Double
@@ -24,19 +43,96 @@ struct ModelInferencePerformanceGroup: Identifiable, Equatable, Codable {
 }
 
 struct ModelInferencePerformance: Equatable, Codable {
+    let period: ModelInferencePeriod
+    let coverageDayCount: Int
     let groups: [ModelInferencePerformanceGroup]
     let totalCallCount: Int
 
-    func displayGroups(limit: Int = 6) -> [ModelInferencePerformanceGroup] {
-        Array(
-            groups.sorted { lhs, rhs in
-                if lhs.callCount != rhs.callCount { return lhs.callCount > rhs.callCount }
-                if lhs.p50DurationSeconds != rhs.p50DurationSeconds {
-                    return lhs.p50DurationSeconds < rhs.p50DurationSeconds
+    func displayGroups() -> [ModelInferencePerformanceGroup] {
+        groups.sorted { lhs, rhs in
+            if lhs.callCount != rhs.callCount { return lhs.callCount > rhs.callCount }
+            if lhs.p50DurationSeconds != rhs.p50DurationSeconds {
+                return lhs.p50DurationSeconds < rhs.p50DurationSeconds
+            }
+            return lhs.id < rhs.id
+        }
+    }
+}
+
+struct ModelInferencePerformanceHistory: Equatable, Codable {
+    let recordingStartedAt: Date
+    let today: ModelInferencePerformance?
+    let sevenDays: ModelInferencePerformance?
+    let twentyEightDays: ModelInferencePerformance?
+
+    func performance(for period: ModelInferencePeriod) -> ModelInferencePerformance? {
+        switch period {
+        case .today: today
+        case .sevenDays: sevenDays
+        case .twentyEightDays: twentyEightDays
+        }
+    }
+}
+
+struct ModelInferenceHistoryArchive: Equatable, Codable {
+    var recordingStartedAt: Date
+    var samplesBySourceID: [String: [ModelInferenceSample]]
+
+    init(recordingStartedAt: Date, samplesBySourceID: [String: [ModelInferenceSample]] = [:]) {
+        self.recordingStartedAt = recordingStartedAt
+        self.samplesBySourceID = samplesBySourceID
+    }
+
+    var samples: [ModelInferenceSample] {
+        samplesBySourceID.values.flatMap { $0 }
+    }
+
+    mutating func replaceSamples(
+        for sourceID: String,
+        with samples: [ModelInferenceSample],
+        retainingSince retentionStart: Date
+    ) {
+        guard !sourceID.isEmpty else { return }
+        let retained = samples
+            .filter {
+                $0.completedAt >= retentionStart
+                    && $0.durationSeconds >= modelInferenceMinimumCallDurationSeconds
+            }
+            .sorted { $0.completedAt < $1.completedAt }
+        if retained.isEmpty {
+            samplesBySourceID.removeValue(forKey: sourceID)
+        } else {
+            samplesBySourceID[sourceID] = retained
+            if let earliest = retained.first?.completedAt, earliest < recordingStartedAt {
+                recordingStartedAt = earliest
+            }
+        }
+    }
+
+    mutating func compact(retainingSince retentionStart: Date, maximumSampleCount: Int) {
+        let retained = samplesBySourceID.flatMap { sourceID, samples in
+            samples
+                .filter {
+                    $0.completedAt >= retentionStart
+                        && $0.durationSeconds >= modelInferenceMinimumCallDurationSeconds
                 }
-                return lhs.id < rhs.id
-            }.prefix(max(limit, 0))
-        )
+                .map { (sourceID: sourceID, sample: $0) }
+        }
+        .sorted { lhs, rhs in
+            if lhs.sample.completedAt != rhs.sample.completedAt {
+                return lhs.sample.completedAt > rhs.sample.completedAt
+            }
+            return lhs.sourceID < rhs.sourceID
+        }
+        .prefix(max(maximumSampleCount, 0))
+
+        var grouped: [String: [ModelInferenceSample]] = [:]
+        for item in retained {
+            grouped[item.sourceID, default: []].append(item.sample)
+        }
+        samplesBySourceID = grouped.mapValues { samples in
+            samples.sorted { $0.completedAt < $1.completedAt }
+        }
     }
 }
 
@@ -78,7 +174,7 @@ struct ModelInferenceCallTracker {
               let effort = activeEffort,
               let startedAt = callStartedAt,
               observedModelOutput,
-              completedAt > startedAt,
+              completedAt.timeIntervalSince(startedAt) >= modelInferenceMinimumCallDurationSeconds,
               let lastUsage,
               !lastUsage.hasNegativeValue
         else { return nil }
@@ -105,20 +201,80 @@ struct ModelInferenceCallTracker {
 }
 
 enum ModelInferencePerformanceBuilder {
+    static func makeHistory(
+        samples: [ModelInferenceSample],
+        recordingStartedAt: Date,
+        dayStart: Date,
+        calendar: Calendar
+    ) -> ModelInferencePerformanceHistory? {
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
+            ?? dayStart.addingTimeInterval(24 * 60 * 60)
+
+        func performance(for period: ModelInferencePeriod) -> ModelInferencePerformance? {
+            let windowStart = calendar.date(
+                byAdding: .day,
+                value: 1 - period.dayCount,
+                to: dayStart
+            ) ?? dayStart
+            let recordingDayStart = calendar.startOfDay(for: recordingStartedAt)
+            let coverageStart = max(windowStart, recordingDayStart)
+            let elapsedDays = calendar.dateComponents(
+                [.day],
+                from: coverageStart,
+                to: dayStart
+            ).day ?? 0
+            let coverageDayCount = min(max(elapsedDays + 1, 1), period.dayCount)
+            return make(
+                samples: samples,
+                period: period,
+                windowStart: windowStart,
+                windowEnd: dayEnd,
+                coverageDayCount: coverageDayCount
+            )
+        }
+
+        let history = ModelInferencePerformanceHistory(
+            recordingStartedAt: recordingStartedAt,
+            today: performance(for: .today),
+            sevenDays: performance(for: .sevenDays),
+            twentyEightDays: performance(for: .twentyEightDays)
+        )
+        guard history.today != nil || history.sevenDays != nil || history.twentyEightDays != nil else {
+            return nil
+        }
+        return history
+    }
+
     static func make(
         samples: [ModelInferenceSample],
         dayStart: Date,
         dayEnd: Date
     ) -> ModelInferencePerformance? {
-        let todaySamples = samples.filter {
-            $0.completedAt >= dayStart
-                && $0.completedAt < dayEnd
-                && $0.durationSeconds > 0
+        make(
+            samples: samples,
+            period: .today,
+            windowStart: dayStart,
+            windowEnd: dayEnd,
+            coverageDayCount: 1
+        )
+    }
+
+    static func make(
+        samples: [ModelInferenceSample],
+        period: ModelInferencePeriod,
+        windowStart: Date,
+        windowEnd: Date,
+        coverageDayCount: Int
+    ) -> ModelInferencePerformance? {
+        let selectedSamples = samples.filter {
+            $0.completedAt >= windowStart
+                && $0.completedAt < windowEnd
+                && $0.durationSeconds >= modelInferenceMinimumCallDurationSeconds
                 && $0.outputTokens > 0
         }
-        guard !todaySamples.isEmpty else { return nil }
+        guard !selectedSamples.isEmpty else { return nil }
 
-        let grouped = Dictionary(grouping: todaySamples) { sample in
+        let grouped = Dictionary(grouping: selectedSamples) { sample in
             modelInferencePerformanceID(model: sample.model, effort: sample.effort)
         }
 
@@ -135,6 +291,7 @@ enum ModelInferencePerformanceBuilder {
                 model: first.model,
                 effort: first.effort,
                 callCount: values.count,
+                averageDailyCallCount: Double(values.count) / Double(max(coverageDayCount, 1)),
                 averageDurationSeconds: totalDuration / Double(values.count),
                 p50DurationSeconds: percentile(durations, fraction: 0.5),
                 p90DurationSeconds: percentile(durations, fraction: 0.9),
@@ -150,6 +307,8 @@ enum ModelInferencePerformanceBuilder {
 
         guard !groups.isEmpty else { return nil }
         return ModelInferencePerformance(
+            period: period,
+            coverageDayCount: max(coverageDayCount, 1),
             groups: groups,
             totalCallCount: groups.reduce(0) { $0 + $1.callCount }
         )
@@ -225,6 +384,15 @@ enum ModelInferencePerformanceSelfTest {
         )
         expect(missingEffort == nil, "missing effort must clear previous attribution")
 
+        tracker.applyTurnContext(model: "gpt-test", effort: "high", at: base.addingTimeInterval(35))
+        tracker.observeModelOutput()
+        let timestampNoise = tracker.consumeTokenEvent(
+            at: base.addingTimeInterval(35.01),
+            lastUsage: usage,
+            eventIdentity: identity
+        )
+        expect(timestampNoise == nil, "sub-100ms timestamp noise must not become a complete model call")
+
         tracker.applyTurnContext(model: "gpt-test", effort: "high", at: base.addingTimeInterval(40))
         let baselineSnapshot = tracker.consumeTokenEvent(
             at: base.addingTimeInterval(40.001),
@@ -252,6 +420,7 @@ enum ModelInferencePerformanceSelfTest {
         )
         let group = performance?.groups.first
         expect(group?.callCount == 3, "samples should aggregate by model and effort")
+        expect(nearlyEqual(group?.averageDailyCallCount ?? 0, 3), "today should use the observed daily call count")
         expect(nearlyEqual(group?.averageDurationSeconds ?? 0, 14.0 / 3.0), "average duration")
         expect(nearlyEqual(group?.p50DurationSeconds ?? 0, 4), "p50 duration")
         expect(nearlyEqual(group?.p90DurationSeconds ?? 0, 7.2), "interpolated p90 duration")
@@ -272,6 +441,60 @@ enum ModelInferencePerformanceSelfTest {
             dayEnd: base.addingTimeInterval(24 * 60 * 60)
         )
         expect(filtered?.groups.count == 1, "samples outside the selected day must be excluded")
+
+        var expandedSamples: [ModelInferenceSample] = []
+        for index in 0..<7 {
+            let sample = ModelInferenceSample(
+                completedAt: base.addingTimeInterval(Double(index + 1) * 60),
+                durationSeconds: Double(index + 1),
+                outputTokens: Int64((index + 1) * 10),
+                reasoningOutputTokens: 0,
+                model: "gpt-test-\(index)",
+                effort: "high",
+                eventIdentity: identity
+            )
+            expandedSamples.append(sample)
+        }
+        let expandedPerformance = ModelInferencePerformanceBuilder.make(
+            samples: expandedSamples,
+            dayStart: base,
+            dayEnd: base.addingTimeInterval(24 * 60 * 60)
+        )
+        expect(
+            expandedPerformance?.displayGroups().count == expandedSamples.count,
+            "display groups must not truncate valid model and effort combinations"
+        )
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let priorDay = ModelInferenceSample(
+            completedAt: base.addingTimeInterval(-24 * 60 * 60),
+            durationSeconds: 5,
+            outputTokens: 50,
+            reasoningOutputTokens: 10,
+            model: "gpt-test",
+            effort: "high",
+            eventIdentity: identity
+        )
+        let history = ModelInferencePerformanceBuilder.makeHistory(
+            samples: samples + [priorDay],
+            recordingStartedAt: priorDay.completedAt,
+            dayStart: base,
+            calendar: calendar
+        )
+        expect(history?.today?.totalCallCount == 3, "today history should exclude prior-day calls")
+        expect(history?.sevenDays?.totalCallCount == 4, "seven-day history should retain prior-day calls")
+        expect(nearlyEqual(history?.sevenDays?.groups.first?.averageDailyCallCount ?? 0, 2), "rolling call bubbles should use daily averages over recorded coverage")
+
+        var archive = ModelInferenceHistoryArchive(recordingStartedAt: base)
+        archive.replaceSamples(
+            for: "thread-a",
+            with: samples + [outside],
+            retainingSince: base
+        )
+        expect(archive.samples.count == samples.count, "history archive should discard samples before retention")
+        archive.compact(retainingSince: base, maximumSampleCount: 2)
+        expect(archive.samples.count == 2, "history archive must remain bounded")
 
         if failures.isEmpty {
             print("model inference performance self-test passed")

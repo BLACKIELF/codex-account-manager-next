@@ -4,7 +4,7 @@
 
 ## A First-of-Its-Kind AI Leadership Assessment Model
 
-codexU v1.2.0 turns a new OPC question—how many AI workers one person can lead, how long they work, and how well they are orchestrated—into a local, explainable model that compounds over time. It combines real Codex and Claude Code worker records on one timeline, then produces a rolling 28-day score from four dimensions: management span, labor leverage, orchestration, and autonomous operation.
+codexU v1.3.0 adds on-device inference performance monitoring to its AI leadership model. It groups complete Codex model calls from the latest 28 days by model and reasoning effort, exposing average duration, P50/P90, effective throughput, and reasoning-token share. All processing remains local and independent from the existing quota, usage, trend, and task data paths.
 
 - **See the AI organization at a glance:** score, 28-day led agents, AI hours, and peak concurrency sit beside a live command-radius orbit driven by today's agents.
 - **No token-based score inflation:** only locally verifiable or derived worker lifecycles, parent-child relationships, concurrency, and autonomous runs count. Unreliable cost, delivery, and estimated intervals stay outside the score.
@@ -13,7 +13,7 @@ codexU v1.2.0 turns a new OPC question—how many AI workers one person can lead
 - **Local and private:** evaluation stays on your Mac and does not upload usage, threads, paths, logs, or account data.
 
 > [!IMPORTANT]
-> **Upgrade to v1.2.1 or later.** v1.2.1 fixes a startup crash that could occur with sparse AI Leadership history and adds Codex model usage trends and an activity overview. [Download the latest release](https://github.com/shanggqm/codexU/releases/latest).
+> **Upgrade to v1.3.0 or later.** v1.3.0 adds on-device inference performance monitoring with model × reasoning-effort duration, P50/P90, and effective-throughput views. [Download the latest release](https://github.com/shanggqm/codexU/releases/latest).
 
 codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT Codex and Claude Code quota, token usage, today's tasks, and local AI leadership. It keeps the information you check most in the menu bar and main window, so you can quickly see remaining quota, reset times, daily progress, and how much AI labor one person is directing.
 
@@ -46,7 +46,7 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - Leads the overview with a rank emblem and command-radius orbit for rolling 28-day AI leadership. The emblem stays locked to the orbit center, while score, 28-day led agents, 28-day AI hours, and peak concurrency form a 2×2 metric grid; orbit nodes continue to represent today's agents. The unchanged quota rings sit immediately to its right with an explicit Usage label.
 - Adds lower dashboard tabs for today's tasks, AI leadership, usage trend, project ranking, and Skill usage. AI leadership always evaluates the combined Codex and Claude Code workforce; its detail view starts with the full badge path for every rank and places the score directly on the progress track, followed by four headline metrics, four dimensions, a daily AI-hours/agents/peak combo chart, and project contributions.
 - Organizes today's tasks according to each factual source: Codex uses Recent, To continue, Scheduled, and Archived today; Claude Code uses explicit local task states for Active, Pending, Planned, and Completed. Recent activity and archival are not presented as proof of running or success.
-- Adds an on-device model × reasoning-effort scatter plot above Codex Today's Tasks. X is P50 full-call duration with a whisker to P90, Y is output tokens divided by full-call duration, and bubble area represents model calls aggregated across sessions—not session, thread, or tool-call counts. Compact bubbles reduce overlap between nearby observations, while labels sit above each whisker with their trailing edge aligned to the P90 endpoint. Hovering a bubble shows model calls, average/P50/P90, and effective throughput. It compares today's observed experience without presenting the metric as TTFT or visible-text decode TPS.
+- Adds an on-device model × reasoning-effort scatter plot above Codex Today's Tasks with a top-right Today (default), 7-day average, and 28-day average switch. X is P50 full-call duration with a whisker to P90, while Y is output tokens divided by full-call duration. Today uses model-call count for bubble area; 7/28-day windows use daily-average calls over recorded coverage so longer windows do not inflate bubbles. Samples are backfilled from the latest 28 days of rollouts and persisted under local Application Support without prompt, response, or path content. Hovering shows total and daily-average calls, average/P50/P90, effective throughput, and reasoning-token share. The metric is not presented as TTFT or visible-text decode TPS.
 - Task cards prioritize title, workspace, factual time, and trusted state. Automations show the next run only when it can be determined, and only cards with a valid session deep link expose whole-card click, hover, pointer, and keyboard-focus feedback.
 - Codex Usage Trend shows a six-month daily token heatmap and a model activity overview with the top model, active days, active model count, and range daily average. Claude Code does not yet support model attribution and retains the existing 7-day summary.
 - Adds a Codex-only model area chart with one color per visible model and a dashed total-usage line. It defaults to the last 30 days and can switch to 60, 90, or 180 days. It also summarizes the last-7-day total, daily average, and change versus the previous seven days. It shows the top eight models plus an "Other models" aggregate, and switches the y-axis between tokens and API-equivalent estimated cost. Models without a dedicated price are explicitly labeled as reference cost calculated with GPT-5.5 pricing. Cost mode is unavailable when the fallback thread source has no token split.
@@ -57,6 +57,12 @@ codexU is a macOS menu bar and desktop app for tracking OpenAI Codex / ChatGPT C
 - Includes a Settings window for Chinese/English UI text, system/light/dark appearance, menu bar content with live preview, always-on-top behavior, close-window behavior, system status, and update check configuration.
 - Checks GitHub Releases for newer versions by default, including beta releases, and offers the DMG that matches the current Mac architecture. It does not silently download or install updates, and automatic checks can be turned off.
 - Reads data locally and does not upload usage, threads, or account data to a third-party service.
+
+## Value progress
+
+Value progress estimates the current month's API-equivalent value from locally parsed Codex usage. Each request is priced with its recorded model and service tier, splitting input into ordinary uncached input, cache writes, and cached input before adding output-token cost. Recorded `priority` or `fast` requests use the published Fast mode API rates. Models with long-context pricing use the published long-context rates when one request exceeds 272K input tokens. Reasoning effort is not multiplied separately because reasoning tokens are already included in output usage. Prices come from OpenAI's live [API pricing page](https://developers.openai.com/api/docs/pricing) and the corresponding model pages.
+
+GPT-5.3-Codex-Spark remains a research preview without a final published rate. Spark and unknown models therefore use the GPT-5.5 reference rate and display an `≈` marker instead of being presented as officially priced. The progress endpoint remains a stable reference scale: `200M tokens/day × 30 days`, using a 30% ordinary input / 50% cached input / 20% output mix at about `$7.75 / 1M tokens`, or roughly `$46,500`. The bar is nonlinear after Pro 200, so its width is useful for scanning progress but is not a linear dollar ratio. API-equivalent value is an estimate, not an invoice or rebate.
 
 ## Keyboard Shortcuts
 
@@ -147,10 +153,10 @@ make release-all
 Release artifacts are written to `dist/`, for example:
 
 ```text
-dist/codexU-1.2.1-mac-arm64.dmg
-dist/codexU-1.2.1-mac-arm64.dmg.sha256
-dist/codexU-1.2.1-mac-x86_64.dmg
-dist/codexU-1.2.1-mac-x86_64.dmg.sha256
+dist/codexU-1.3.0-mac-arm64.dmg
+dist/codexU-1.3.0-mac-arm64.dmg.sha256
+dist/codexU-1.3.0-mac-x86_64.dmg
+dist/codexU-1.3.0-mac-x86_64.dmg.sha256
 ```
 
 For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md).
@@ -161,7 +167,7 @@ For Developer ID signing and notarization, see [DISTRIBUTION.md](DISTRIBUTION.md
 - Local token totals: `~/.codex/state_5.sqlite`.
 - Detailed token splits: `token_count` events in `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/*.jsonl`.
 - Today's board: unarchived and archived Codex threads in the local SQLite database. The two-hour activity window means only “recent,” while archival does not imply running or success.
-- Today's observed inference performance: complete model calls with `model`, `reasoning_effort`, and incremental output tokens are identified only from today's updated local Codex rollouts, then grouped by model and effort for average, P50, P90, and effective throughput. The x-axis ends at 1.4 times the largest P90 across displayed groups. An info button beside the title explains the complete algorithm on hover and can be pinned open with a click, without repeating source and total-call badges on the right. Bubble tooltips disclose that throughput uses all output tokens divided by full duration, plus the reasoning-token count and share of total output. Prompt and response text are not exposed, and the metric is not labeled as TTFT or visible-text decode TPS.
+- Observed inference performance: complete model calls with `model`, `reasoning_effort`, and incremental output tokens are identified from the latest 28 days of local Codex rollouts. Sub-100ms timestamp noise is rejected before model × effort groups are built for Today, 7 days, and 28 days with average duration, P50, P90, and effective throughput. Bounded, deduplicated samples are stored in `~/Library/Application Support/codexU/inference-performance-v1.json`, so records can remain in the rolling window after their original rollout leaves the thread list. Prompt, response, and path content are not stored or displayed, and the metric is not labeled as TTFT or visible-text decode TPS.
 - Usage trends and project rankings: aggregated from local session `token_count` events. Model curves use the most recent preceding `turn_context.model` from the same session; a turn context without a model clears the prior attribution and falls back to the thread model. Daily attribution falls back to approximate thread-updated-time data when detailed events are unavailable. The Codex model area chart uses a top-eight-plus-other view with a dashed total-usage line and keeps cost values explicitly API-equivalent estimates. Claude Code does not yet expose model attribution or a model area chart.
 - Tool and Skill usage: tool call and Skill load records parsed from local session events.
 - Scheduled tasks: enabled automation metadata under `~/.codex/automations/**/automation.toml`. The next run is computed locally only when cadence, timezone, and time are sufficiently explicit.

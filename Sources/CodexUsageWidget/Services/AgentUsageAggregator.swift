@@ -81,10 +81,10 @@ struct AgentUsageAggregator {
         var tokenEventCount = 0
 
         for value in values {
-            today.add(tokens: value.today.tokens, costUSD: value.today.estimatedCostUSD)
-            sevenDay.add(tokens: value.sevenDay.tokens, costUSD: value.sevenDay.estimatedCostUSD)
-            month.add(tokens: value.month.tokens, costUSD: value.month.estimatedCostUSD)
-            lifetime.add(tokens: value.lifetime.tokens, costUSD: value.lifetime.estimatedCostUSD)
+            today.add(tokens: value.today.tokens, costUSD: value.today.estimatedCostUSD, usesReferencePricing: value.today.usesReferencePricing)
+            sevenDay.add(tokens: value.sevenDay.tokens, costUSD: value.sevenDay.estimatedCostUSD, usesReferencePricing: value.sevenDay.usesReferencePricing)
+            month.add(tokens: value.month.tokens, costUSD: value.month.estimatedCostUSD, usesReferencePricing: value.month.usesReferencePricing)
+            lifetime.add(tokens: value.lifetime.tokens, costUSD: value.lifetime.estimatedCostUSD, usesReferencePricing: value.lifetime.usesReferencePricing)
             parsedFileCount += value.parsedFileCount
             tokenEventCount += value.tokenEventCount
         }
