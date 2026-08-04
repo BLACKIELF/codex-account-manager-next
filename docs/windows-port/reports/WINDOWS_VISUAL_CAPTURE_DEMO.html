@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Visual Capture Demo</title>
+  <style>
+    :root { color-scheme: light; --ink: #172033; --muted: #5d6a80; --line: #dce3ee; --blue: #2866f7; --good: #087443; --bad: #b42318; --warn: #9a6700; --surface: #ffffff; --canvas: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 15px/1.55 "Segoe UI", Arial, sans-serif; }
+    main { max-width: 1050px; margin: 32px auto; padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 32px rgba(23,32,51,.08); }
+    h1, h2 { line-height: 1.2; } h1 { margin: 0 0 8px; font-size: 30px; } h2 { margin: 32px 0 12px; font-size: 20px; }
+    p, li { color: var(--muted); } .meta { margin: 0; } .verdict { margin: 22px 0; padding: 16px 18px; border: 1px solid #a7d8c0; border-radius: 12px; background: #effaf4; color: var(--good); font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; } th, td { padding: 11px 12px; vertical-align: top; text-align: left; border: 1px solid var(--line); } th { background: #f1f5fb; color: var(--ink); } code { color: #173f9b; font-family: Consolas, monospace; font-size: .9em; } .pass { color: var(--good); font-weight: 700; } .block { color: var(--bad); font-weight: 700; } .limit { color: var(--warn); font-weight: 700; }
+    @media (max-width: 720px) { main { margin: 0; padding: 22px; border-radius: 0; border: 0; } table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Windows Visual Capture Demo</h1>
+    <p class="meta"><strong>Date:</strong> 2026-07-30<br><strong>Checkout:</strong> <code>codex/windows-visual-capture-demo</code> at <code>c4d58f347f41d6a93a177dbd2291fc8405ac342f</code></p>
+    <p class="verdict">Verdict: Demo executed; phase-one visual acceptance passed for the recorded scope.</p>
+
+    <h2>Scope and safeguards</h2>
+    <p>This native Windows Tauri acceptance run used real local Codex input. It used no fixtures, Playwright, browser mocks, baselines, pixel diffs, or Computer Use. Windows Graphics Capture targeted the exact application HWND, and the real local Codex directory remained input-only.</p>
+    <p>Twelve native screenshots were created locally: Dashboard overview plus Tasks, AI Leadership, Usage, Projects, and Skills at each requested client size. They are intentionally neither embedded nor linked here, and this report contains no screenshot, log, local path, raw task text, account data, or real metric value. Final capture instances and their task-owned WebView2 children were confirmed exited after collection.</p>
+
+    <h2>Build and verification record</h2>
+    <table>
+      <thead><tr><th>Command</th><th>Result</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>npm run build</code> in <code>windows/apps/codexu-tauri/web</code></td><td class="pass">Passed</td><td>Vite production build completed; only the existing chunk-size warning was emitted.</td></tr>
+        <tr><td><code>cargo test --workspace</code> as the repository-default command</td><td class="pass">Passed</td><td>Follow-up verification on 2026-07-30 used the active <code>stable-x86_64-pc-windows-msvc</code> toolchain after removing the host-ambiguous project override: 49 tests passed and 1 authenticated-Codex-CLI quota test remained explicitly ignored.</td></tr>
+        <tr><td><code>cargo +stable-x86_64-pc-windows-msvc test --workspace</code></td><td class="pass">Passed</td><td>Workspace tests passed; the authenticated-Codex-CLI quota case remained explicitly ignored because it needs an installed authenticated CLI.</td></tr>
+        <tr><td><code>cargo +stable-x86_64-pc-windows-msvc tauri build --no-bundle</code></td><td class="pass">Passed</td><td>Built the actual release executable used for capture. Non-blocking bundle-ID and frontend chunk-size warnings remained.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Native capture record</h2>
+    <table>
+      <thead><tr><th>Requested client area</th><th>Verified client area</th><th>Native physical frame</th><th>Captured states</th></tr></thead>
+      <tbody>
+        <tr><td>960 x 760</td><td>960 x 760</td><td>1445 x 1187</td><td>Dashboard overview, Tasks, AI Leadership, Usage, Projects, Skills</td></tr>
+        <tr><td>720 x 540</td><td>720 x 540</td><td>1085 x 857</td><td>Dashboard overview, Tasks, AI Leadership, Usage, Projects, Skills</td></tr>
+      </tbody>
+    </table>
+    <p>Physical frame dimensions differ because Windows DPI scaling includes native window chrome. The requested client areas were verified before each collection.</p>
+
+    <h2>Manual visual acceptance</h2>
+    <table>
+      <thead><tr><th>Check</th><th>Result</th><th>Finding</th></tr></thead>
+      <tbody>
+        <tr><td>Surface coverage</td><td class="pass">Pass</td><td>The overview and every lower Dashboard tab (Tasks, AI Leadership, Usage, Projects, Skills) were captured and manually reviewed at both requested sizes.</td></tr>
+        <tr><td>Layout and hierarchy</td><td class="pass">Pass</td><td>Overview establishes a clear header, primary leadership signal, quota area, local metrics, and lower content navigation. The smaller size reflows to a readable vertical presentation without visible horizontal clipping.</td></tr>
+        <tr><td>Card alignment</td><td class="pass">Pass</td><td>Parallel overview cards and AI Leadership dimension cards retain consistent borders, insets, and alignment at both sizes.</td></tr>
+        <tr><td>Long text</td><td class="pass">Pass</td><td>Agent usage/activity text wraps within task cards without visible horizontal overflow or card misalignment.</td></tr>
+        <tr><td>Empty and pending/error surfaces</td><td class="limit">Pass with limit</td><td>Empty task columns render an explicit no-records state. Quota remained in a pending/retry state; no terminal quota failure was induced or claimed.</td></tr>
+        <tr><td>Usage, Projects, and Skills</td><td class="limit">Pass with limit</td><td>Usage charts, Projects rows/tool summaries, and the Skills no-records state rendered from real local input. The compact Projects detail capture necessarily shows a scrolled continuation rather than the selected-tab control in the same frame.</td></tr>
+        <tr><td>Scrolling</td><td class="pass">Pass</td><td>Native scrolling reached real detail content for all six captured surfaces at both target sizes; vertical scroll indicators and content continuation were visible.</td></tr>
+        <tr><td>Agent usage content</td><td class="pass">Pass</td><td>The Tasks view displays real agent usage/activity descriptions as intended and is accepted in this demo.</td></tr>
+        <tr><td>Real-data semantics</td><td class="limit">Pass with limit</td><td>The app showed real local state. Local usage/cost values were visually labeled as estimates rather than official quota; official quota remained clearly pending rather than being represented as zero or confirmed.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Conclusion and follow-up</h2>
+    <p>The capture workflow is demonstrated with a real Windows Tauri executable, real local input, exact native window sizing, six recorded surfaces, and manual image review at both requested sizes. <strong>Phase-one visual acceptance passes for this scope.</strong></p>
+    <p>The next phase is to turn the proven local Graphics Capture workflow into a repository-supported command and runbook, while keeping screenshots and real local artifacts untracked.</p>
+
+    <h2>Known limits</h2>
+    <ul>
+      <li>This is a point-in-time visual review of changing local data, not a fixture or regression baseline.</li>
+      <li>The review covers the overview and all five lower Dashboard tabs; it does not certify themes, dialogs, interactions beyond the recorded tab/scroll states, or terminal quota outcomes.</li>
+      <li>The capture run itself did not modify product UI, readers, scoring, caches, IPC, or data files. The later toolchain validation repair changes developer setup and CI only; this report does not claim a push.</li>
+    </ul>
+  </main>
+</body>
+</html>

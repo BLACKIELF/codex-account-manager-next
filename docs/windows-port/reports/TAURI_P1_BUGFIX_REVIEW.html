@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TAURI P1/P2 Bugfix Review</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 20px; color: #0f172a; line-height: 1.45; }
+    h1, h2 { color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px; vertical-align: top; }
+    th { background: #f8fafc; text-align: left; }
+    .ok { color: #047857; font-weight: 600; }
+    .warn { color: #92400e; }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; }
+    .p1 { background: #fee2e2; color: #991b1b; }
+    .p2 { background: #e2e8f0; color: #334155; }
+  </style>
+</head>
+<body>
+  <h1>TAURI P1/P2 Bugfix Review</h1>
+  <p><strong>Report date:</strong> 2026-07-26</p>
+  <p>Scope: Windows Tauri settings fix set (confirmed actionable items only).</p>
+  <p><strong>Files touched:</strong></p>
+  <ul>
+    <li><code>windows/apps/codexu-tauri/web/src/hooks/useSettings.ts</code></li>
+    <li><code>windows/apps/codexu-tauri/src-tauri/src/commands/settings.rs</code></li>
+    <li><code>windows/apps/codexu-tauri/web/src/windows/Settings.tsx</code></li>
+  </ul>
+
+  <h2>Fixed issues</h2>
+  <table>
+    <thead>
+      <tr><th>Item</th><th>Root cause</th><th>Impact</th><th>Fix</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="chip p1">P1-2</span></td>
+        <td>Frontend invoked <code>set_settings</code> with top-level patch, but backend expects <code>req</code>.</td>
+        <td>Settings updates fail to bind.</td>
+        <td>Call <code>invoke('set_settings', { req: patch })</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="chip p1">P1-3</span></td>
+        <td>Used <code>blocking_read()</code> inside async command.</td>
+        <td>Runtime blocking risk.</td>
+        <td>Use <code>read().await</code> and pass theme to sync applier.</td>
+      </tr>
+      <tr>
+        <td><span class="chip p2">P2-4</span></td>
+        <td>Success toast was shown regardless of update failure.</td>
+        <td>False positive “Settings saved.” on failure.</td>
+        <td>Introduce guarded <code>runUpdate</code> and show success only on resolved path.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Additional check</h2>
+  <p>Hook-path finding in real build chain is a false-positive ruled out: Tauri resolves and runs <code>node src-tauri/scripts/frontend-hook.mjs ...</code>, so no config change was made.</p>
+
+  <h2>Validation</h2>
+  <table>
+    <thead>
+      <tr><th>Command</th><th>Working directory</th><th>Status</th><th>Exit code</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>cargo test --workspace</code></td>
+        <td><code>windows</code></td>
+        <td class="ok">PASS</td>
+        <td>0</td>
+        <td>Passed.</td>
+      </tr>
+      <tr>
+        <td><code>npm run build</code></td>
+        <td><code>windows/apps/codexu-tauri/web</code></td>
+        <td class="ok">PASS</td>
+        <td>0</td>
+        <td>TS + Vite production build passed.</td>
+      </tr>
+      <tr>
+        <td><code>cargo tauri build --no-bundle</code></td>
+        <td><code>windows/apps/codexu-tauri/src-tauri</code></td>
+        <td class="ok">PASS</td>
+        <td>0</td>
+        <td>beforeBuild hook executed successfully in real context and release compile succeeded.</td>
+      </tr>
+      <tr>
+        <td><code>git diff --check</code></td>
+        <td><code>repo root</code></td>
+        <td class="ok">PASS</td>
+        <td>0</td>
+        <td>No whitespace/newline check issues.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Limitations</h2>
+  <ul>
+    <li>No dedicated Tauri IPC harness was introduced.</li>
+    <li>Version numbers, macOS implementation, README, lockfiles, and build artifacts were not changed.</li>
+  </ul>
+
+  <h2>Conclusion</h2>
+  <p class="ok">P1-2, P1-3, and P2-4 are fixed; hook-path assumption is ruled out as false positive.</p>
+</body>
+</html>

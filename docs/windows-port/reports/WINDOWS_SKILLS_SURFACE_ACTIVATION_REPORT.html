@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Skills Surface Activation — Acceptance Report</title>
+  <style>
+    :root { color-scheme: dark; --bg: #10141c; --card: #19212d; --line: #314055; --text: #eef4ff; --muted: #aab8ce; --ok: #72d7ac; --warn: #ffca72; --accent: #91b8ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at 20% -20%, #213759, transparent 42%), var(--bg); color: var(--text); font: 15px/1.55 "Segoe UI", system-ui, sans-serif; }
+    main { width: min(960px, calc(100% - 32px)); margin: 44px auto 72px; }
+    .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+    h1 { margin: 8px 0; font-size: clamp(30px, 5vw, 48px); line-height: 1.08; }
+    h2 { margin: 34px 0 12px; font-size: 20px; }
+    p, li { color: var(--muted); }
+    .card { background: color-mix(in srgb, var(--card) 88%, transparent); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: 0 18px 50px #0004; backdrop-filter: blur(18px); }
+    .verdict { border-left: 4px solid var(--ok); }
+    .pending { border-left: 4px solid var(--warn); }
+    code { color: var(--text); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; }
+    th, td { padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { color: var(--text); background: #ffffff09; }
+    tr:last-child td { border-bottom: 0; }
+    .ok { color: var(--ok); font-weight: 700; }
+    .warn { color: var(--warn); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">Windows Tauri · Codex-only · 2026-07-29</div>
+    <h1>Skills Surface Activation</h1>
+    <section class="card verdict">
+      <strong class="ok">Accepted.</strong>
+      <p>Automated checks and a fresh native UI check passed.</p>
+    </section>
+
+    <h2>Delivered surface</h2>
+    <section class="card">
+      <ul>
+        <li>Activates the existing lower Dashboard Skills tab; no duplicate navigation or Dashboard hierarchy change.</li>
+        <li>Shows a local-read list with Skill name, generic origin, observed sessions/time, and exact local-read count.</li>
+        <li>Provides a clear empty state when the local snapshot has no observed <code>SKILL.md</code> reads.</li>
+      </ul>
+    </section>
+
+    <h2>Privacy-preserving contract</h2>
+    <table>
+      <thead><tr><th>Returned</th><th>Never returned</th></tr></thead>
+      <tbody>
+        <tr><td>Skill directory name and generic origin</td><td>Full or relative private paths</td></tr>
+        <tr><td>Observed local reads, sessions, and time</td><td>Raw tool input, prompts, responses, or source contents</td></tr>
+        <tr><td>Evidence-backed metadata only</td><td>Static-file bytes/tokens or invented task impact</td></tr>
+      </tbody>
+    </table>
+    <p>The local parser reduces only <code>function_call</code> and <code>custom_tool_call</code> references ending in <code>SKILL.md</code>; the source text and path are discarded immediately.</p>
+
+    <h2>Validation</h2>
+    <table>
+      <thead><tr><th>Check</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr><td>Focused Node contract and existing Dashboard regressions</td><td class="ok">4/4 passed</td></tr>
+        <tr><td><code>npm run build</code></td><td class="ok">Passed; Vite chunk-size advisory only</td></tr>
+        <tr><td>Focused Rust privacy regression</td><td class="ok">1/1 passed</td></tr>
+        <tr><td><code>cargo test --workspace</code></td><td class="ok">49 passed; 1 authenticated-Codex test intentionally ignored</td></tr>
+        <tr><td>Isolated <code>cargo tauri build --no-bundle</code></td><td class="ok">Fresh native executable produced and launched</td></tr>
+        <tr><td><code>git diff --check</code></td><td class="ok">Passed</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Native acceptance</h2>
+    <section class="card pending">
+      <strong class="ok">Passed on the fresh isolated build.</strong>
+      <p>The shared release executable remained untouched while a temporary Cargo target produced a fresh app. The real local snapshot opened the existing Skills tab and rendered the deliberate no-observations state with its privacy explanation. Its accessible surface contained no path, raw argument, prompt, or source-content field. No screenshot was retained because unrelated task content elsewhere in the app is private.</p>
+    </section>
+
+    <h2>Limits and handoff</h2>
+    <ul>
+      <li>A local <code>SKILL.md</code> read is not represented as successful Skill execution.</li>
+      <li>No token impact or task outcome is inferred.</li>
+      <li>The live snapshot had no observed Skill reads; populated-row appearance is covered by the Rust privacy regression and web contract test, not fabricated data.</li>
+      <li>No commits, merges, resets, or publishing actions were performed; unrelated dirty work remains preserved.</li>
+    </ul>
+  </main>
+</body>
+</html>

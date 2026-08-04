@@ -1,0 +1,403 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1577" viewBox="0 0 1800 1577">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+<path d="M2,2 L10,6 L2,10 Z" fill="#64748b"/>
+</marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="620.0" y="62.0" font-size="34" font-weight="800" fill="#0f172a">
+<tspan x="620.0" dy="0">codexU 系统架构图</tspan>
+</text>
+<text x="570.0" y="96.0" font-size="17" font-weight="400" fill="#64748b">
+<tspan x="570.0" dy="0">本地 macOS 菜单栏小组件：聚合 Codex / Claude Code 额度、用量、任务与 AI 领导力评估</tspan>
+</text>
+<text x="1535.0" y="42.0" font-size="12" font-weight="600" fill="#94a3b8">
+<tspan x="1535.0" dy="0">source: schema.yaml · 2026-07-24</tspan>
+</text>
+<g id="groups">
+<g id="group-external_sources"><rect x="141.2" y="97.0" width="1517.6" height="400.0" rx="26" fill="#eff6ff" fill-opacity="0.38" stroke="#3b82f6" stroke-width="2"/><text x="163.2" y="127.0" font-size="16" font-weight="800" fill="#3b82f6">
+<tspan x="163.2" dy="0">本地与外部数据源</tspan>
+</text></g>
+<g id="group-core_pipeline"><rect x="141.2" y="517.0" width="1517.6" height="588.0" rx="26" fill="#f0fdf4" fill-opacity="0.38" stroke="#10b981" stroke-width="2"/><text x="163.2" y="547.0" font-size="16" font-weight="800" fill="#10b981">
+<tspan x="163.2" dy="0">核心 Pipeline</tspan>
+</text></g>
+<g id="group-output_layer"><rect x="141.2" y="893.0" width="1262.1" height="444.0" rx="26" fill="#eef2ff" fill-opacity="0.38" stroke="#6366f1" stroke-width="2"/><text x="163.2" y="923.0" font-size="16" font-weight="800" fill="#6366f1">
+<tspan x="163.2" dy="0">输出与配置</tspan>
+</text></g>
+</g>
+<g id="edges">
+<g class="edge edge-codex_app_server-codex_provider"><polyline points="325.2,261.0 325.2,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="253.2" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="261.2" y="403.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="261.2" dy="0">额度 / 账户</tspan>
+</text></g>
+<g class="edge edge-codex_sqlite-codex_provider"><polyline points="708.4,261.0 708.4,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="403.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="452.8" dy="0">线程元数据</tspan>
+</text></g>
+<g class="edge edge-codex_jsonl-codex_provider"><polyline points="1091.6,261.0 1091.6,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="636.4" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="644.4" y="403.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="644.4" dy="0">token 事件</tspan>
+</text></g>
+<g class="edge edge-codex_automation-codex_provider"><polyline points="1474.8,261.0 1474.8,413.0 325.2,413.0 325.2,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="387.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="403.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">定时任务</tspan>
+</text></g>
+<g class="edge edge-claude_transcript-claude_provider"><polyline points="325.2,449.0 325.2,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="497.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="452.8" dy="0">usage / tools</tspan>
+</text></g>
+<g class="edge edge-claude_tasks-claude_provider"><polyline points="708.4,449.0 708.4,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="636.4" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="644.4" y="497.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="644.4" dy="0">任务状态</tspan>
+</text></g>
+<g class="edge edge-claude_statusline-claude_provider"><polyline points="1091.6,449.0 1091.6,507.0 708.4,507.0 708.4,565.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="481.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="497.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">额度快照</tspan>
+</text></g>
+<g class="edge edge-codex_provider-provider_registry"><polyline points="325.2,681.0 325.2,623.0 1091.6,623.0 1091.6,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-claude_provider-provider_registry"><polyline points="708.4,681.0 708.4,623.0 1091.6,623.0 1091.6,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-provider_registry-multi_reader"><polyline points="1091.6,681.0 1091.6,623.0 1474.8,623.0 1474.8,565.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-multi_reader-aggregator"><polyline points="1474.8,681.0 1474.8,717.0 325.2,717.0 325.2,753.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="691.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="707.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">合并多 runtime</tspan>
+</text></g>
+<g class="edge edge-multi_reader-leadership_reader"><polyline points="1474.8,681.0 1474.8,717.0 708.4,717.0 708.4,753.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1019.6" y="691.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1027.6" y="707.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="1027.6" dy="0">34 天数据</tspan>
+</text></g>
+<g class="edge edge-leadership_reader-leadership_model"><polyline points="708.4,869.0 708.4,811.0 1091.6,811.0 1091.6,753.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="785.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="801.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">workers + intervals</tspan>
+</text></g>
+<g class="edge edge-leadership_model-swiftui_views"><polyline points="1091.6,869.0 1091.6,1021.0 325.2,1021.0 325.2,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="636.4" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="644.4" y="1011.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="644.4" dy="0">AI 领导力报告</tspan>
+</text></g>
+<g class="edge edge-aggregator-swiftui_views"><polyline points="325.2,869.0 325.2,1021.0 325.2,1021.0 325.2,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="253.2" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="261.2" y="1011.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="261.2" dy="0">聚合用量 / 任务</tspan>
+</text></g>
+<g class="edge edge-codex_provider-task_runtime"><polyline points="325.2,681.0 325.2,717.0 1474.8,717.0 1474.8,753.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-claude_provider-task_runtime"><polyline points="708.4,681.0 708.4,717.0 1474.8,717.0 1474.8,753.0" fill="none" stroke="#ec4899" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-task_runtime-swiftui_views"><polyline points="1474.8,869.0 1474.8,1021.0 325.2,1021.0 325.2,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="828.0" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="836.0" y="1011.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="836.0" dy="0">统一任务板</tspan>
+</text></g>
+<g class="edge edge-quota_continuity-multi_reader"><polyline points="580.7,941.0 580.7,811.0 1474.8,811.0 1474.8,681.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="8 7"/><rect x="955.7" y="785.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="963.7" y="801.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="963.7" dy="0">防闪烁</tspan>
+</text></g>
+<g class="edge edge-design_system-swiftui_views"><polyline points="1219.3,1057.0 1219.3,1115.0 325.2,1115.0 325.2,1173.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-design_system-menu_bar"><polyline points="1219.3,1057.0 1219.3,1115.0 708.4,1115.0 708.4,1173.0" fill="none" stroke="#f59e0b" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-aggregator-menu_bar"><polyline points="325.2,869.0 325.2,1021.0 708.4,1021.0 708.4,1173.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="444.8" y="995.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="452.8" y="1011.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="452.8" dy="0">状态栏摘要</tspan>
+</text></g>
+<g class="edge edge-github_releases-makefile"><polyline points="1474.8,449.0 1474.8,811.0 1474.8,811.0 1474.8,1173.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="1402.8" y="785.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="1410.8" y="801.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="1410.8" dy="0">版本检查</tspan>
+</text></g>
+<g class="edge edge-self_tests-makefile"><polyline points="1091.6,1289.0 1091.6,1231.0 1474.8,1231.0 1474.8,1173.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-agent_skills-makefile"><polyline points="900.0,1361.0 900.0,1325.0 1474.8,1325.0 1474.8,1289.0" fill="none" stroke="#6b7280" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+</g>
+<g id="nodes">
+<g id="node-codex_app_server">
+<rect x="175.2" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="197.2" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="197.2" dy="0">Codex app-server</tspan>
+</text>
+<text x="197.2" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="197.2" dy="0">account/read · rateLimits/read ·</tspan>
+<tspan x="197.2" dy="19">usage/read</tspan>
+</text>
+<line x1="197.2" y1="249.0" x2="453.2" y2="249.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="197.2" y="271.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="197.2" dy="0">额度、账户、云端 lifetime tokens</tspan>
+</text>
+</g>
+<g id="node-codex_sqlite">
+<path d="M 558.4 161.0 C 558.4 140.0, 858.4 140.0, 858.4 161.0 L 858.4 245.0 C 858.4 266.0, 558.4 266.0, 558.4 245.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<ellipse cx="708.4" cy="161.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="580.4" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="580.4" dy="0">~/.codex/state_5.sqlite</tspan>
+</text>
+<text x="580.4" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="580.4" dy="0">本地 SQLite</tspan>
+</text>
+<line x1="580.4" y1="230.0" x2="836.4" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="580.4" y="252.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="580.4" dy="0">线程元数据、rollout 路径、父子关系</tspan>
+</text>
+</g>
+<g id="node-codex_jsonl">
+<path d="M 941.6 161.0 C 941.6 140.0, 1241.6 140.0, 1241.6 161.0 L 1241.6 245.0 C 1241.6 266.0, 941.6 266.0, 941.6 245.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<ellipse cx="1091.6" cy="161.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="963.6" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="963.6" dy="0">~/.codex/sessions/*.jsonl</tspan>
+</text>
+<text x="963.6" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="963.6" dy="0">token_count / task_started /</tspan>
+<tspan x="963.6" dy="19">task_complete</tspan>
+</text>
+<line x1="963.6" y1="249.0" x2="1219.6" y2="249.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="963.6" y="271.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="963.6" dy="0">细粒度 token 事件与任务生命周期</tspan>
+</text>
+</g>
+<g id="node-codex_automation">
+<path d="M 1324.8 145.0 L 1596.8 145.0 L 1624.8 173.0 L 1624.8 261.0 L 1324.8 261.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<path d="M 1596.8 145.0 L 1596.8 173.0 L 1624.8 173.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="1346.8" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1346.8" dy="0">~/.codex/automations</tspan>
+</text>
+<text x="1346.8" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="1346.8" dy="0">automation.toml</tspan>
+</text>
+<line x1="1346.8" y1="230.0" x2="1602.8" y2="230.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1346.8" y="252.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1346.8" dy="0">定时任务元数据与下次运行时间</tspan>
+</text>
+</g>
+<g id="node-claude_transcript">
+<path d="M 175.2 349.0 C 175.2 328.0, 475.2 328.0, 475.2 349.0 L 475.2 433.0 C 475.2 454.0, 175.2 454.0, 175.2 433.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<ellipse cx="325.2" cy="349.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="197.2" y="365.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="197.2" dy="0">~/.claude/projects/*.jsonl</tspan>
+</text>
+<text x="197.2" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="197.2" dy="0">message.usage · tool_use ·</tspan>
+<tspan x="197.2" dy="19">attribution</tspan>
+</text>
+<line x1="197.2" y1="437.0" x2="453.2" y2="437.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="197.2" y="459.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="197.2" dy="0">Claude Code 本地 transcript</tspan>
+</text>
+</g>
+<g id="node-claude_tasks">
+<path d="M 558.4 333.0 L 830.4 333.0 L 858.4 361.0 L 858.4 449.0 L 558.4 449.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<path d="M 830.4 333.0 L 830.4 361.0 L 858.4 361.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="580.4" y="365.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="580.4" dy="0">~/.claude/tasks/*.json</tspan>
+</text>
+<text x="580.4" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="580.4" dy="0">task status / subject</tspan>
+</text>
+<line x1="580.4" y1="418.0" x2="836.4" y2="418.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="580.4" y="440.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="580.4" dy="0">Claude Code 任务看板数据</tspan>
+</text>
+</g>
+<g id="node-claude_statusline">
+<path d="M 941.6 333.0 L 1213.6 333.0 L 1241.6 361.0 L 1241.6 449.0 L 941.6 449.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<path d="M 1213.6 333.0 L 1213.6 361.0 L 1241.6 361.0" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="963.6" y="365.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="963.6" dy="0">statusline-</tspan>
+<tspan x="963.6" dy="25">snapshot.json</tspan>
+</text>
+<text x="963.6" y="420.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="963.6" dy="0">~/Library/Caches/codexU/...</tspan>
+</text>
+<line x1="963.6" y1="442.0" x2="1219.6" y2="442.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="963.6" y="464.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="963.6" dy="0">Claude Code 活跃额度快照</tspan>
+</text>
+</g>
+<g id="node-github_releases">
+<rect x="1324.8" y="333.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="1346.8" y="365.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1346.8" dy="0">GitHub Releases API</tspan>
+</text>
+<text x="1346.8" y="396.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="1346.8" dy="0">shanggqm/codexU</tspan>
+</text>
+<line x1="1346.8" y1="418.0" x2="1602.8" y2="418.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1346.8" y="440.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1346.8" dy="0">版本检查与更新元数据</tspan>
+</text>
+</g>
+<g id="node-codex_provider">
+<rect x="175.2" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+<text x="197.2" y="597.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="197.2" dy="0">CodexRuntimeProvider</tspan>
+</text>
+<text x="197.2" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
+<tspan x="197.2" dy="0">RuntimeUsageProvider</tspan>
+</text>
+<line x1="197.2" y1="650.0" x2="453.2" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="197.2" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="197.2" dy="0">读取 SQLite + JSONL + automations</tspan>
+</text>
+</g>
+<g id="node-claude_provider">
+<rect x="558.4" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+<text x="580.4" y="597.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="580.4" dy="0">ClaudeCodeRuntimeProvider</tspan>
+</text>
+<text x="580.4" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
+<tspan x="580.4" dy="0">RuntimeUsageProvider</tspan>
+</text>
+<line x1="580.4" y1="650.0" x2="836.4" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="580.4" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="580.4" dy="0">读取 transcript + tasks + statusLine</tspan>
+</text>
+</g>
+<g id="node-provider_registry">
+<rect x="941.6" y="565.0" width="300.0" height="116.0" rx="18" fill="#fce7f3" stroke="#ec4899" stroke-width="2"/>
+<text x="963.6" y="597.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="963.6" dy="0">RuntimeProviderRegistry</tspan>
+</text>
+<text x="963.6" y="628.0" font-size="13" font-weight="700" fill="#ec4899">
+<tspan x="963.6" dy="0">注册表</tspan>
+</text>
+<line x1="963.6" y1="650.0" x2="1219.6" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="963.6" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="963.6" dy="0">聚合 Codex / Claude Code 两个 provider</tspan>
+</text>
+</g>
+<g id="node-multi_reader">
+<rect x="1324.8" y="565.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="1346.8" y="597.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1346.8" dy="0">MultiRuntimeUsageReader</tspan>
+</text>
+<text x="1346.8" y="628.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="1346.8" dy="0">load() · loadTaskBoard()</tspan>
+</text>
+<line x1="1346.8" y1="650.0" x2="1602.8" y2="650.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1346.8" y="672.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1346.8" dy="0">统一入口；PerformanceMonitor 测时</tspan>
+</text>
+</g>
+<g id="node-aggregator">
+<rect x="175.2" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="197.2" y="785.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="197.2" dy="0">AgentUsageAggregator</tspan>
+</text>
+<text x="197.2" y="816.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="197.2" dy="0">aggregate(runtimes)</tspan>
+</text>
+<line x1="197.2" y1="838.0" x2="453.2" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="197.2" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="197.2" dy="0">跨 runtime 合并用量与任务</tspan>
+</text>
+</g>
+<g id="node-leadership_reader">
+<rect x="558.4" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="580.4" y="785.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="580.4" dy="0">LeadershipDataReader</tspan>
+</text>
+<text x="580.4" y="816.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="580.4" dy="0">load(context)</tspan>
+</text>
+<line x1="580.4" y1="838.0" x2="836.4" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="580.4" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="580.4" dy="0">文件指纹缓存；增量解析 34 天数据</tspan>
+</text>
+</g>
+<g id="node-leadership_model">
+<rect x="941.6" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="963.6" y="785.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="963.6" dy="0">LeadershipScoreModel</tspan>
+<tspan x="963.6" dy="25">v1.3</tspan>
+</text>
+<text x="963.6" y="840.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="963.6" dy="0">四维加权几何平均</tspan>
+</text>
+<line x1="963.6" y1="862.0" x2="1219.6" y2="862.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="963.6" y="884.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="963.6" dy="0">span · leverage · orchestration ·</tspan>
+<tspan x="963.6" dy="18">autonomy</tspan>
+</text>
+</g>
+<g id="node-task_runtime">
+<rect x="1324.8" y="753.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="1346.8" y="785.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1346.8" dy="0">TaskRuntime</tspan>
+</text>
+<text x="1346.8" y="816.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="1346.8" dy="0">Codex / Claude 任务状态归一</tspan>
+</text>
+<line x1="1346.8" y1="838.0" x2="1602.8" y2="838.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1346.8" y="860.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1346.8" dy="0">统一列：active / pending / scheduled /</tspan>
+<tspan x="1346.8" dy="18">done</tspan>
+</text>
+</g>
+<g id="node-quota_continuity">
+<rect x="430.7" y="941.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="452.7" y="973.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="452.7" dy="0">RuntimeQuotaContinuity</tspan>
+</text>
+<text x="452.7" y="1004.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="452.7" dy="0">reconcile(previous, incoming)</tspan>
+</text>
+<line x1="452.7" y1="1026.0" x2="708.7" y2="1026.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="452.7" y="1048.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="452.7" dy="0">配额读取失败时复用旧值，避免界面闪烁</tspan>
+</text>
+</g>
+<g id="node-design_system">
+<rect x="1069.3" y="941.0" width="300.0" height="116.0" rx="18" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<text x="1091.3" y="973.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1091.3" dy="0">DesignSystem /</tspan>
+<tspan x="1091.3" dy="25">Palettes</tspan>
+</text>
+<text x="1091.3" y="1028.0" font-size="13" font-weight="700" fill="#f59e0b">
+<tspan x="1091.3" dy="0">青花瓷 · 故宫红 · 敦煌飞天 · 兰亭晨曦</tspan>
+</text>
+<line x1="1091.3" y1="1050.0" x2="1347.3" y2="1050.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1091.3" y="1072.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1091.3" dy="0">Liquid Glass 风格；受控配色 token</tspan>
+</text>
+</g>
+<g id="node-swiftui_views">
+<rect x="175.2" y="1173.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
+<text x="197.2" y="1205.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="197.2" dy="0">SwiftUI Views</tspan>
+</text>
+<text x="197.2" y="1236.0" font-size="13" font-weight="700" fill="#6366f1">
+<tspan x="197.2" dy="0">LeadershipViews · RuntimeViews</tspan>
+</text>
+<line x1="197.2" y1="1258.0" x2="453.2" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="197.2" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="197.2" dy="0">主窗口仪表盘与状态栏</tspan>
+</text>
+</g>
+<g id="node-menu_bar">
+<rect x="558.4" y="1173.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
+<text x="580.4" y="1205.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="580.4" dy="0">Menu Bar Extra</tspan>
+</text>
+<text x="580.4" y="1236.0" font-size="13" font-weight="700" fill="#6366f1">
+<tspan x="580.4" dy="0">NSStatusItem</tspan>
+</text>
+<line x1="580.4" y1="1258.0" x2="836.4" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="580.4" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="580.4" dy="0">实时额度环、今日 token、Runtime 菜单</tspan>
+</text>
+</g>
+<g id="node-self_tests">
+<rect x="941.6" y="1173.0" width="300.0" height="116.0" rx="18" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+<text x="963.6" y="1205.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="963.6" dy="0">Self Tests</tspan>
+</text>
+<text x="963.6" y="1236.0" font-size="13" font-weight="700" fill="#6b7280">
+<tspan x="963.6" dy="0">--self-test-*</tspan>
+</text>
+<line x1="963.6" y1="1258.0" x2="1219.6" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="963.6" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="963.6" dy="0">模型趋势、领导力、性能、粒子动画等</tspan>
+</text>
+</g>
+<g id="node-makefile">
+<rect x="1324.8" y="1173.0" width="300.0" height="116.0" rx="18" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+<text x="1346.8" y="1205.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1346.8" dy="0">Makefile / scripts</tspan>
+</text>
+<text x="1346.8" y="1236.0" font-size="13" font-weight="700" fill="#6b7280">
+<tspan x="1346.8" dy="0">make build · probe · release</tspan>
+</text>
+<line x1="1346.8" y1="1258.0" x2="1602.8" y2="1258.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="1346.8" y="1280.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="1346.8" dy="0">构建、打包、内存风险门禁</tspan>
+</text>
+</g>
+<g id="node-agent_skills">
+<rect x="750.0" y="1361.0" width="300.0" height="116.0" rx="18" fill="#f3f4f6" stroke="#6b7280" stroke-width="2"/>
+<text x="772.0" y="1393.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="772.0" dy="0">Agent Skills</tspan>
+</text>
+<text x="772.0" y="1424.0" font-size="13" font-weight="700" fill="#6b7280">
+<tspan x="772.0" dy="0">.agents/skills/</tspan>
+</text>
+<line x1="772.0" y1="1446.0" x2="1028.0" y2="1446.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="772.0" y="1468.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="772.0" dy="0">PR review · release 等项目级 Skill</tspan>
+</text>
+</g>
+</g>
+</svg>

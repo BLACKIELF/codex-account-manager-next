@@ -1,0 +1,51 @@
+%% source of truth: docs/windows-port/blueprint/schema.yaml
+%% GitHub / Obsidian fallback. The rendered SVG is the maintenance view.
+flowchart LR
+    subgraph Runtime["codexU Windows Desktop Runtime"]
+        Evidence["1 · 本地证据 / 官方额度<br/>SQLite / JSONL / automations / app-server"]:::source
+        Readers["2 · 安全 Readers / 隐私缩减<br/>State / Transcript / Task Board readers"]:::reader
+        Aggregate["3 · 用量 / 任务 / Leadership<br/>usage / tasks / Leadership / quota merge"]:::aggregate
+        State["4 · Snapshot / AppState / IPC<br/>cache / single-flight / Tauri commands"]:::contract
+        UI["5 · Windows Desktop UI<br/>Overview / Tasks / Leadership / Usage / Projects / Skills"]:::ui
+
+        Evidence -->|"reads local evidence"| Readers
+        Readers -->|"safe observations"| Aggregate
+        Evidence -->|"official quota bypass"| Aggregate
+        Aggregate -->|"CodexDashboardSnapshot"| State
+        State -->|"Tauri commands + events"| UI
+    end
+
+    QuotaTests["Quota Protocol + Continuity"]:::validation
+    CoreTests["Core Rust Tests"]:::validation
+    StateTests["AppState Tests"]:::validation
+    WebTests["Web Contract Tests"]:::validation
+    Probe["codexu-probe"]:::operations
+    Build["Release Build & Package<br/>Tauri / MSI / NSIS"]:::operations
+    Capture["Maximized Capture Workflow<br/>Windows.Graphics.Capture · exact HWND"]:::validation
+    Preflight["Capture Workflow Preflight"]:::validation
+    VisualEvidence["Local Visual Evidence<br/>manifest + dynamic PNGs · Git ignored"]:::evidence
+
+    QuotaTests -. "verifies quota protocol" .-> Evidence
+    QuotaTests -. "verifies apply + retain" .-> Aggregate
+    CoreTests -. "verifies reduction" .-> Readers
+    CoreTests -. "verifies aggregation" .-> Aggregate
+    StateTests -. "verifies state behavior" .-> State
+    WebTests -. "verifies component contracts" .-> UI
+
+    Probe -->|"consumes safe readers"| Readers
+    Probe -->|"emits diagnostic snapshot"| Aggregate
+    Build -->|"bundles Tauri backend"| State
+    Build -->|"bundles WebView UI"| UI
+    Build -->|"provides release executable"| Capture
+    Preflight -. "verifies workflow" .-> Capture
+    Capture -->|"captures exact HWND"| UI
+    Capture -->|"produces maximized viewport PNGs"| VisualEvidence
+
+    classDef source fill:#12233f,stroke:#5fa8ff,color:#eef6ff
+    classDef reader fill:#15324a,stroke:#45c8d8,color:#eefcff
+    classDef aggregate fill:#173b35,stroke:#4ed0a5,color:#f0fff9
+    classDef contract fill:#30294f,stroke:#9b87ff,color:#f7f3ff
+    classDef ui fill:#442846,stroke:#e477d5,color:#fff2fd
+    classDef validation fill:#222b3c,stroke:#6f86a8,color:#edf3fb,stroke-dasharray:6 4
+    classDef operations fill:#2d3038,stroke:#8d98aa,color:#f1f4f8
+    classDef evidence fill:#3d3424,stroke:#d8a74d,color:#fff8e8

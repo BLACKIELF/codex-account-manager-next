@@ -1,0 +1,24 @@
+[package]
+name = "codexu-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI probe tool for codexU Windows port"
+
+[[bin]]
+name = "codexu-probe"
+path = "src/main.rs"
+
+[dependencies]
+codexu-core = { path = "../codexu-core" }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+clap.workspace = true
+dirs.workspace = true

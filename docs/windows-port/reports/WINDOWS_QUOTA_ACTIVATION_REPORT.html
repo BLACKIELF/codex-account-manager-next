@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Official Quota Activation Report</title>
+  <style>
+    :root { color-scheme: light dark; --ink: #152238; --muted: #526173; --ok: #127a46; --line: #d7deea; --surface: #f7f9fc; }
+    body { max-width: 1040px; margin: 0 auto; padding: 48px 28px 72px; color: var(--ink); background: #fff; font: 16px/1.6 Inter, "Segoe UI", system-ui, sans-serif; }
+    h1 { margin: 0 0 4px; font-size: 32px; letter-spacing: -.03em; }
+    h2 { margin: 42px 0 12px; font-size: 21px; }
+    .meta, .muted { color: var(--muted); }
+    .verdict { border-left: 4px solid var(--ok); background: #f1fbf5; padding: 16px 20px; border-radius: 0 10px 10px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+    th, td { padding: 11px 12px; border: 1px solid var(--line); vertical-align: top; text-align: left; }
+    th { background: var(--surface); }
+    code { padding: 1px 5px; border-radius: 4px; background: var(--surface); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    li { margin: 6px 0; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #edf2fb; --muted: #acb9c9; --line: #344257; --surface: #182334; } body { background: #0e1520; } .verdict { background: #10291d; } }
+  </style>
+</head>
+<body>
+  <h1>Windows Official Quota Activation Report</h1>
+  <p class="meta">Date: 2026-07-29 &middot; Scope: Windows Tauri Codex dashboard quota activation</p>
+
+  <h2>Verdict</h2>
+  <div class="verdict">
+    <p>The Windows Dashboard now activates official Codex quota when the locally installed, authenticated Codex CLI returns a valid rate-limit response. This machine's live response contained a single seven-day window; it is accepted and rendered as an official quota instead of being labelled unavailable because a five-hour window is absent.</p>
+    <p>The feature never derives quota from session JSONL, local token totals, or transcript content. It starts in a neutral <strong>Checking official quota</strong> state, offers a retry action, and retains the last verified official window as <strong>last verified</strong> if a later refresh fails.</p>
+  </div>
+
+  <h2>Implemented boundary</h2>
+  <table>
+    <thead><tr><th>Concern</th><th>Implementation</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>macOS reference</td><td>Mirrors the macOS app-server contract: initialize, account read, then rate-limit read.</td><td>Same official source and known-window semantics.</td></tr>
+      <tr><td>Windows transport</td><td>Starts the already-installed <code>codex app-server</code> on a private loopback WebSocket, then shuts down that child process.</td><td>No third-party service or uploaded data.</td></tr>
+      <tr><td>Official data</td><td>Prefers <code>rateLimitsByLimitId.codex</code>, then <code>rateLimits</code>; reads <code>usedPercent</code>, <code>windowDurationMins</code>, and <code>resetsAt</code>.</td><td>Official values retain their source meaning.</td></tr>
+      <tr><td>Window topology</td><td>Accepts any non-empty combination of 5-hour, 7-day, and monthly windows. Unknown, malformed, or duplicate windows fail closed.</td><td>A weekly-only account is usable; missing windows are never fabricated.</td></tr>
+      <tr><td>Continuity</td><td>A fresh official read is <code>available</code>; later failures preserve the last verified official windows as <code>stale</code>.</td><td>No false zero or false unavailable state after a transient failure.</td></tr>
+      <tr><td>UI</td><td>The status chip says <code>Official quota active</code>, <code>Official quota last verified</code>, or <code>Checking official quota</code>; the quota card shows every returned official window.</td><td>The quota state is visible and retryable.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Evidence</h2>
+  <ul>
+    <li><code>cargo test --workspace</code>: 35 core unit tests, 2 quota parser/protocol tests, 2 quota dashboard-continuity tests, and 7 Tauri state tests passed; the live test is intentionally excluded from the default suite.</li>
+    <li><code>cargo test -p codexu-core --test codex_app_server_quota -- --ignored</code>: the locally installed, authenticated Codex app-server returned at least one authoritative quota window.</li>
+    <li>Web contract tests: 3 passed, including weekly-only rendering and retry-state coverage.</li>
+    <li><code>npm run build</code>: passed.</li>
+    <li><code>cargo tauri build --no-bundle</code>: passed and produced <code>windows/target/release/codexu-tauri.exe</code>.</li>
+    <li><code>git diff --check</code>: passed.</li>
+    <li>Native release check: after closing two verified stale <code>codexU</code> processes, the single current release window showed <code>Official quota active</code> and one seven-day official window. No screenshot or quota value is retained in this report.</li>
+  </ul>
+
+  <h2>Privacy and failure behavior</h2>
+  <p>The reader calls only read-oriented app-server methods and communicates over <code>127.0.0.1</code> for the duration of the refresh. It does not log or expose the account identifier, quota values, session text, paths, prompts, or tool arguments. This report intentionally omits this machine's quota numbers.</p>
+  <p>If the installed CLI is missing, not authenticated, does not return a recognized rate-limit topology, or cannot be reached, the first render remains neutral and lets the user retry. A successful value is not converted into an estimate or zero during a later read failure.</p>
+
+  <h2>Native acceptance note</h2>
+  <p>Two stale processes were identified by exact executable path and closed: one release from the historical Dashboard worktree and one stuck <code>--dump-json</code> debug process. The freshly built current release was then the only <code>codexU</code> window. Native inspection confirmed its <code>Official quota active</code> status and the single seven-day official quota card. The visual capture is deliberately not embedded or stored because it contains private local usage data.</p>
+
+  <h2>Known limits</h2>
+  <ul>
+    <li>OpenAI Support stated on 2026-07-13 that the five-hour <strong>display</strong> was temporarily removed as an incident response and that weekly reset information would remain visible. The app therefore treats an absent 5-hour window as absent official display data: it neither invents one nor claims the underlying enforcement has been permanently removed.</li>
+    <li>The service may legitimately return only one official limit window; the product does not promise a five-hour or monthly window when the account does not provide one.</li>
+    <li>Last-verified quota is held in the application snapshot for refresh continuity; it is not written as a separate persistent quota cache.</li>
+    <li>This change activates Codex quota only. It does not enable an additional runtime or change the local-token and Leadership data boundaries.</li>
+  </ul>
+</body>
+</html>

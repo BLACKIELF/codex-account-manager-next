@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Dashboard Source-Hierarchy Alignment Design</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, "Segoe UI", sans-serif; background: #0f1120; color: #eef0fb; }
+    body { max-width: 980px; margin: 0 auto; padding: 44px 24px 64px; line-height: 1.58; }
+    h1, h2 { line-height: 1.2; } h1 { margin-bottom: 6px; } h2 { margin-top: 34px; }
+    .meta { color: #aeb7d7; } .decision { border-left: 3px solid #78d2ca; padding: 14px 18px; background: #171b32; border-radius: 0 12px 12px 0; }
+    code, pre { font-family: "Cascadia Code", Consolas, monospace; } pre { overflow-x: auto; padding: 16px; background: #171b32; border: 1px solid #303855; border-radius: 12px; }
+    li { margin: 6px 0; } .included { color: #bdf2d7; } .excluded { color: #ffcaaf; }
+  </style>
+</head>
+<body>
+  <h1>Windows Dashboard Source-Hierarchy Alignment Design</h1>
+  <p class="meta">2026-07-29 · Approved design · Implementation not started</p>
+
+  <h2>Decision</h2>
+  <div class="decision">
+    macOS <code>UsageWidgetView</code> is the source of truth for the Windows Dashboard hierarchy. Windows will port composition and interaction order from source, not infer them from screenshots.
+  </div>
+  <p>The Dashboard has one content navigation system: Today tasks, AI Leadership, Usage trend, Project ranking, and Skill. AI Leadership is a lower Dashboard tab. A compact overview entry may select it, but the overview does not render full leadership detail.</p>
+
+  <h2>macOS Source Contract</h2>
+  <ul>
+    <li><code>DashboardTab</code> contains tasks, leadership, usage, projects, and skills; its default is tasks.</li>
+    <li><code>widgetContent</code> renders the usage overview before Dashboard tabs.</li>
+    <li>The overview has a compact leadership command entry, quota visual, three token cards, and month-value progress.</li>
+    <li><code>LeadershipDashboardPanel</code> renders only when the leadership tab is selected.</li>
+  </ul>
+  <p>Missing Windows data stays visibly unavailable. The layout will not invent quota, task, cost, or score values.</p>
+
+  <h2>Target Structure</h2>
+  <pre>Dashboard window
+|- Header and local-source status
+|- Usage overview
+|  |- Compact leadership command entry -> AI Leadership tab
+|  |- Quota / reset slot with explicit unavailable state
+|  |- Today / 7-day / lifetime token cards
+|  `- Month-value progress
+`- Dashboard content tabs
+   |- Today tasks
+   |- AI Leadership -> LeadershipPanel
+   |- Usage trend -> UsagePanel
+   |- Project ranking -> ProjectsPanel
+   `- Skill -> honest unavailable state</pre>
+  <p>Recent threads remain local records, not fabricated tasks. The task tab will state when a genuine task-board contract is unavailable.</p>
+
+  <h2>Scope</h2>
+  <p class="included">Included: unified React tab state, moving complete leadership detail into its lower tab, removing home-level leadership detail, responsive grid composition, focused tests, and native visual verification.</p>
+  <p class="excluded">Excluded: Rust readers, aggregation, cache, IPC, scoring, quota/task contracts, Claude Code enablement, fabricated data, and copying macOS window chrome or artwork.</p>
+
+  <h2>Acceptance Criteria</h2>
+  <ol>
+    <li>No outer AI Leadership route competes with Dashboard content tabs.</li>
+    <li>Today tasks is the default tab.</li>
+    <li>The sole tab bar is Tasks, AI Leadership, Usage, Projects, Skill.</li>
+    <li>The compact overview leadership entry selects the lower AI Leadership tab.</li>
+    <li>Leadership rail, dimensions, and trends render only in AI Leadership.</li>
+    <li>Values are actual local data or explicit unavailable states.</li>
+    <li>Keyboard tab navigation remains valid.</li>
+    <li>Web build, Rust tests, focused layout tests, diff check, and a new native screenshot pass before visual acceptance.</li>
+  </ol>
+</body>
+</html>

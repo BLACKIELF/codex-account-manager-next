@@ -1,0 +1,255 @@
+# codexU Windows Blueprint — semantic source of truth
+
+meta:
+  title: "codexU Windows Desktop Blueprint"
+  subtitle: "五块运行图 · 测试按对象挂接 · 原生截图证据链"
+  updated: "2026-08-02"
+  version: "1.0.0"
+  direction: left_to_right
+  canvas: {width: 1800, height: 1400}
+
+categories:
+  source:
+    role: "只读输入边界"
+    fill: "#12233f"
+    stroke: "#5fa8ff"
+    accent: "#81bcff"
+  reader:
+    role: "安全读取与缩减"
+    fill: "#15324a"
+    stroke: "#45c8d8"
+    accent: "#79e2ed"
+  aggregate:
+    role: "聚合与评分"
+    fill: "#173b35"
+    stroke: "#4ed0a5"
+    accent: "#79e3bf"
+  contract:
+    role: "状态与 IPC 契约"
+    fill: "#30294f"
+    stroke: "#9b87ff"
+    accent: "#bcadff"
+  ui:
+    role: "Windows 桌面体验"
+    fill: "#442846"
+    stroke: "#e477d5"
+    accent: "#f3a5e7"
+  validation:
+    role: "自动化验证"
+    fill: "#222b3c"
+    stroke: "#6f86a8"
+    accent: "#a7b7cf"
+  operations:
+    role: "诊断与交付"
+    fill: "#2d3038"
+    stroke: "#8d98aa"
+    accent: "#bec7d5"
+  evidence:
+    role: "本地验证产物"
+    fill: "#3d3424"
+    stroke: "#d8a74d"
+    accent: "#f0c978"
+
+nodes:
+  - id: local_evidence
+    label: "1 · 本地证据 / 官方额度"
+    category: source
+    signature: "state_5.sqlite · sessions · automations · app-server"
+    note: "本机只读输入；官方额度不伪造"
+    icon: database
+    layer: runtime
+    layout: {x: 100, y: 455, w: 285, h: 190}
+    insets: ["SQLite / JSONL", "Official quota"]
+
+  - id: safe_readers
+    label: "2 · 安全 Readers / 隐私缩减"
+    category: reader
+    signature: "State · Transcript · Task Board readers"
+    note: "reader 边界丢弃正文、参数与敏感路径"
+    icon: filter
+    layer: runtime
+    layout: {x: 430, y: 455, w: 285, h: 190}
+    insets: ["Usage summaries", "Safe skill metadata"]
+
+  - id: dashboard_aggregation
+    label: "3 · 用量 / 任务 / Leadership"
+    category: aggregate
+    signature: "make_local_usage · Leadership 1.4-real · quota merge"
+    note: "汇总安全观察；应用并保留已验证额度"
+    icon: chart
+    layer: runtime
+    layout: {x: 760, y: 455, w: 285, h: 190}
+    insets: ["Usage + Tasks", "Leadership + Quota"]
+
+  - id: snapshot_app_state
+    label: "4 · Snapshot / AppState / IPC"
+    category: contract
+    signature: "CodexDashboardSnapshot · cache · single-flight"
+    note: "generation 防陈旧覆盖；Tauri commands / events"
+    icon: contract
+    layer: runtime
+    layout: {x: 1090, y: 455, w: 285, h: 190}
+    insets: ["Snapshot contract", "Refresh state"]
+
+  - id: windows_desktop_ui
+    label: "5 · Windows Desktop UI"
+    category: ui
+    signature: "Overview · Tasks · Leadership · Usage · Projects · Skills"
+    note: "真实 Tauri + WebView2 窗口与 Settings"
+    icon: window
+    layer: runtime
+    layout: {x: 1420, y: 455, w: 285, h: 190}
+    insets: ["Dashboard surfaces", "Tray + Settings"]
+
+  - id: quota_tests
+    label: "Quota Protocol + Continuity"
+    category: validation
+    signature: "app-server parser · apply / retain"
+    note: "验证输入协议与额度连续性"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 185, y: 160, w: 270, h: 136}
+
+  - id: core_tests
+    label: "Core Rust Tests"
+    category: validation
+    signature: "state · transcript · task · skill · Leadership"
+    note: "验证安全缩减与聚合结果"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 570, y: 160, w: 285, h: 136}
+
+  - id: app_state_tests
+    label: "AppState Tests"
+    category: validation
+    signature: "cache · single-flight · generation · retry"
+    note: "验证运行时状态行为"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 1045, y: 160, w: 275, h: 136}
+
+  - id: web_contract_tests
+    label: "Web Contract Tests"
+    category: validation
+    signature: "hierarchy · quota · tasks · skills · rail"
+    note: "验证 React / CSS 组件契约"
+    style: dashed
+    icon: test
+    layer: verification_top
+    layout: {x: 1405, y: 160, w: 275, h: 136}
+
+  - id: codexu_probe
+    label: "codexu-probe"
+    category: operations
+    signature: "read-only CLI diagnostic consumer"
+    note: "读取安全观察并输出诊断快照"
+    icon: terminal
+    layer: operations_bottom
+    layout: {x: 455, y: 885, w: 275, h: 136}
+
+  - id: build_package
+    label: "Release Build & Package"
+    category: operations
+    signature: "Tauri release · MSI · NSIS"
+    note: "生成精确 executable 并提供截图入口"
+    icon: package
+    layer: operations_bottom
+    layout: {x: 1010, y: 885, w: 285, h: 136}
+
+  - id: native_capture_demo
+    label: "Maximized Capture Workflow"
+    category: validation
+    signature: "Windows.Graphics.Capture · exact HWND"
+    note: "maximized non-activating tool window · dynamic numbered panel segments"
+    icon: camera
+    layer: capture_bottom
+    layout: {x: 1410, y: 845, w: 285, h: 136}
+
+  - id: capture_preflight
+    label: "Capture Workflow Preflight"
+    category: validation
+    signature: "engine · target · surfaces · output guard"
+    note: "测试截图工具，而不是越级测试 UI"
+    style: dashed
+    icon: test
+    layer: capture_bottom
+    layout: {x: 1410, y: 1045, w: 285, h: 136}
+
+  - id: local_visual_evidence
+    label: "Local Visual Evidence"
+    category: evidence
+    signature: "manifest · logs · dynamic PNGs"
+    note: ".local-artifacts only · Git ignored"
+    icon: image
+    layer: evidence_bottom
+    layout: {x: 1030, y: 1195, w: 300, h: 136}
+
+groups:
+  - id: windows_runtime
+    label: "Windows Desktop Runtime"
+    nodes: [local_evidence, safe_readers, dashboard_aggregation, snapshot_app_state, windows_desktop_ui]
+    fill: "#0c1528"
+    stroke: "#5f7192"
+    style: strong
+
+callouts:
+  - id: local_first
+    label: "LOCAL-FIRST · READ-ONLY INPUT"
+    target: local_evidence
+    fill: "#10213b"
+    stroke: "#426a9b"
+    layout: {x: 100, y: 690, w: 250, h: 34}
+  - id: safe_contract
+    label: "UI CONSUMES SANITIZED SNAPSHOT ONLY"
+    target: windows_desktop_ui
+    fill: "#31223b"
+    stroke: "#8f5d91"
+    layout: {x: 1390, y: 690, w: 315, h: 34}
+  - id: evidence_limit
+    label: "LOCAL EVIDENCE · NOT A COMMITTED BASELINE"
+    target: local_visual_evidence
+    fill: "#3b2f1d"
+    stroke: "#9f7837"
+    layout: {x: 990, y: 1335, w: 355, h: 34}
+
+edges:
+  - {from: local_evidence, to: safe_readers, kind: data_flow, label: "reads local evidence"}
+  - {from: safe_readers, to: dashboard_aggregation, kind: data_flow, label: "safe observations"}
+  - {from: local_evidence, to: dashboard_aggregation, kind: read_only, label: "official quota bypass", from_side: top, from_ratio: 0.95, to_side: top, to_ratio: 0.80, route: [[371, 365], [988, 365]], crossing_style: bridge, bridge_points: [[379, 365], [530, 365], [807, 365]]}
+  - {from: dashboard_aggregation, to: snapshot_app_state, kind: contract, label: "CodexDashboardSnapshot"}
+  - {from: snapshot_app_state, to: windows_desktop_ui, kind: contract, label: "Tauri commands + events"}
+
+  - {from: quota_tests, to: local_evidence, kind: verifies, label: "verifies quota protocol", from_ratio: 0.25, to_ratio: 0.98}
+  - {from: quota_tests, to: dashboard_aggregation, kind: verifies, label: "verifies apply + retain", from_ratio: 0.75, to_ratio: 0.15, route: [[388, 320], [803, 320]], crossing_style: bridge, bridge_points: [[613, 320]]}
+  - {from: core_tests, to: safe_readers, kind: verifies, label: "verifies reduction", from_ratio: 0.15, to_ratio: 0.35}
+  - {from: core_tests, to: dashboard_aggregation, kind: verifies, label: "verifies aggregation", from_ratio: 0.85, to_ratio: 0.58}
+  - {from: app_state_tests, to: snapshot_app_state, kind: verifies, label: "verifies state behavior"}
+  - {from: web_contract_tests, to: windows_desktop_ui, kind: verifies, label: "verifies component contracts"}
+
+  - {from: native_capture_demo, to: windows_desktop_ui, kind: captures, label: "captures exact HWND"}
+  - {from: capture_preflight, to: native_capture_demo, kind: verifies, label: "verifies workflow"}
+  - {from: native_capture_demo, to: local_visual_evidence, kind: produces, label: "produces maximized viewport PNGs"}
+
+  - {from: codexu_probe, to: safe_readers, kind: consumes, label: "consumes safe readers"}
+  - {from: codexu_probe, to: dashboard_aggregation, kind: consumes, label: "emits diagnostic snapshot"}
+  - {from: build_package, to: snapshot_app_state, kind: builds, label: "bundles Tauri backend"}
+  - {from: build_package, to: windows_desktop_ui, kind: builds, label: "bundles WebView UI", route: [[1152, 815], [1562, 815]]}
+  - {from: build_package, to: native_capture_demo, kind: builds, label: "provides release executable", from_side: right, from_ratio: 0.50, to_side: left, to_ratio: 0.15, route: [[1350, 953], [1350, 865]]}
+
+composition:
+  paths:
+    - id: local_runtime_path
+      role: primary
+      nodes: [local_evidence, safe_readers, dashboard_aggregation, snapshot_app_state, windows_desktop_ui]
+    - id: official_quota_context
+      role: context
+      nodes: [local_evidence, dashboard_aggregation]
+    - id: native_capture_chain
+      role: secondary
+      nodes: [capture_preflight, native_capture_demo, windows_desktop_ui]
+    - id: capture_evidence_chain
+      role: secondary
+      nodes: [native_capture_demo, local_visual_evidence]

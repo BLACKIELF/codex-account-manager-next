@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows Maximized Native Visual Workflow Report</title>
+  <style>
+    :root { color-scheme: light; --ink: #172033; --muted: #5d6a80; --line: #dce3ee; --blue: #2866f7; --good: #087443; --warn: #9a6700; --surface: #ffffff; --canvas: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--canvas); color: var(--ink); font: 15px/1.55 "Segoe UI", Arial, sans-serif; }
+    main { max-width: 1080px; margin: 32px auto; padding: 32px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 12px 32px rgba(23, 32, 51, .08); }
+    h1, h2 { line-height: 1.2; } h1 { margin: 0 0 8px; font-size: 30px; } h2 { margin: 32px 0 12px; font-size: 20px; }
+    p, li { color: var(--muted); } .meta { margin: 0; } .verdict { margin: 22px 0; padding: 16px 18px; border: 1px solid #a7d8c0; border-radius: 12px; background: #effaf4; color: var(--good); font-weight: 700; }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; } th, td { padding: 11px 12px; vertical-align: top; text-align: left; border: 1px solid var(--line); } th { background: #f1f5fb; color: var(--ink); }
+    code { color: #173f9b; font-family: Consolas, monospace; font-size: .9em; } .pass { color: var(--good); font-weight: 700; } .limit { color: var(--warn); font-weight: 700; }
+    @media (max-width: 720px) { main { margin: 0; padding: 22px; border: 0; border-radius: 0; } table { display: block; overflow-x: auto; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Windows Maximized Native Visual Workflow Report</h1>
+    <p class="meta"><strong>Date:</strong> 2026-08-03<br><strong>Checkout:</strong> <code>codex/skills-dashboard-wiring-merge</code> at <code>301b323a49a80019e66f8fafd3534a8eb7b2cbd0</code></p>
+    <p class="verdict">Verdict: Passed for the maximized-only native visual workflow scope.</p>
+
+    <h2>Scope and contract</h2>
+    <p>The default native workflow was run from this checkout without <code>-SkipBuild</code>. It builds the release application, launches a task-owned instance against read-only local input, targets the exact application HWND, and records one maximized capture run. The committed <code>-Surface</code> option remains available for focused capture; every selected surface uses that same maximized run.</p>
+    <p><code>client_sizes</code> and <code>size_runs</code> are retained as reserved, empty extension points. Additional client sizes are not part of the accepted contract and require later design and validation.</p>
+
+    <h2>Capture evidence</h2>
+    <table><thead><tr><th>Manifest field</th><th>Recorded result</th></tr></thead><tbody>
+      <tr><td>Status</td><td><code>complete</code></td></tr><tr><td>Capture runs</td><td><code>fullscreen</code> only</td></tr><tr><td>Screenshot total</td><td>10 dynamic screenshots</td></tr><tr><td>Reserved size runs</td><td>Empty</td></tr><tr><td>Process cleanup</td><td>Confirmed</td></tr><tr><td>Release build</td><td>Passed as part of the default capture command</td></tr>
+    </tbody></table>
+    <table><thead><tr><th>Surface</th><th>Maximized capture count</th><th>Coverage</th></tr></thead><tbody>
+      <tr><td>Overview</td><td>1</td><td>Overview viewport</td></tr><tr><td>Tasks</td><td>2</td><td>Numbered panel viewport segments</td></tr><tr><td>AI Leadership</td><td>2</td><td>Numbered panel viewport segments</td></tr><tr><td>Usage</td><td>2</td><td>Numbered panel viewport segments</td></tr><tr><td>Projects</td><td>1</td><td>First panel viewport only</td></tr><tr><td>Skills</td><td>2</td><td>Numbered panel viewport segments</td></tr>
+    </tbody></table>
+    <p>Long surfaces use numbered viewport segments and do not repeat the dashboard top in subsequent segments. Projects intentionally remains a single first-viewport capture.</p>
+
+    <h2>Manual native review</h2>
+    <p>All 10 fresh local-only PNGs listed by the manifest were inspected. Every frame was maximized; the selected surface matched the captured surface; no horizontal clipping was observed; and every long-surface sequence reached its recorded end coverage. The Projects capture remained limited to its first viewport, as required. The review found no selected-surface mismatch or framing failure in the accepted scope.</p>
+    <p>Screenshots and their contents remain local-only. This report contains no identifier from captured local or product data, screenshot or artifact link, local path, raw captured text, account, thread, project, process, or exact product metric.</p>
+    <p>The intentional branch and commit checkout identity above remains only as evidence provenance; it is not captured local or product data.</p>
+
+    <h2>Verification record</h2>
+    <table><thead><tr><th>Verification</th><th>Result</th><th>Notes</th></tr></thead><tbody>
+      <tr><td>Default release build and native capture</td><td class="pass">Passed</td><td>Completed with the manifest values above.</td></tr><tr><td>Native capture workflow PowerShell test</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Active native-visual documentation PowerShell test</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Blueprint validation</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Rust workspace tests</td><td class="pass">Passed</td><td>MSVC workspace command exited 0.</td></tr><tr><td>Web production build</td><td class="limit">Passed with warning</td><td>Exit code 0; existing Vite chunk-size warning remained non-blocking.</td></tr><tr><td>Web contract tests</td><td class="pass">Passed</td><td>Exit code 0; 14 tests passed.</td></tr><tr><td>Pre-report repository diff check</td><td class="pass">Passed</td><td>Exit code 0.</td></tr><tr><td>Capture-process cleanup</td><td class="pass">Confirmed</td><td>Recorded task process identities were cleaned up.</td></tr>
+    </tbody></table>
+
+    <h2>Later final-verification history</h2>
+    <p>The formal capture evidence at <code>301b323</code> remains the basis for the passed verdict, all ten PNGs, every per-surface count, and the Task 3 evidence checkout recorded above. Later verification evidence at <code>4ff0d16</code> does not replace or amend that formal capture record.</p>
+    <p>PowerShell parser: 4/4 passed. During the final verification, the initial <code>Test-NativeVisualCaptureCoverage</code> run ended with a Leadership UIA timeout. One authorized clean-state rerun then passed all 10 captures in 57.561s with cleanup.</p>
+    <p>Cause unconfirmed. The clean rerun plus the prior formal capture rules out a deterministic regression at that checkout; no tracked runtime fix is justified. Keep this as a known intermittent warning.</p>
+
+    <h2>Known limits and next steps</h2>
+    <ul><li>This is a point-in-time review of changing local data, not a deterministic visual-regression baseline.</li><li>It does not certify unobserved error states, themes, dialogs, system menus, or unrelated interaction paths.</li><li>The accepted scope is one maximized exact-HWND run. Other client sizes remain deferred while their reserved manifest fields stay empty.</li><li>The final-verification Leadership UIA timeout is a known intermittent warning; its cause remains unconfirmed, and the authorized clean-state rerun passed with cleanup.</li><li>Future visual changes should rerun the default capture, inspect each manifest-listed local-only image, and renew this evidence before changing the verdict.</li></ul>
+  </main>
+</body>
+</html>

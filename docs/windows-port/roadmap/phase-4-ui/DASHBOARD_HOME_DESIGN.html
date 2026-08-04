@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Windows Dashboard Home Design</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { max-width: 960px; margin: 0 auto; padding: 32px 20px 48px; color: #172033; background: #f7f9fc; line-height: 1.55; }
+    header, section { background: rgba(255,255,255,.82); border: 1px solid rgba(148,163,184,.32); border-radius: 18px; padding: 22px; margin: 16px 0; box-shadow: 0 16px 42px -30px rgba(15,23,42,.33); }
+    h1, h2 { margin: 0 0 10px; } h1 { font-size: 28px; } h2 { font-size: 18px; }
+    .meta, .note { color: #4b5563; } .note { border-left: 3px solid #2866f7; padding-left: 12px; }
+    ol, ul { margin: 10px 0 0; padding-left: 22px; } li + li { margin-top: 6px; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px; }
+    .cell { border: 1px solid rgba(148,163,184,.32); border-radius: 12px; padding: 12px; background: rgba(255,255,255,.62); }
+    .wide { grid-column: 1 / -1; } code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Windows Dashboard Home Design</h1>
+    <p class="meta">Approved direction · 2026-07-27 · Windows Tauri presentation layer and static showcase only</p>
+    <p>Create a real high-density Dashboard with the macOS reference's hierarchy: leadership identity, an honest usage focus, key summaries, progression, and trends. It is not a dark promotional clone.</p>
+  </header>
+  <section>
+    <h2>Data boundary</h2>
+    <p class="note">The active Windows commands expose local Token usage and Leadership data, but not official quota/rate-limit responses. This design does not add readers, cache behavior, IPC fields, estimates, or fake quota percentages.</p>
+  </section>
+  <section>
+    <h2>Desktop hierarchy</h2>
+    <div class="layout">
+      <div class="cell"><strong>Leadership identity</strong><br />Command-radius summary and four honest 28-day metrics.</div>
+      <div class="cell"><strong>Seven-day Token focus</strong><br />Local Token total and input/cached/output composition; never framed as account allowance.</div>
+      <div class="cell"><strong>Usage summaries</strong><br />Today, seven-day, and Lifetime totals.</div>
+      <div class="cell wide"><strong>Leadership progression</strong><br />Existing L1–L7 badge assets at <code>0/20/35/50/65/80/93</code>; full 0–100 semantic gradient clipped at the actual score.</div>
+      <div class="cell"><strong>Seven-day bars</strong><br />Existing real daily Token series.</div>
+      <div class="cell" style="grid-column: span 2"><strong>Long-range trend</strong><br />Existing range-switching usage trend and exact tooltip values.</div>
+    </div>
+  </section>
+  <section>
+    <h2>Product surface, not a mockup</h2>
+    <ul>
+      <li><code>Dashboard</code> becomes the default tab. Leadership remains its own detailed tab; Usage, Threads, and Projects remain dedicated views.</li>
+      <li>All data comes from the existing local usage snapshot. No prompt, response, raw log, path, or account data is introduced.</li>
+      <li>After native acceptance, a Markdown and HTML showcase will use only real final screenshots and will state retained Windows/macOS differences.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>Readable without clipping at an approximately 960×760 native window.</li>
+      <li><code>npm run build</code>, <code>cargo test --workspace</code>, <code>cargo tauri build --no-bundle</code>, and <code>git diff --check</code> pass.</li>
+      <li>Visual review proves the hierarchy, rail mapping, truthful usage labels, and retained platform differences.</li>
+    </ul>
+  </section>
+</body>
+</html>

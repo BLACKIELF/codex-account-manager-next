@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="825" viewBox="0 0 1800 825">
+<defs>
+<marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+<path d="M2,2 L10,6 L2,10 Z" fill="#64748b"/>
+</marker>
+</defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="620.0" y="62.0" font-size="34" font-weight="800" fill="#0f172a">
+<tspan x="620.0" dy="0">Phase 1：跨平台核心读取原型</tspan>
+</text>
+<text x="570.0" y="96.0" font-size="17" font-weight="400" fill="#64748b">
+<tspan x="570.0" dy="0">命令行工具 codexu-probe：读取 Claude Code transcript，输出 LocalUsage JSON</tspan>
+</text>
+<text x="1535.0" y="42.0" font-size="12" font-weight="600" fill="#94a3b8">
+<tspan x="1535.0" dy="0">source: schema.yaml · 2026-07-24</tspan>
+</text>
+<g id="edges">
+<g class="edge edge-claude_transcript-claude_reader"><polyline points="580.7,261.0 580.7,319.0 421.0,319.0 421.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="428.8" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="436.8" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="436.8" dy="0">transcript</tspan>
+</text></g>
+<g class="edge edge-cache_file-claude_reader"><polyline points="1219.3,261.0 1219.3,319.0 421.0,319.0 421.0,377.0" fill="none" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="8 7"/><rect x="748.2" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="756.2" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="756.2" dy="0">命中则跳过</tspan>
+</text></g>
+<g class="edge edge-claude_reader-cache_file"><polyline points="421.0,377.0 421.0,319.0 1219.3,319.0 1219.3,261.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="748.2" y="293.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="756.2" y="309.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="756.2" dy="0">写入缓存</tspan>
+</text></g>
+<g class="edge edge-claude_reader-models"><polyline points="421.0,493.0 421.0,435.0 900.0,435.0 900.0,377.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/><rect x="588.5" y="409.0" width="144" height="24" rx="12" fill="white" stroke="#e5e7eb"/><text x="596.5" y="425.0" font-size="11" font-weight="600" fill="#475569">
+<tspan x="596.5" dy="0">聚合为 LocalUsage</tspan>
+</text></g>
+<g class="edge edge-models-cli"><polyline points="900.0,493.0 900.0,435.0 1379.0,435.0 1379.0,377.0" fill="none" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+<g class="edge edge-cli-json_output"><polyline points="1379.0,493.0 1379.0,551.0 900.0,551.0 900.0,609.0" fill="none" stroke="#6366f1" stroke-width="2.5" marker-end="url(#arrow)"/></g>
+</g>
+<g id="nodes">
+<g id="node-claude_transcript">
+<rect x="430.7" y="145.0" width="300.0" height="116.0" rx="18" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<text x="452.7" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="452.7" dy="0">~/.claude/projects/*.jsonl</tspan>
+</text>
+<text x="452.7" y="208.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="452.7" dy="0">message.usage · tool_use ·</tspan>
+<tspan x="452.7" dy="19">attribution</tspan>
+</text>
+</g>
+<g id="node-cache_file">
+<path d="M 1069.3 161.0 C 1069.3 140.0, 1369.3 140.0, 1369.3 161.0 L 1369.3 245.0 C 1369.3 266.0, 1069.3 266.0, 1069.3 245.0 Z" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+<ellipse cx="1219.3" cy="161.0" rx="150.0" ry="20" fill="none" stroke="#3b82f6" stroke-width="2"/>
+<text x="1091.3" y="177.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1091.3" dy="0">%LOCALAPPDATA%\codexU\claude-</tspan>
+<tspan x="1091.3" dy="25">code\session-</tspan>
+</text>
+<text x="1091.3" y="232.0" font-size="13" font-weight="700" fill="#3b82f6">
+<tspan x="1091.3" dy="0">文件指纹缓存</tspan>
+</text>
+</g>
+<g id="node-claude_reader">
+<rect x="271.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="293.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="293.0" dy="0">ClaudeCodeTranscriptReader</tspan>
+</text>
+<text x="293.0" y="440.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="293.0" dy="0">load_local_usage()</tspan>
+</text>
+<line x1="293.0" y1="462.0" x2="549.0" y2="462.0" stroke="#e5e7eb" stroke-width="1"/>
+<text x="293.0" y="484.0" font-size="12" font-weight="400" fill="#4b5563">
+<tspan x="293.0" dy="0">递归扫描 · fingerprint 缓存 · 流式解析</tspan>
+</text>
+</g>
+<g id="node-models">
+<rect x="750.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#d1fae5" stroke="#10b981" stroke-width="2"/>
+<text x="772.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="772.0" dy="0">Domain Models</tspan>
+</text>
+<text x="772.0" y="440.0" font-size="13" font-weight="700" fill="#10b981">
+<tspan x="772.0" dy="0">TokenBreakdown · LocalUsage ·</tspan>
+<tspan x="772.0" dy="19">UsageTrend</tspan>
+</text>
+</g>
+<g id="node-cli">
+<rect x="1229.0" y="377.0" width="300.0" height="116.0" rx="18" fill="#e0e7ff" stroke="#6366f1" stroke-width="2"/>
+<text x="1251.0" y="409.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="1251.0" dy="0">codexu-probe</tspan>
+</text>
+<text x="1251.0" y="440.0" font-size="13" font-weight="700" fill="#6366f1">
+<tspan x="1251.0" dy="0">命令行入口</tspan>
+</text>
+</g>
+<g id="node-json_output">
+<path d="M 750.0 609.0 L 1022.0 609.0 L 1050.0 637.0 L 1050.0 725.0 L 750.0 725.0 Z" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>
+<path d="M 1022.0 609.0 L 1022.0 637.0 L 1050.0 637.0" fill="none" stroke="#f59e0b" stroke-width="2"/>
+<text x="772.0" y="641.0" font-size="19" font-weight="700" fill="#111827">
+<tspan x="772.0" dy="0">codexu-probe.json</tspan>
+</text>
+<text x="772.0" y="672.0" font-size="13" font-weight="700" fill="#f59e0b">
+<tspan x="772.0" dy="0">与 macOS --dump-json 兼容</tspan>
+</text>
+</g>
+</g>
+</svg>

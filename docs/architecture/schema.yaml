@@ -1,0 +1,277 @@
+# codexU 架构图 schema —— Source of Truth
+#
+# 这是架构图的真值数据。下游 view 都从这里同步:
+#   1. diagram.mmd  —— Mermaid fallback
+#   2. diagram.svg  —— 确定性 renderer 生成的可编辑主图
+#   3. diagram.png  —— 从 SVG 渲染出的展示图
+#   4. diagram.html —— 可选预览页
+#
+# 编辑规则:
+#   - 改这里 = 改架构。改完同步 diagram.mmd,然后用 render.py 重渲 SVG/PNG/HTML。
+
+meta:
+  title: "codexU 系统架构图"
+  subtitle: "本地 macOS 菜单栏小组件：聚合 Codex / Claude Code 额度、用量、任务与 AI 领导力评估"
+  updated: "2026-07-24"
+  version: "1.2.0"
+  direction: top_to_bottom
+
+categories:
+  external:
+    role: "外部数据源 / 本地文件"
+    fill: "#dbeafe"
+    stroke: "#3b82f6"
+  runtime:
+    role: "Runtime Provider"
+    fill: "#fce7f3"
+    stroke: "#ec4899"
+  core:
+    role: "核心聚合与评估"
+    fill: "#d1fae5"
+    stroke: "#10b981"
+  front:
+    role: "UI / 输出"
+    fill: "#e0e7ff"
+    stroke: "#6366f1"
+  config:
+    role: "配置 / 设计系统"
+    fill: "#fef3c7"
+    stroke: "#f59e0b"
+  infra:
+    role: "基础设施 / 缓存 / 发布"
+    fill: "#f3f4f6"
+    stroke: "#6b7280"
+
+nodes:
+  - id: codex_app_server
+    label: "Codex app-server"
+    category: external
+    signature: "account/read · rateLimits/read · usage/read"
+    note: "额度、账户、云端 lifetime tokens"
+    layer: top
+
+  - id: codex_sqlite
+    label: "~/.codex/state_5.sqlite"
+    category: external
+    signature: "本地 SQLite"
+    note: "线程元数据、rollout 路径、父子关系"
+    shape: cylinder
+    layer: top
+
+  - id: codex_jsonl
+    label: "~/.codex/sessions/*.jsonl"
+    category: external
+    signature: "token_count / task_started / task_complete"
+    note: "细粒度 token 事件与任务生命周期"
+    shape: cylinder
+    layer: top
+
+  - id: codex_automation
+    label: "~/.codex/automations"
+    category: external
+    signature: "automation.toml"
+    note: "定时任务元数据与下次运行时间"
+    shape: page
+    layer: top
+
+  - id: claude_transcript
+    label: "~/.claude/projects/*.jsonl"
+    category: external
+    signature: "message.usage · tool_use · attribution"
+    note: "Claude Code 本地 transcript"
+    shape: cylinder
+    layer: top
+
+  - id: claude_tasks
+    label: "~/.claude/tasks/*.json"
+    category: external
+    signature: "task status / subject"
+    note: "Claude Code 任务看板数据"
+    shape: page
+    layer: top
+
+  - id: claude_statusline
+    label: "statusline-snapshot.json"
+    category: external
+    signature: "~/Library/Caches/codexU/..."
+    note: "Claude Code 活跃额度快照"
+    shape: page
+    layer: top
+
+  - id: github_releases
+    label: "GitHub Releases API"
+    category: external
+    signature: "shanggqm/codexU"
+    note: "版本检查与更新元数据"
+    layer: top
+
+  - id: codex_provider
+    label: "CodexRuntimeProvider"
+    category: runtime
+    signature: "RuntimeUsageProvider"
+    note: "读取 SQLite + JSONL + automations"
+    layer: middle
+
+  - id: claude_provider
+    label: "ClaudeCodeRuntimeProvider"
+    category: runtime
+    signature: "RuntimeUsageProvider"
+    note: "读取 transcript + tasks + statusLine"
+    layer: middle
+
+  - id: provider_registry
+    label: "RuntimeProviderRegistry"
+    category: runtime
+    signature: "注册表"
+    note: "聚合 Codex / Claude Code 两个 provider"
+    layer: middle
+
+  - id: multi_reader
+    label: "MultiRuntimeUsageReader"
+    category: core
+    signature: "load() · loadTaskBoard()"
+    note: "统一入口；PerformanceMonitor 测时"
+    layer: middle
+
+  - id: aggregator
+    label: "AgentUsageAggregator"
+    category: core
+    signature: "aggregate(runtimes)"
+    note: "跨 runtime 合并用量与任务"
+    layer: middle
+
+  - id: leadership_reader
+    label: "LeadershipDataReader"
+    category: core
+    signature: "load(context)"
+    note: "文件指纹缓存；增量解析 34 天数据"
+    layer: middle
+
+  - id: leadership_model
+    label: "LeadershipScoreModel v1.3"
+    category: core
+    signature: "四维加权几何平均"
+    note: "span · leverage · orchestration · autonomy"
+    layer: middle
+
+  - id: task_runtime
+    label: "TaskRuntime"
+    category: core
+    signature: "Codex / Claude 任务状态归一"
+    note: "统一列：active / pending / scheduled / done"
+    layer: middle
+
+  - id: quota_continuity
+    label: "RuntimeQuotaContinuity"
+    category: core
+    signature: "reconcile(previous, incoming)"
+    note: "配额读取失败时复用旧值，避免界面闪烁"
+    layer: middle
+
+  - id: design_system
+    label: "DesignSystem / Palettes"
+    category: config
+    signature: "青花瓷 · 故宫红 · 敦煌飞天 · 兰亭晨曦"
+    note: "Liquid Glass 风格；受控配色 token"
+    layer: middle
+
+  - id: swiftui_views
+    label: "SwiftUI Views"
+    category: front
+    signature: "LeadershipViews · RuntimeViews"
+    note: "主窗口仪表盘与状态栏"
+    layer: bottom
+
+  - id: menu_bar
+    label: "Menu Bar Extra"
+    category: front
+    signature: "NSStatusItem"
+    note: "实时额度环、今日 token、Runtime 菜单"
+    layer: bottom
+
+  - id: self_tests
+    label: "Self Tests"
+    category: infra
+    signature: "--self-test-*"
+    note: "模型趋势、领导力、性能、粒子动画等"
+    layer: bottom
+
+  - id: makefile
+    label: "Makefile / scripts"
+    category: infra
+    signature: "make build · probe · release"
+    note: "构建、打包、内存风险门禁"
+    layer: bottom
+
+  - id: agent_skills
+    label: "Agent Skills"
+    category: infra
+    signature: ".agents/skills/"
+    note: "PR review · release 等项目级 Skill"
+    layer: bottom
+
+groups:
+  - id: external_sources
+    label: "本地与外部数据源"
+    nodes:
+      - codex_app_server
+      - codex_sqlite
+      - codex_jsonl
+      - codex_automation
+      - claude_transcript
+      - claude_tasks
+      - claude_statusline
+      - github_releases
+    fill: "#eff6ff"
+    stroke: "#3b82f6"
+
+  - id: core_pipeline
+    label: "核心 Pipeline"
+    nodes:
+      - codex_provider
+      - claude_provider
+      - provider_registry
+      - multi_reader
+      - aggregator
+      - leadership_reader
+      - leadership_model
+      - task_runtime
+      - quota_continuity
+    fill: "#f0fdf4"
+    stroke: "#10b981"
+
+  - id: output_layer
+    label: "输出与配置"
+    nodes:
+      - design_system
+      - swiftui_views
+      - menu_bar
+    fill: "#eef2ff"
+    stroke: "#6366f1"
+
+edges:
+  - {from: codex_app_server, to: codex_provider, kind: data_flow, label: "额度 / 账户"}
+  - {from: codex_sqlite, to: codex_provider, kind: data_flow, label: "线程元数据"}
+  - {from: codex_jsonl, to: codex_provider, kind: data_flow, label: "token 事件"}
+  - {from: codex_automation, to: codex_provider, kind: data_flow, label: "定时任务"}
+  - {from: claude_transcript, to: claude_provider, kind: data_flow, label: "usage / tools"}
+  - {from: claude_tasks, to: claude_provider, kind: data_flow, label: "任务状态"}
+  - {from: claude_statusline, to: claude_provider, kind: data_flow, label: "额度快照"}
+  - {from: codex_provider, to: provider_registry, kind: data_flow}
+  - {from: claude_provider, to: provider_registry, kind: data_flow}
+  - {from: provider_registry, to: multi_reader, kind: data_flow}
+  - {from: multi_reader, to: aggregator, kind: orchestration, label: "合并多 runtime"}
+  - {from: multi_reader, to: leadership_reader, kind: orchestration, label: "34 天数据"}
+  - {from: leadership_reader, to: leadership_model, kind: data_flow, label: "workers + intervals"}
+  - {from: leadership_model, to: swiftui_views, kind: data_flow, label: "AI 领导力报告"}
+  - {from: aggregator, to: swiftui_views, kind: data_flow, label: "聚合用量 / 任务"}
+  - {from: codex_provider, to: task_runtime, kind: data_flow}
+  - {from: claude_provider, to: task_runtime, kind: data_flow}
+  - {from: task_runtime, to: swiftui_views, kind: data_flow, label: "统一任务板"}
+  - {from: quota_continuity, to: multi_reader, kind: calibration, label: "防闪烁"}
+  - {from: design_system, to: swiftui_views, kind: config_input}
+  - {from: design_system, to: menu_bar, kind: config_input}
+  - {from: aggregator, to: menu_bar, kind: data_flow, label: "状态栏摘要"}
+  - {from: github_releases, to: makefile, kind: data_flow, label: "版本检查"}
+  - {from: self_tests, to: makefile, kind: orchestration}
+  - {from: agent_skills, to: makefile, kind: config_input}

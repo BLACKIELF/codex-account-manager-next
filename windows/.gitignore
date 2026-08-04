@@ -1,0 +1,24 @@
+# Rust / Tauri build artifacts
+**/target/
+**/Cargo.lock
+
+# Frontend build artifacts
+**/dist/
+**/node_modules/
+
+# Cache / logs
+**/.cache/
+*.log
+
+# Tauri generated files
+**/gen/
+
+# IDE / OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local env files
+.env
+.env.local
