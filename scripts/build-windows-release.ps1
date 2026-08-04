@@ -113,7 +113,6 @@ try {
 
     Invoke-Checked "cargo" @(
         "+$Toolchain", "tauri", "build",
-        "--manifest-path", "src-tauri\Cargo.toml",
         "--config", $TauriConfig,
         "--bundles", "msi,nsis"
     )
