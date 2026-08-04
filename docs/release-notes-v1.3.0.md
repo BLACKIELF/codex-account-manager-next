@@ -31,8 +31,8 @@ codexU v1.3.0 新增本机推理性能监测，并补齐 macOS 与 Windows 双�
 ```text
 7e9663b7518f7f69b81915f6b3c5d02cb3f7adc7b6f46f6fd3d0ca5aa140394c  codexU-1.3.0-mac-arm64.dmg
 c07730d89045aa6364c220e64c065b759207ae423c9bf4ce3df4171dffa7e68b  codexU-1.3.0-mac-x86_64.dmg
-WINDOWS_MSI_SHA256_PENDING
-WINDOWS_NSIS_SHA256_PENDING
+aeb98aa8d49ae4d18a91cf9790dc23aedfb2e549c3880c85ecd00bb70c9b02b8  codexU-1.3.0-windows-x86_64.msi
+034a63974e50b99b29b3607e9d1c78f4de5ba6a5476f9229ef7747991ebc686c  codexU-1.3.0-windows-x86_64-setup.exe
 ```
 
 本次 macOS 安装包使用仓库默认 ad-hoc 签名流程构建，未执行 Apple notarization。Windows 安装包默认未配置代码签名。
