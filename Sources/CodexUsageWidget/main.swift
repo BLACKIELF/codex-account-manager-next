@@ -1156,7 +1156,7 @@ final class UsageStore: ObservableObject {
                             self.syncProfiles()
                             self.configureAuthMonitoring()
                             self.clearDisplayedAccount()
-                            self.accountManagerMessage = "已切换当前 Codex 登录；运行中的 Codex 未退出"
+                            self.accountManagerMessage = "已切换账号并重新打开 Codex"
                             self.refresh(queueIfBusy: true)
                         } catch {
                             self.accountManagerMessage = "Codex 已打开，但账号状态保存失败：\(error.localizedDescription)"

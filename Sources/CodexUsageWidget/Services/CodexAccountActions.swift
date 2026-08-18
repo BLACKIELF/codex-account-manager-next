@@ -63,6 +63,10 @@ final class CodexAccountActions {
                 return
             }
         }
+        let requiresRestart = targetAuth != nil && targetAuth != previousAuth
+        let runningApplications = requiresRestart
+            ? NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.codex")
+            : []
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -71,8 +75,28 @@ final class CodexAccountActions {
                     withIntermediateDirectories: true,
                     attributes: [.posixPermissions: 0o700]
                 )
+                if requiresRestart {
+                    guard runningApplications.allSatisfy({ $0.isTerminated || $0.terminate() }) else {
+                        throw NSError(
+                            domain: "CodexAccountActions",
+                            code: 2,
+                            userInfo: [NSLocalizedDescriptionKey: "Codex 未能正常退出，账号未切换"]
+                        )
+                    }
+                    let deadline = Date().addingTimeInterval(12)
+                    while runningApplications.contains(where: { !$0.isTerminated }) && Date() < deadline {
+                        Thread.sleep(forTimeInterval: 0.1)
+                    }
+                    guard runningApplications.allSatisfy(\.isTerminated) else {
+                        throw NSError(
+                            domain: "CodexAccountActions",
+                            code: 3,
+                            userInfo: [NSLocalizedDescriptionKey: "等待 Codex 退出超时，账号未切换"]
+                        )
+                    }
+                }
                 if let targetAuth {
-                    if targetAuth != previousAuth {
+                    if requiresRestart {
                         let logout = Process()
                         logout.executableURL = URL(fileURLWithPath: executable)
                         logout.arguments = ["logout"]

@@ -9,7 +9,7 @@ A local-first macOS utility for managing multiple Codex accounts and monitoring 
 - Each saved account has an isolated `CODEX_HOME`. The active Codex login keeps using `~/.codex`; other accounts live under `~/.codexu/p/<short-id>`.
 - Official `codex app-server` responses provide account identity, 5-hour/7-day remaining quota, and reset times. Identity mismatches are rejected to prevent quota data crossing accounts.
 - The menu bar panel follows the current default Codex login. Account order, notes, re-login, and independent login are managed locally.
-- “Switch & Open” first preserves the current login, runs the official `codex logout`, installs verified local credentials, and activates the existing Codex app without intentionally terminating its running process.
+- “Switch & Open” first preserves the current login, gracefully quits Codex, runs the official `codex logout`, installs verified local credentials, and reopens Codex so the new identity is loaded reliably.
 - Every remaining-quota indicator uses the same health thresholds: blue for `55–100%`, yellow for `25–54%`, and red for `0–24%`.
 - Includes light and dark Liquid Keycap palettes with adjustable glass transparency.
 - CC Switch access is read-only. Its local historical token number is a machine-wide estimate, not an official bill or account attribution.
