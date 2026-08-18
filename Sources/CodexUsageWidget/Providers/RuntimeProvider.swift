@@ -3,23 +3,27 @@ import Foundation
 struct RuntimeLoadContext {
     let now: Date
     let homeDirectory: URL
+    let codexHomeDirectory: URL
     let cacheDirectory: URL
     let statistics: StatisticsContext
 
     static func live(
         now: Date = Date(),
-        statisticsPreference: StatisticsTimeZonePreference = .default
+        statisticsPreference: StatisticsTimeZonePreference = .default,
+        codexHomeDirectory: URL? = nil
     ) -> RuntimeLoadContext {
         let environment = ProcessInfo.processInfo.environment
         let home = environment["CODEXU_HOME_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.homeDirectoryForCurrentUser
         let cache = environment["CODEXU_CACHE_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("codexU", isDirectory: true)
-            ?? home.appendingPathComponent("Library/Caches/codexU", isDirectory: true)
+            .appendingPathComponent("CodexAccountManager", isDirectory: true)
+            ?? home.appendingPathComponent("Library/Caches/CodexAccountManager", isDirectory: true)
         return RuntimeLoadContext(
             now: now,
             homeDirectory: home,
+            codexHomeDirectory: codexHomeDirectory
+                ?? home.appendingPathComponent(".codex", isDirectory: true),
             cacheDirectory: cache,
             statistics: StatisticsContext(preference: statisticsPreference, now: now)
         )
@@ -36,10 +40,7 @@ struct RuntimeProviderRegistry {
     let providers: [any RuntimeUsageProvider]
 
     init(providers: [any RuntimeUsageProvider]? = nil) {
-        let baseProviders = providers ?? [
-            CodexRuntimeProvider(),
-            ClaudeCodeRuntimeProvider()
-        ]
+        let baseProviders = providers ?? [CodexRuntimeProvider()]
         let filters = ProcessInfo.processInfo.environment["CODEXU_RUNTIME_FILTER"]?
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -76,12 +77,12 @@ struct CodexRuntimeProvider: RuntimeUsageProvider {
             scope: scope,
             snapshot: snapshot,
             status: status,
-            quotaSourceLabel: "Codex app-server + local records",
-            usageSourceLabel: "Codex local state"
+            quotaSourceLabel: "官方额度",
+            usageSourceLabel: "本机历史"
         )
     }
 
     func loadTaskBoard(context: RuntimeLoadContext) -> TaskBoard? {
-        CodexUsageReader().loadTaskBoard(context: context)
+        nil
     }
 }

@@ -42,17 +42,11 @@ private struct PalettePreviewCanvas: View {
             ZStack {
                 QuotaRingSegment(
                     percent: 93,
-                    tokens: tokens.quota.primary,
-                    ringAsset: tokens.assets[.quotaRingPrimary],
-                    capAsset: tokens.assets[.quotaCapPrimary],
                     lineWidth: 16
                 )
                 .frame(width: 145, height: 145)
                 QuotaRingSegment(
                     percent: 73,
-                    tokens: tokens.quota.secondary,
-                    ringAsset: tokens.assets[.quotaRingSecondary],
-                    capAsset: tokens.assets[.quotaCapSecondary],
                     lineWidth: 16
                 )
                 .frame(width: 107, height: 107)

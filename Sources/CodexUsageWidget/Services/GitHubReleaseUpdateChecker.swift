@@ -9,8 +9,8 @@ final class GitHubReleaseUpdateChecker {
     private let cacheSchemaVersion = 1
 
     init(
-        owner: String = "shanggqm",
-        repo: String = "codexU",
+        owner: String = "BLACKIELF",
+        repo: String = "codex-account-manager",
         cacheDirectory: URL = RuntimeLoadContext.live().cacheDirectory,
         session: URLSession = .shared,
         minimumAutomaticCheckInterval: TimeInterval = 24 * 60 * 60,
@@ -52,7 +52,7 @@ final class GitHubReleaseUpdateChecker {
         var request = URLRequest(url: releasesURL)
         request.timeoutInterval = 10
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("codexU/\(currentVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("CodexAccountManager/\(currentVersion)", forHTTPHeaderField: "User-Agent")
         if let etag = cached?.etag {
             request.setValue(etag, forHTTPHeaderField: "If-None-Match")
         }

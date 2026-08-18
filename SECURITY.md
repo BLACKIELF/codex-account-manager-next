@@ -1,39 +1,40 @@
-# Security Policy
+# 安全说明 / Security Policy
 
-## Supported Versions
+## 支持版本 / Supported Versions
 
 The latest version on the default branch is the supported version.
 
-## Reporting A Vulnerability
+## 报告漏洞 / Reporting a Vulnerability
 
 Please report security issues privately instead of opening a public issue when the report includes account data, local file paths, thread titles, local Codex database contents, or other sensitive information.
 
 Include:
 
 - macOS version.
-- codexU version.
+- Codex Account Manager version.
 - Whether the issue affects app launch, local file reads, quota reads, packaging, or update distribution.
 - Minimal reproduction steps without private Codex data.
 
-## Local Data Scope
+## 本地数据范围 / Local Data Scope
 
-codexU reads:
+Codex Account Manager may read:
 
-- `~/.codex/state_5.sqlite`
-- `~/.codex/automations/**/automation.toml`
-- local responses from `codex app-server`
-- `~/.codex/sessions/**/rollout-*.jsonl` and `~/.codex/archived_sessions/*.jsonl` token metadata
-- `~/.claude/projects/**/*.jsonl` assistant `message.usage` and `tool_use.name` metadata
-- `~/.claude/tasks/**/*.json` task status/title metadata
-- optional `~/Library/Caches/codexU/claude-code/statusline-snapshot.json`
-- optional `~/Library/Caches/codexU/update-check.json` for cached GitHub Release update metadata
+- `~/.codex/auth.json` and saved-profile `auth.json` files for local identity verification and user-requested switching.
+- local responses from `codex app-server` for quota and account identity.
+- local Codex SQLite/rollout metadata used by retained token statistics. Prompt and response bodies must not be persisted by account-manager features.
+- optional `~/.cc-switch/cc-switch.db` in read-only mode for machine-wide historical token estimates.
+- local app settings and account snapshots under Application Support.
 
-It should not upload local usage, transcript, task, thread, account, or path data to a third-party service. Claude Code transcript parsing must not store prompt text, assistant response text, tool arguments, or tool output.
+Saved credentials must remain local, use restrictive filesystem permissions, and must never be displayed, logged, included in diagnostics, or committed to the repository. Local usage, account, thread, prompt, response, and path data must not be uploaded to third parties.
 
-## Network Scope
+## 网络范围 / Network Scope
 
-codexU is local-first. The update checker may request public GitHub Release metadata from `https://api.github.com/repos/shanggqm/codexU/releases` during automatic checks when enabled or when the user manually checks for updates.
+The app is local-first, but official Codex operations require network access:
 
-Update requests must not include local usage, transcript, task, thread, account, path, prompt, response, tool argument, or tool output data. The update checker may send standard HTTPS headers such as `User-Agent` and `If-None-Match` for ETag caching.
+- `codex app-server`, `codex login`, `codex logout`, and user-enabled warm-up use the installed Codex CLI and official OpenAI services.
+- Official profile metadata is requested from `https://chatgpt.com/backend-api/wham/profiles/me` with the selected local account credential.
+- The update checker may request public release metadata from `https://api.github.com/repos/BLACKIELF/codex-account-manager/releases`.
 
-codexU must not silently download, install, replace, or relaunch the app as part of the GitHub Release check. It may open the user's default browser to a matching DMG asset or the Release page.
+Update requests must not include local usage, credentials, account data, threads, paths, prompts, or responses. Standard HTTPS headers such as `User-Agent` and `If-None-Match` may be sent.
+
+The updater must not silently download, install, replace, or relaunch the app. It may open the default browser to a matching release asset or release page.

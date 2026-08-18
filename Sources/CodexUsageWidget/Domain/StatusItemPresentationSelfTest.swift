@@ -10,6 +10,15 @@ enum StatusItemPresentationSelfTest {
             }
         }
 
+        func imageContains(_ image: NSImage, colorMatching predicate: (NSColor) -> Bool) -> Bool {
+            guard let bitmap = image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)) else { return false }
+            return (0..<bitmap.pixelsHigh).contains { y in
+                (0..<bitmap.pixelsWide).contains { x in
+                    bitmap.colorAt(x: x, y: y).map(predicate) ?? false
+                }
+            }
+        }
+
         expect(TokenFormatter.format(nil) == "--", "missing tokens should remain unavailable")
         expect(TokenFormatter.format(999) == "999", "sub-thousand tokens should remain unabridged")
         expect(TokenFormatter.format(1_000) == "1.0K", "thousands should use K")
@@ -18,6 +27,15 @@ enum StatusItemPresentationSelfTest {
         expect(TokenFormatter.format(999_999_999) == "1.0B", "rounded M boundary should promote to B")
         expect(TokenFormatter.format(1_234_567_890) == "1.2B", "billions should use B")
         expect(TokenFormatter.format(-1_234_567) == "-1.2M", "negative values should preserve their sign")
+        expect(TokenFormatter.formatChineseTotal(nil) == "--", "missing Chinese total should remain unavailable")
+        expect(TokenFormatter.formatChineseTotal(3_916_737_420) == "39.2 亿", "Chinese total should use 亿")
+        expect(AccountDisplay.masked("axuanzai0917@gmail.com") == "axu•••917", "email should hide its domain and middle")
+        expect(AccountDisplay.masked("abc@gmail.com") == "abc", "short email names should remain readable")
+        expect(AccountDisplay.masked("账号 2") == "账号 2", "non-email profile names should remain unchanged")
+        expect(RemainingQuotaHealth.classify(nil) == .unavailable, "missing quota should remain neutral")
+        expect(RemainingQuotaHealth.classify(24.99) == .critical, "quota below 25% should be red")
+        expect(RemainingQuotaHealth.classify(25) == .warning, "quota from 25% should be yellow")
+        expect(RemainingQuotaHealth.classify(55) == .healthy, "quota from 55% should be blue")
 
         let suiteName = "codexU.status-item-self-test.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suiteName) else {
@@ -29,7 +47,7 @@ enum StatusItemPresentationSelfTest {
         }
 
         let defaultPreferences = StatusItemPreferencesStore.load(defaults: defaults)
-        expect(defaultPreferences == .default, "missing keys should load the current rich defaults")
+        expect(defaultPreferences == .accountRing, "missing keys should load the single account ring")
         expect(QuotaDisplayMode.used.drawsClockwise, "used quota should draw clockwise")
         expect(!QuotaDisplayMode.remaining.drawsClockwise, "remaining quota should draw counterclockwise")
         expect(QuotaDisplayMode.used.startsAtLeadingEdge, "used linear bar should start at the leading edge")
@@ -42,10 +60,14 @@ enum StatusItemPresentationSelfTest {
         defaults.removeObject(forKey: StatusItemPreferencesStore.metricsSchemaVersionKey)
         let migratedPreferences = StatusItemPreferencesStore.load(defaults: defaults)
         expect(
-            migratedPreferences.visibleMetrics == [.fiveHourQuota, .sevenDayQuota, .monthlyQuota],
-            "legacy 7d/month preference should migrate to separate 7d and monthly metrics"
+            migratedPreferences == .accountRing,
+            "legacy menu items should migrate to the single account ring"
         )
 
+        defaults.set(
+            [StatusItemMetric.fiveHourQuota.rawValue, StatusItemMetric.sevenDayQuota.rawValue],
+            forKey: StatusItemPreferencesStore.visibleMetricsKey
+        )
         defaults.set(StatusItemPreferencesStore.currentMetricsSchemaVersion, forKey: StatusItemPreferencesStore.metricsSchemaVersionKey)
         let explicitCurrentPreferences = StatusItemPreferencesStore.load(defaults: defaults)
         expect(
@@ -57,11 +79,11 @@ enum StatusItemPresentationSelfTest {
         defaults.set("unknown-direction", forKey: StatusItemPreferencesStore.quotaModeKey)
         defaults.set([], forKey: StatusItemPreferencesStore.visibleMetricsKey)
         let repairedPreferences = StatusItemPreferencesStore.load(defaults: defaults)
-        expect(repairedPreferences.displayMode == .rich, "unknown display mode should fall back to rich")
-        expect(repairedPreferences.quotaMode == .used, "unknown quota mode should fall back to used")
+        expect(repairedPreferences.displayMode == .classic, "unknown display mode should fall back to the numeric ring")
+        expect(repairedPreferences.quotaMode == .remaining, "unknown quota mode should fall back to remaining")
         expect(
-            repairedPreferences.visibleMetrics == [.fiveHourQuota, .sevenDayQuota, .monthlyQuota],
-            "empty visible metrics should be repaired to all supported quota windows"
+            repairedPreferences.visibleMetrics == [.sevenDayQuota],
+            "empty visible metrics should be repaired to the 7-day quota"
         )
 
         var noMetrics = StatusItemPreferences.default
@@ -390,7 +412,39 @@ enum StatusItemPresentationSelfTest {
             singleClassic.itemLength + StatusItemLayoutMetrics.classicQuotaUnitWidth == classic.itemLength,
             "classic mode should release exactly one quota slot for 7d-only data"
         )
-        expect(singleClassic.itemLength == 55, "classic single-quota item should use the compact 55pt width")
+        expect(singleClassic.itemLength == 33, "classic single-quota item should use the icon-free 33pt width")
+
+        let accountRing = builder.build(
+            source: sevenDayOnlySource,
+            preferences: .accountRing,
+            language: .zh,
+            now: now
+        )
+        let accountRingImage = renderer.render(accountRing, tokens: lightTokens, appearance: NSAppearance(named: .aqua))
+        expect(accountRing.itemLength == 33, "account ring should contain no leading runtime logo")
+        expect(
+            imageContains(accountRingImage) { $0.blueComponent > $0.redComponent + 0.2 && $0.blueComponent > 0.5 },
+            "healthy remaining quota should render a blue ring"
+        )
+        let lowQuotaSource = StatusItemSourceSnapshot(
+            runtime: .codex,
+            fiveHourRemainingPercent: nil,
+            fiveHourResetsAt: nil,
+            sevenDayRemainingPercent: 13,
+            sevenDayResetsAt: nil,
+            todayTokens: nil
+        )
+        let lowAccountRing = builder.build(
+            source: lowQuotaSource,
+            preferences: .accountRing,
+            language: .zh,
+            now: now
+        )
+        let lowAccountRingImage = renderer.render(lowAccountRing, tokens: lightTokens, appearance: NSAppearance(named: .aqua))
+        expect(
+            imageContains(lowAccountRingImage) { $0.redComponent > $0.blueComponent + 0.2 && $0.redComponent > 0.6 },
+            "low remaining quota should render a red ring"
+        )
 
         let rich = builder.build(source: source, preferences: .default, language: .en, now: now)
         expect(rich.itemLength <= 134, "default rich item should stay compact after adding reset semantics")

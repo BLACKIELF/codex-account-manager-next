@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## 0818v1 - 2026-08-18
+
+- 账号额度按独立 `CODEX_HOME` 读取并校验身份，修复切换账号后菜单栏仍显示旧账号额度的问题。
+- “切换并打开”改为保存当前登录、调用官方注销、原子写入目标本地凭据并激活现有 Codex，不再主动结束 Codex 进程。
+- 账号列表支持重新登录、独立登录、排序、备注和删除；主界面与菜单栏使用同一账号顺序。
+- 所有剩余额度进度统一为健康度语义：55% 及以上蓝色、25–54% 黄色、低于 25% 红色。
+- 重做菜单栏圆环和液态玻璃账号面板，修复设置弹窗闪退、错误锚定和液态键帽深色模式。
+- 本地凭据不显示、不记录、不上传；发布仓库排除本机设计稿、构建产物和账号数据。
+
+### English
+
+- Isolated quota reads by `CODEX_HOME` with identity checks, fixing stale menu-bar quota after an account switch.
+- “Switch & Open” now preserves the current login, performs official logout, atomically installs verified local credentials, and activates the existing Codex process without intentionally terminating it.
+- Added re-login, independent login, ordering, notes, and deletion for saved accounts, with consistent order across the main window and menu panel.
+- Unified remaining-quota health colors: blue at 55% or above, yellow at 25–54%, and red below 25%.
+- Reworked the menu-bar ring and Liquid Glass account panel; fixed transient settings dismissal, incorrect anchoring, and the Liquid Keycap dark appearance.
+- Credentials stay local and are never displayed, logged, or uploaded; local design prototypes, build artifacts, and account data are excluded from publication.
+
 ## 1.3.0 - 2026-08-04
 
 - 新增本机推理性能监测：从最近 28 天 Codex rollout 识别完整模型调用，按模型与推理强度展示平均耗时、P50、P90、有效吞吐和 reasoning token 占比，并支持今日、7 日均和 28 日均视图。

@@ -37,4 +37,14 @@ enum TokenFormatter {
             units[unitIndex].suffix
         )
     }
+
+    static func formatChineseTotal(_ value: Int64?) -> String {
+        guard let value else { return "--" }
+        guard abs(value) >= 100_000_000 else { return format(value) }
+        return String(
+            format: "%.1f 亿",
+            locale: Locale(identifier: "en_US_POSIX"),
+            Double(value) / 100_000_000
+        )
+    }
 }

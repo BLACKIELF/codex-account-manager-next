@@ -5,4 +5,4 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 make build >/dev/null
-build/codexU.app/Contents/MacOS/codexU --self-test-statistics-time-zone
+build/CodexAccountManager.app/Contents/MacOS/CodexAccountManager --self-test-statistics-time-zone

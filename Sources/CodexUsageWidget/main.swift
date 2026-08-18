@@ -1,6 +1,7 @@
 import Cocoa
 import Carbon.HIToolbox
 import Combine
+import Darwin
 import SwiftUI
 
 struct RateWindow: Equatable {
@@ -57,6 +58,14 @@ struct AccountInfo: Equatable {
     let type: String
     let planType: String?
     let emailPresent: Bool
+    let email: String?
+
+    init(type: String, planType: String?, emailPresent: Bool, email: String? = nil) {
+        self.type = type
+        self.planType = planType
+        self.emailPresent = emailPresent
+        self.email = email
+    }
 }
 
 struct LocalThread: Identifiable, Equatable {
@@ -410,7 +419,7 @@ struct UsageSnapshot: Equatable {
         cloudLifetimeTokens: nil,
         local: nil,
         taskBoard: nil,
-        messages: ["正在读取 codexU 数据"]
+        messages: ["正在读取账号数据"]
     )
 
     func replacingTaskBoard(_ taskBoard: TaskBoard?) -> UsageSnapshot {
@@ -726,6 +735,13 @@ final class UsageStore: ObservableObject {
         let cachedAt: Date
     }
 
+    private struct AuthFileState: Equatable {
+        let exists: Bool
+        let size: UInt64?
+        let modifiedAt: Date?
+        let fileNumber: UInt64?
+    }
+
     @Published var snapshot: UsageSnapshot = .empty
     @Published var multiRuntimeSnapshot: MultiRuntimeUsageSnapshot = .empty
     @Published var runtimeSnapshots: [RuntimeUsageSnapshot] = []
@@ -738,37 +754,47 @@ final class UsageStore: ObservableObject {
     @Published private(set) var visualEnergyMode: VisualEnergyMode = .suspended
     @Published private(set) var codexLiveTasks: CodexTaskLiveSnapshot = .disconnected
     @Published private(set) var taskFocusRequest: TaskFocusRequest?
+    @Published private(set) var profiles: [CodexProfile]
+    @Published private(set) var selectedMonitorProfileID: String
+    @Published private(set) var selectedLaunchProfileID: String
+    @Published private(set) var accountManagerMessage: String?
+    @Published private(set) var isLoggingIn = false
+    @Published private(set) var isLaunchingCodex = false
+    @Published private(set) var warmingProfileID: String?
+    @Published private(set) var automaticWarmUpEnabled = UserDefaults.standard.bool(forKey: "CodexControl.automaticWarmUp")
 
     private var fullTimer: Timer?
-    private var taskBoardTimer: Timer?
-    private var performanceSampleTimer: Timer?
     private var statisticsRolloverTimer: Timer?
     private var systemTimeZoneObserver: NSObjectProtocol?
     private var powerStateObserver: NSObjectProtocol?
     private var thermalStateObserver: NSObjectProtocol?
-    private var isRefreshingTaskBoard = false
     private var refreshGeneration: UInt64 = 0
     private var hasPendingRefresh = false
     private var statisticsSnapshotCache: [String: StatisticsSnapshotCacheEntry] = [:]
     private var statisticsSnapshotCacheOrder: [String] = []
     private var statisticsFeedbackTimer: Timer?
+    private var authDirectorySource: DispatchSourceFileSystemObject?
+    private var authFileSource: DispatchSourceFileSystemObject?
+    private var authRefreshWorkItem: DispatchWorkItem?
+    private var monitoredAuthState: AuthFileState?
+    private var ignoresAuthChangesUntil: Date?
     private var hasStarted = false
     private var isMainWindowActive = false
-    private var isTaskBoardSelected = false
     private var lastFullRefreshCompletedAt: Date?
-    private var baseTaskBoards: [RuntimeScope: TaskBoard] = [:]
     private let statisticsSnapshotCacheLimit = 4
     private let statisticsSnapshotCacheTTL: TimeInterval = 3 * 60
-    private let taskBoardRefreshInterval: TimeInterval = 60
     private let foregroundFullRefreshInterval: TimeInterval = 5 * 60
     private let backgroundFullRefreshInterval: TimeInterval = 15 * 60
-    private let codexTaskClient: CodexTaskEventClient
+    private let profileStore: CodexProfileStore
+    private let accountActions = CodexAccountActions()
 
-    init(codexTaskClient: CodexTaskEventClient = CodexAppServerTaskClient()) {
-        self.codexTaskClient = codexTaskClient
-        self.codexTaskClient.onSnapshot = { [weak self] snapshot in
-            self?.applyCodexLiveTasks(snapshot)
-        }
+    init() {
+        let profileStore = CodexProfileStore()
+        try? profileStore.discardUnverifiedManagedProfiles()
+        self.profileStore = profileStore
+        profiles = profileStore.profiles
+        selectedMonitorProfileID = profileStore.selectedMonitorProfileID
+        selectedLaunchProfileID = profileStore.selectedLaunchProfileID
     }
 
     var runtimeSummaries: [RuntimeMenuSummary] {
@@ -781,16 +807,453 @@ final class UsageStore: ObservableObject {
         multiRuntimeSnapshot.totalTodayTokens
     }
 
+    var selectedMonitorProfile: CodexProfile? {
+        profiles.first { $0.id == selectedMonitorProfileID }
+    }
+
+    var selectedLaunchProfile: CodexProfile? {
+        profiles.first { $0.id == selectedLaunchProfileID }
+    }
+
     func totalTodayTokens(for scopes: [RuntimeScope]) -> Int64 {
         scopes.reduce(Int64(0)) { total, scope in
             total + (runtimeSnapshot(for: scope)?.todayTokens ?? 0)
         }
     }
 
+    func addProfile() {
+        beginAddingProfile(copyingRemarkFrom: nil)
+    }
+
+    func loginProfileIndependently(_ profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }),
+              profile.isSystemProfile
+        else { return }
+        beginAddingProfile(copyingRemarkFrom: profile.id)
+    }
+
+    private func beginAddingProfile(copyingRemarkFrom sourceProfileID: String?) {
+        guard !isLoggingIn, captureCurrentProfile() else { return }
+        let profile: CodexProfile
+        do {
+            profile = try profileStore.addManagedProfile(copyingRemarkFrom: sourceProfileID)
+        } catch {
+            accountManagerMessage = "创建账号失败：\(error.localizedDescription)"
+            return
+        }
+
+        isLoggingIn = true
+        accountManagerMessage = "请在浏览器中登录新账号…"
+        do {
+            try accountActions.login(profile: profile) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.verifyAddedProfile(profile, replacingSystemProfileID: sourceProfileID)
+                case .failure:
+                    self.discardAddedProfile(profile, message: "登录已取消，没有添加账号")
+                }
+            }
+        } catch {
+            discardAddedProfile(profile, message: "无法启动登录：\(error.localizedDescription)")
+        }
+    }
+
+    private func verifyAddedProfile(_ profile: CodexProfile, replacingSystemProfileID: String?) {
+        accountManagerMessage = "登录完成，正在验证账号…"
+        let preference = statisticsPreference
+        DispatchQueue.global(qos: .utility).async {
+            let context = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: profile.codexHomeURL
+            )
+            let verifiedSnapshot = CodexUsageReader().load(context: context)
+            let officialProfile = CodexOfficialProfileReader.load(codexHomeURL: profile.codexHomeURL)
+            DispatchQueue.main.async {
+                guard let email = verifiedSnapshot.account?.email, !email.isEmpty else {
+                    self.discardAddedProfile(profile, message: "没有识别到有效账号，本次未添加")
+                    return
+                }
+                if let existing = self.profiles.first(where: {
+                    $0.lastSnapshot?.email?.caseInsensitiveCompare(email) == .orderedSame
+                }) {
+                    try? self.profileStore.discardManagedProfile(profile.id)
+                    try? self.profileStore.selectMonitor(existing.id)
+                    self.syncProfiles()
+                    self.configureAuthMonitoring()
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "这个账号已经在列表中"
+                    self.clearDisplayedAccount()
+                    self.refresh(queueIfBusy: true)
+                    return
+                }
+                do {
+                    try self.profileStore.record(verifiedSnapshot, for: profile.id, allowAccountOnly: true)
+                    if let officialProfile {
+                        try self.profileStore.recordOfficialProfile(officialProfile, for: profile.id)
+                    }
+                    if let replacingSystemProfileID {
+                        try self.profileStore.setRemark("", for: replacingSystemProfileID)
+                    }
+                    try self.profileStore.selectMonitor(profile.id)
+                    self.syncProfiles()
+                    self.configureAuthMonitoring()
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "已添加 \(AccountDisplay.masked(email))"
+                    self.clearDisplayedAccount()
+                    self.refresh(queueIfBusy: true)
+                } catch {
+                    self.discardAddedProfile(profile, message: "账号保存失败：\(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    private func discardAddedProfile(_ profile: CodexProfile, message: String) {
+        try? profileStore.discardManagedProfile(profile.id)
+        syncProfiles()
+        isLoggingIn = false
+        accountManagerMessage = message
+    }
+
+    func selectMonitorProfile(_ id: String) {
+        guard id != selectedMonitorProfileID else { return }
+        guard captureCurrentProfile() else { return }
+        do {
+            try profileStore.selectMonitor(id)
+            syncProfiles()
+            configureAuthMonitoring()
+            clearDisplayedAccount()
+            accountManagerMessage = "已切换监控账号"
+            refresh(queueIfBusy: true)
+        } catch {
+            accountManagerMessage = "切换失败：\(error.localizedDescription)"
+        }
+    }
+
+    func selectLaunchProfile(_ id: String) {
+        guard captureCurrentProfile() else { return }
+        do {
+            try profileStore.selectLaunch(id)
+            syncProfiles()
+            accountManagerMessage = "已设为下次启动账号"
+        } catch {
+            accountManagerMessage = "保存启动账号失败：\(error.localizedDescription)"
+        }
+    }
+
+    func setProfileRemark(_ remark: String, for id: String) {
+        do {
+            try profileStore.setRemark(remark, for: id)
+            syncProfiles()
+            accountManagerMessage = remark.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "已恢复账号默认名称"
+                : "账号备注已保存"
+        } catch {
+            accountManagerMessage = "保存备注失败：\(error.localizedDescription)"
+        }
+    }
+
+    func moveProfile(_ id: String, relativeTo targetID: String, before: Bool) {
+        do {
+            try profileStore.moveProfile(id, relativeTo: targetID, before: before)
+            syncProfiles()
+            accountManagerMessage = "账号顺序已保存"
+        } catch {
+            accountManagerMessage = "调整顺序失败：\(error.localizedDescription)"
+        }
+    }
+
+    func deleteProfile(_ id: String) {
+        guard !isLaunchingCodex,
+              let profile = profiles.first(where: { $0.id == id }),
+              !profile.isSystemProfile
+        else { return }
+        let wasMonitoring = id == selectedMonitorProfileID
+        do {
+            try profileStore.removeManagedProfile(id)
+            syncProfiles()
+            if wasMonitoring {
+                configureAuthMonitoring()
+                clearDisplayedAccount()
+                refresh(queueIfBusy: true)
+            }
+            accountManagerMessage = "已删除 \(AccountDisplay.profileName(profile))"
+        } catch {
+            accountManagerMessage = "删除账号失败：\(error.localizedDescription)"
+        }
+    }
+
+    func snapshotCurrentProfile() {
+        captureCurrentProfile()
+        accountManagerMessage = snapshot.quotaReadSucceeded ? "账号与额度快照已保存" : "当前额度不可用，未覆盖旧快照"
+    }
+
+    func loginSelectedMonitorProfile() {
+        loginProfile(selectedMonitorProfileID)
+    }
+
+    func loginProfile(_ profileID: String) {
+        guard !isLoggingIn,
+              captureCurrentProfile(),
+              let profile = profiles.first(where: { $0.id == profileID })
+        else { return }
+        isLoggingIn = true
+        accountManagerMessage = "正在登录 \(AccountDisplay.profileName(profile))…"
+        do {
+            try accountActions.login(profile: profile) { [weak self] result in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    self.verifyReloggedProfile(profile)
+                case .failure:
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "登录未完成，原账号未受影响"
+                }
+            }
+        } catch {
+            isLoggingIn = false
+            accountManagerMessage = "无法启动登录：\(error.localizedDescription)"
+        }
+    }
+
+    private func verifyReloggedProfile(_ profile: CodexProfile) {
+        accountManagerMessage = "登录完成，正在验证 \(AccountDisplay.profileName(profile))…"
+        let preference = statisticsPreference
+        DispatchQueue.global(qos: .utility).async {
+            let context = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: profile.codexHomeURL
+            )
+            let verifiedSnapshot = CodexUsageReader().load(context: context)
+            let officialProfile = CodexOfficialProfileReader.load(codexHomeURL: profile.codexHomeURL)
+            DispatchQueue.main.async {
+                guard let verifiedAccount = verifiedSnapshot.account else {
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "没有识别到有效账号，请重新登录"
+                    return
+                }
+                guard profile.isSystemProfile
+                        || profile.matchesRecordedAccount(email: verifiedAccount.email)
+                else {
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "登录账号与这张账号卡不一致，已阻止额度串号"
+                    return
+                }
+                do {
+                    try self.profileStore.record(
+                        verifiedSnapshot,
+                        for: profile.id,
+                        allowAccountOnly: true,
+                        allowSystemAccountChange: profile.isSystemProfile
+                    )
+                    if let officialProfile {
+                        try self.profileStore.recordOfficialProfile(officialProfile, for: profile.id)
+                    }
+                    try self.profileStore.selectMonitor(profile.id)
+                    self.syncProfiles()
+                    self.configureAuthMonitoring()
+                    self.clearDisplayedAccount()
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "已登录并绑定 \(AccountDisplay.profileName(profile))"
+                    self.refresh(queueIfBusy: true)
+                } catch {
+                    self.isLoggingIn = false
+                    self.accountManagerMessage = "登录账号保存失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func launchCodex(with profileID: String) {
+        guard !isLaunchingCodex,
+              captureCurrentProfile(),
+              let profile = profiles.first(where: { $0.id == profileID }),
+              let systemProfile = profiles.first(where: \.isSystemProfile)
+        else { return }
+        let previousLaunchProfileID = selectedLaunchProfileID
+        isLaunchingCodex = true
+        accountManagerMessage = "正在验证 \(AccountDisplay.profileName(profile))…"
+        let preference = statisticsPreference
+        DispatchQueue.global(qos: .utility).async {
+            let context = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: profile.codexHomeURL
+            )
+            let verifiedSnapshot = CodexUsageReader().load(context: context)
+            let verifiedOfficialProfile = CodexOfficialProfileReader.load(codexHomeURL: profile.codexHomeURL)
+            let systemContext = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: systemProfile.codexHomeURL
+            )
+            let currentSystemSnapshot = CodexUsageReader().load(context: systemContext)
+            let currentSystemOfficialProfile = CodexOfficialProfileReader.load(codexHomeURL: systemProfile.codexHomeURL)
+            DispatchQueue.main.async {
+                guard let verifiedAccount = verifiedSnapshot.account,
+                      currentSystemSnapshot.account != nil
+                else {
+                    self.isLaunchingCodex = false
+                    self.accountManagerMessage = "账号验证失败；没有切换 Codex，原账号未受影响"
+                    return
+                }
+                guard profile.isSystemProfile || profile.matchesRecordedAccount(email: verifiedAccount.email) else {
+                    self.isLaunchingCodex = false
+                    self.accountManagerMessage = "账号身份与已保存记录不一致；没有切换 Codex"
+                    return
+                }
+                do {
+                    try self.profileStore.record(
+                        currentSystemSnapshot,
+                        for: systemProfile.id,
+                        allowAccountOnly: true,
+                        allowSystemAccountChange: true
+                    )
+                    if let currentSystemOfficialProfile {
+                        try self.profileStore.recordOfficialProfile(currentSystemOfficialProfile, for: systemProfile.id)
+                    }
+                    let currentEmail = currentSystemSnapshot.account?.email?.lowercased()
+                    let targetEmail = verifiedAccount.email?.lowercased()
+                    if currentEmail != targetEmail {
+                        try self.profileStore.preserveSystemLogin()
+                    }
+                    try self.profileStore.record(
+                        verifiedSnapshot,
+                        for: profile.id,
+                        allowSystemAccountChange: profile.isSystemProfile
+                    )
+                    try self.profileStore.selectLaunch(profile.id)
+                    self.syncProfiles()
+                } catch {
+                    self.isLaunchingCodex = false
+                    self.accountManagerMessage = "启动前保存失败：\(error.localizedDescription)"
+                    return
+                }
+                self.accountManagerMessage = "正在切换到 \(AccountDisplay.profileName(profile))…"
+                self.ignoresAuthChangesUntil = Date().addingTimeInterval(12)
+                self.accountActions.launchCodex(profile: profile) { [weak self] error in
+                    guard let self else { return }
+                    self.isLaunchingCodex = false
+                    if let error {
+                        do {
+                            try self.profileStore.selectLaunch(previousLaunchProfileID)
+                            self.syncProfiles()
+                            self.accountManagerMessage = "账号切换失败，启动账号已回滚：\(error.localizedDescription)"
+                        } catch {
+                            self.accountManagerMessage = "账号切换失败，且启动账号回滚失败：\(error.localizedDescription)"
+                        }
+                    } else {
+                        do {
+                            try self.profileStore.record(
+                                verifiedSnapshot,
+                                for: systemProfile.id,
+                                allowAccountOnly: true,
+                                allowSystemAccountChange: true
+                            )
+                            if let verifiedOfficialProfile {
+                                try self.profileStore.recordOfficialProfile(verifiedOfficialProfile, for: systemProfile.id)
+                            }
+                            try self.profileStore.selectMonitor(profile.id)
+                            self.syncProfiles()
+                            self.configureAuthMonitoring()
+                            self.clearDisplayedAccount()
+                            self.accountManagerMessage = "已切换当前 Codex 登录；运行中的 Codex 未退出"
+                            self.refresh(queueIfBusy: true)
+                        } catch {
+                            self.accountManagerMessage = "Codex 已打开，但账号状态保存失败：\(error.localizedDescription)"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func setAutomaticWarmUpEnabled(_ enabled: Bool) {
+        automaticWarmUpEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: "CodexControl.automaticWarmUp")
+        accountManagerMessage = enabled
+            ? "智能暖号已开启；会按 5 小时窗口自动发送“你好”"
+            : "智能暖号已关闭"
+        if enabled { runDueWarmUp() }
+    }
+
+    func warmUpStatus(for profile: CodexProfile) -> String? {
+        if warmingProfileID == profile.id { return "正在通过官方 Codex 暖号…" }
+        guard automaticWarmUpEnabled || profile.lastWarmUpAt != nil else { return nil }
+        if profile.officialProfile?.subscriptionActiveUntil.map({ $0 <= Date() }) == true {
+            return "智能暖号已暂停 · 会员已到期"
+        }
+        if let weekly = profile.lastSnapshot?.sevenDay,
+           100 - weekly.usedPercent <= CodexWarmUpPolicy.minimumWeeklyRemaining {
+            return "智能暖号已暂停 · 7 天额度不足"
+        }
+        let result = profile.lastWarmUpAt.map { date in
+            let state = profile.lastWarmUpSucceeded == true ? "上次成功" : "上次失败"
+            return "\(state) " + date.formatted(.dateTime.month().day().hour().minute())
+        }
+        guard automaticWarmUpEnabled,
+              let next = CodexWarmUpPolicy.nextEligibleDate(for: profile)
+        else { return result.map { "智能暖号已关闭 · \($0)" } }
+        let nextText = next <= Date()
+            ? "等待执行"
+            : "下次 " + next.formatted(.dateTime.month().day().hour().minute())
+        return [result, nextText].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    private func runDueWarmUp() {
+        let dueProfile = CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> CodexProfile? in
+            guard group.allSatisfy({ CodexWarmUpPolicy.isDue($0) }) else { return nil }
+            return group.first { $0.id == selectedMonitorProfileID } ?? group.first
+        }.first
+        guard automaticWarmUpEnabled,
+              warmingProfileID == nil,
+              let profile = dueProfile
+        else { return }
+        warmingProfileID = profile.id
+        accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 智能暖号…"
+        do {
+            try accountActions.warmUp(profile: profile) { [weak self] result in
+                guard let self else { return }
+                let succeeded = (try? result.get()) != nil
+                try? self.profileStore.recordWarmUp(at: Date(), succeeded: succeeded, for: profile.id)
+                self.syncProfiles()
+                self.warmingProfileID = nil
+                self.accountManagerMessage = succeeded
+                    ? "\(AccountDisplay.profileName(profile)) 暖号成功"
+                    : "\(AccountDisplay.profileName(profile)) 暖号失败，30 分钟后再试"
+                if succeeded { self.refreshProfileAfterWarmUp(profile) }
+                self.runDueWarmUp()
+            }
+        } catch {
+            try? profileStore.recordWarmUp(at: Date(), succeeded: false, for: profile.id)
+            syncProfiles()
+            warmingProfileID = nil
+            accountManagerMessage = "暖号启动失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func refreshProfileAfterWarmUp(_ profile: CodexProfile) {
+        let preference = statisticsPreference
+        DispatchQueue.global(qos: .utility).async {
+            let context = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: profile.codexHomeURL
+            )
+            let snapshot = CodexUsageReader().load(context: context)
+            DispatchQueue.main.async {
+                try? self.profileStore.record(snapshot, for: profile.id)
+                self.syncProfiles()
+                if profile.id == self.selectedMonitorProfileID {
+                    self.refresh(queueIfBusy: true)
+                }
+            }
+        }
+    }
+
     func start() {
         hasStarted = true
-        codexTaskClient.start(reason: .startup)
-        refresh()
+        configureAuthMonitoring()
+        synchronizeMonitorWithCurrentCodex(announce: false)
+        refreshStaleOfficialProfiles()
         systemTimeZoneObserver = NotificationCenter.default.addObserver(
             forName: .NSSystemTimeZoneDidChange,
             object: nil,
@@ -817,23 +1280,37 @@ final class UsageStore: ObservableObject {
         updateVisualEnergyMode()
         scheduleStatisticsRollover()
         scheduleFullRefreshTimer()
-        updateTaskBoardPollingState(refreshImmediately: false)
-        updateCodexTaskConnection()
-        PerformanceMonitor.shared.recordResourceSample(windowVisible: isMainWindowActive)
-        performanceSampleTimer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            PerformanceMonitor.shared.recordResourceSample(windowVisible: self.isMainWindowActive)
+        runDueWarmUp()
+    }
+
+    private func refreshStaleOfficialProfiles() {
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        let staleProfiles = profiles.filter {
+            $0.id != selectedMonitorProfileID
+                && ($0.officialProfile?.fetchedAt ?? .distantPast) < cutoff
         }
-        performanceSampleTimer?.tolerance = 90
+        guard !staleProfiles.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async {
+            let loaded = staleProfiles.compactMap { profile in
+                CodexOfficialProfileReader.load(codexHomeURL: profile.codexHomeURL)
+                    .map { (profile.id, $0) }
+            }
+            DispatchQueue.main.async {
+                for (profileID, snapshot) in loaded {
+                    try? self.profileStore.recordOfficialProfile(snapshot, for: profileID)
+                }
+                if !loaded.isEmpty { self.syncProfiles() }
+            }
+        }
     }
 
     func stop() {
         hasStarted = false
         fullTimer?.invalidate()
-        taskBoardTimer?.invalidate()
         statisticsRolloverTimer?.invalidate()
         statisticsFeedbackTimer?.invalidate()
-        performanceSampleTimer?.invalidate()
+        stopAuthMonitoring()
         if let systemTimeZoneObserver {
             NotificationCenter.default.removeObserver(systemTimeZoneObserver)
             self.systemTimeZoneObserver = nil
@@ -847,32 +1324,70 @@ final class UsageStore: ObservableObject {
             self.thermalStateObserver = nil
         }
         visualEnergyMode = .suspended
-        codexTaskClient.stop()
         PerformanceMonitor.shared.flush()
     }
 
     func refresh(queueIfBusy: Bool = false) {
-        guard !isRefreshing, !isRefreshingTaskBoard else {
-            if queueIfBusy || isRefreshingTaskBoard {
-                hasPendingRefresh = true
-            }
+        guard !isRefreshing else {
+            if queueIfBusy { hasPendingRefresh = true }
             return
         }
         refreshGeneration &+= 1
         let generation = refreshGeneration
         let preference = statisticsPreference
+        let profileID = selectedMonitorProfileID
+        let codexHomeDirectory = selectedMonitorProfile?.codexHomeURL
+        ignoresAuthChangesUntil = Date().addingTimeInterval(5)
         isRefreshing = true
         let performanceSpan = PerformanceMonitor.shared.begin(.fullRefresh)
 
         DispatchQueue.global(qos: .utility).async {
             let multiSnapshot = MultiRuntimeUsageReader().load(
                 statisticsPreference: preference,
-                generation: generation
+                generation: generation,
+                codexHomeDirectory: codexHomeDirectory
             )
+            let officialProfile = codexHomeDirectory.flatMap {
+                CodexOfficialProfileReader.load(codexHomeURL: $0)
+            }
             DispatchQueue.main.async {
                 if generation == self.refreshGeneration,
                    multiSnapshot.statisticsIdentity.preference == self.statisticsPreference {
-                    self.apply(multiSnapshot)
+                    let incoming = multiSnapshot.displaySnapshot(for: .codex)
+                    let profile = self.profiles.first { $0.id == profileID }
+                    let hasIdentity = incoming.account?.email?.isEmpty == false
+                    let duplicate = incoming.account?.email.flatMap { email in
+                        self.profiles.first {
+                            $0.id != profileID
+                                && $0.lastSnapshot?.email != nil
+                                && $0.matchesRecordedAccount(email: email)
+                        }
+                    }
+                    let identityMismatch = profile.map {
+                        (incoming.quotaReadSucceeded || hasIdentity)
+                            && !$0.matchesRecordedAccount(email: incoming.account?.email)
+                    } ?? false
+                    if let profile, profile.isSystemProfile,
+                       let duplicate, !duplicate.isSystemProfile {
+                        try? self.profileStore.selectMonitor(duplicate.id)
+                        self.syncProfiles()
+                        self.configureAuthMonitoring()
+                        self.clearDisplayedAccount()
+                        self.hasPendingRefresh = true
+                        self.accountManagerMessage = "当前 Codex 登录的是 \(AccountDisplay.profileName(duplicate))，已切换监控"
+                    } else if identityMismatch {
+                        self.accountManagerMessage = "检测到 CODEX_HOME 已登录另一个账号，已阻止额度串号"
+                    } else {
+                        self.apply(multiSnapshot)
+                        self.captureCurrentProfile()
+                        if let officialProfile {
+                            try? self.profileStore.recordOfficialProfile(officialProfile, for: profileID)
+                            self.syncProfiles()
+                        }
+                        if let duplicate, !duplicate.isSystemProfile, let profile {
+                            self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 与 \(AccountDisplay.profileName(duplicate)) 登录的是同一账号"
+                        }
+                    }
                     self.cacheStatisticsSnapshot(multiSnapshot)
                     if self.isSwitchingStatisticsTimeZone {
                         self.finishStatisticsTimeZoneSwitch()
@@ -882,6 +1397,7 @@ final class UsageStore: ObservableObject {
                 PerformanceMonitor.shared.end(performanceSpan)
                 self.lastFullRefreshCompletedAt = Date()
                 self.scheduleFullRefreshTimer()
+                self.runDueWarmUp()
                 if self.hasPendingRefresh {
                     self.hasPendingRefresh = false
                     self.refresh()
@@ -983,7 +1499,6 @@ final class UsageStore: ObservableObject {
         let nextScope = visibleRuntimeScopes.contains(scope) ? scope : (visibleRuntimeScopes.first ?? scope)
         selectedRuntimeScope = nextScope
         snapshot = multiRuntimeSnapshot.displaySnapshot(for: nextScope)
-        updateCodexTaskConnection()
     }
 
     func requestTaskFocus(scope: RuntimeScope, threadID: String?) {
@@ -1013,7 +1528,7 @@ final class UsageStore: ObservableObject {
                 kind: .update,
                 runtimeScope: nil,
                 threadID: nil,
-                title: updateResult.latestVersionLabel ?? "codexU",
+                title: updateResult.latestVersionLabel ?? "Codex Control",
                 since: updateResult.checkedAt
             ))
         }
@@ -1047,8 +1562,6 @@ final class UsageStore: ObservableObject {
         if isActive {
             refreshIfStale(maximumAge: foregroundFullRefreshInterval)
         }
-        updateTaskBoardPollingState(refreshImmediately: isTaskBoardPollingEnabled)
-        updateCodexTaskConnection()
     }
 
     private func updateVisualEnergyMode() {
@@ -1079,31 +1592,11 @@ final class UsageStore: ObservableObject {
     }
 
     func setTaskBoardSelected(_ isSelected: Bool) {
-        guard isTaskBoardSelected != isSelected else { return }
-        isTaskBoardSelected = isSelected
-        guard hasStarted else { return }
-        updateTaskBoardPollingState(refreshImmediately: isTaskBoardPollingEnabled)
-        updateCodexTaskConnection()
+        // Legacy dashboard compatibility. Account monitoring has no task polling.
     }
 
     func setStatusPopoverVisible(_ isVisible: Bool) {
-        if isVisible {
-            codexTaskClient.start(reason: .popover)
-        } else if !isTaskBoardPollingEnabled {
-            codexTaskClient.stopIfIdle()
-        }
-    }
-
-    private func updateCodexTaskConnection() {
-        if isTaskBoardPollingEnabled && selectedRuntimeScope == .codex {
-            codexTaskClient.start(reason: .taskUI)
-        } else {
-            codexTaskClient.stopIfIdle()
-        }
-    }
-
-    private var isTaskBoardPollingEnabled: Bool {
-        isMainWindowActive && isTaskBoardSelected
+        // Account monitoring has no live task stream.
     }
 
     private func scheduleFullRefreshTimer() {
@@ -1128,48 +1621,6 @@ final class UsageStore: ObservableObject {
         fullTimer = timer
     }
 
-    private func updateTaskBoardPollingState(refreshImmediately: Bool) {
-        taskBoardTimer?.invalidate()
-        taskBoardTimer = nil
-        guard hasStarted, isTaskBoardPollingEnabled else { return }
-
-        let timer = Timer.scheduledTimer(withTimeInterval: taskBoardRefreshInterval, repeats: true) { [weak self] _ in
-            self?.refreshTaskBoard()
-        }
-        timer.tolerance = 12
-        taskBoardTimer = timer
-        if refreshImmediately {
-            refreshTaskBoard()
-        }
-    }
-
-    private func refreshTaskBoard() {
-        guard !isRefreshing, !isRefreshingTaskBoard else { return }
-        isRefreshingTaskBoard = true
-        let performanceSpan = PerformanceMonitor.shared.begin(.taskRefresh)
-        let scope = selectedRuntimeScope
-        let preference = statisticsPreference
-        if scope == .codex {
-            codexTaskClient.refreshThreads()
-        }
-
-        DispatchQueue.global(qos: .utility).async {
-            let taskBoard = MultiRuntimeUsageReader().loadTaskBoard(
-                scope: scope,
-                statisticsPreference: preference
-            )
-            DispatchQueue.main.async {
-                self.applyTaskBoard(taskBoard, for: scope)
-                self.isRefreshingTaskBoard = false
-                PerformanceMonitor.shared.end(performanceSpan, success: taskBoard != nil)
-                if self.hasPendingRefresh {
-                    self.hasPendingRefresh = false
-                    self.refresh()
-                }
-            }
-        }
-    }
-
     private func apply(_ multiSnapshot: MultiRuntimeUsageSnapshot) {
         let performanceSpan = PerformanceMonitor.shared.begin(.statePublish)
         defer { PerformanceMonitor.shared.end(performanceSpan) }
@@ -1177,21 +1628,10 @@ final class UsageStore: ObservableObject {
             previous: runtimeSnapshots,
             incoming: multiSnapshot.runtimes
         )
-        for runtime in reconciledRuntimes {
-            if let board = runtime.snapshot.taskBoard {
-                baseTaskBoards[runtime.scope] = board
-            }
-        }
-        let displayedRuntimes = reconciledRuntimes.map { runtime -> RuntimeUsageSnapshot in
-            guard runtime.scope == .codex,
-                  let board = baseTaskBoards[.codex]
-            else { return runtime }
-            return runtime.replacingTaskBoard(board.merging(codexLiveTasks))
-        }
         let reconciledSnapshot = MultiRuntimeUsageSnapshot(
             refreshedAt: multiSnapshot.refreshedAt,
-            runtimes: displayedRuntimes,
-            aggregate: AgentUsageAggregator().aggregate(displayedRuntimes, at: multiSnapshot.refreshedAt),
+            runtimes: reconciledRuntimes,
+            aggregate: multiSnapshot.aggregate,
             leadership: multiSnapshot.leadership,
             statisticsIdentity: multiSnapshot.statisticsIdentity
         )
@@ -1200,48 +1640,183 @@ final class UsageStore: ObservableObject {
             allowedScopes: visibleRuntimeScopes
         )
         multiRuntimeSnapshot = reconciledSnapshot
-        runtimeSnapshots = displayedRuntimes
+        runtimeSnapshots = reconciledRuntimes
         selectedRuntimeScope = nextScope
         snapshot = reconciledSnapshot.displaySnapshot(for: nextScope)
     }
 
-    private func applyTaskBoard(_ taskBoard: TaskBoard?, for scope: RuntimeScope) {
-        if let taskBoard {
-            baseTaskBoards[scope] = taskBoard
+    @discardableResult
+    private func captureCurrentProfile() -> Bool {
+        if snapshot.quotaReadSucceeded,
+           let profile = selectedMonitorProfile,
+           !profile.matchesRecordedAccount(email: snapshot.account?.email) {
+            accountManagerMessage = "账号身份不一致，未覆盖原额度快照"
+            return false
         }
-        let displayedBoard = scope == .codex
-            ? taskBoard?.merging(codexLiveTasks)
-            : taskBoard
-        publishTaskBoard(displayedBoard, for: scope)
+        do {
+            try profileStore.record(snapshot, for: selectedMonitorProfileID)
+            syncProfiles()
+            return true
+        } catch {
+            accountManagerMessage = "快照保存失败：\(error.localizedDescription)"
+            return false
+        }
     }
 
-    private func applyCodexLiveTasks(_ liveTasks: CodexTaskLiveSnapshot) {
-        codexLiveTasks = liveTasks
-        guard let baseBoard = baseTaskBoards[.codex] else { return }
-        publishTaskBoard(baseBoard.merging(liveTasks), for: .codex)
+    private func syncProfiles() {
+        profiles = profileStore.profiles
+        selectedMonitorProfileID = profileStore.selectedMonitorProfileID
+        selectedLaunchProfileID = profileStore.selectedLaunchProfileID
     }
 
-    private func publishTaskBoard(_ taskBoard: TaskBoard?, for scope: RuntimeScope) {
-        guard let index = runtimeSnapshots.firstIndex(where: { $0.scope == scope }) else {
-            guard snapshot.taskBoard?.columns != taskBoard?.columns else { return }
-            snapshot = snapshot.replacingTaskBoard(taskBoard)
+    private func clearDisplayedAccount() {
+        refreshGeneration &+= 1
+        runtimeSnapshots = []
+        multiRuntimeSnapshot = .empty
+        snapshot = .empty
+    }
+
+    private func configureAuthMonitoring() {
+        cancelAuthSources()
+        guard hasStarted, let profile = profiles.first(where: \.isSystemProfile) else { return }
+        monitoredAuthState = authFileState(for: profile)
+
+        authDirectorySource = makeAuthSource(
+            path: profile.codexHomePath,
+            events: [.write, .delete, .rename],
+            forceRefresh: false
+        )
+        let authURL = profile.codexHomeURL.appendingPathComponent("auth.json")
+        if FileManager.default.fileExists(atPath: authURL.path) {
+            authFileSource = makeAuthSource(
+                path: authURL.path,
+                events: [.write, .delete, .rename, .attrib],
+                forceRefresh: true
+            )
+        }
+    }
+
+    private func makeAuthSource(
+        path: String,
+        events: DispatchSource.FileSystemEvent,
+        forceRefresh: Bool
+    ) -> DispatchSourceFileSystemObject? {
+        let descriptor = open(path, O_EVTONLY)
+        guard descriptor >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: descriptor,
+            eventMask: events,
+            queue: .main
+        )
+        source.setEventHandler { [weak self] in
+            self?.handleAuthChange(forceRefresh: forceRefresh)
+        }
+        source.setCancelHandler { close(descriptor) }
+        source.resume()
+        return source
+    }
+
+    private func handleAuthChange(forceRefresh: Bool) {
+        guard let profile = profiles.first(where: \.isSystemProfile) else { return }
+        let nextState = authFileState(for: profile)
+        guard forceRefresh || nextState != monitoredAuthState else { return }
+        let wasSignedIn = monitoredAuthState?.exists == true
+        monitoredAuthState = nextState
+        if let ignoresAuthChangesUntil, Date() < ignoresAuthChangesUntil {
+            configureAuthMonitoring()
             return
         }
+        _ = captureCurrentProfile()
+        accountManagerMessage = wasSignedIn && !nextState.exists
+            ? "检测到账号退出，已保存最后一次额度"
+            : "检测到登录状态变化，正在核对账号…"
 
-        guard runtimeSnapshots[index].snapshot.taskBoard?.columns != taskBoard?.columns else { return }
-        runtimeSnapshots[index] = runtimeSnapshots[index].replacingTaskBoard(taskBoard)
-        let aggregate = AgentUsageAggregator().aggregate(runtimeSnapshots, at: multiRuntimeSnapshot.refreshedAt)
-        multiRuntimeSnapshot = MultiRuntimeUsageSnapshot(
-            refreshedAt: multiRuntimeSnapshot.refreshedAt,
-            runtimes: runtimeSnapshots,
-            aggregate: aggregate,
-            leadership: multiRuntimeSnapshot.leadership,
-            statisticsIdentity: multiRuntimeSnapshot.statisticsIdentity
-        )
-        if selectedRuntimeScope == scope {
-            snapshot = runtimeSnapshots[index].snapshot
+        authRefreshWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.synchronizeMonitorWithCurrentCodex(announce: true)
+        }
+        authRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: workItem)
+        configureAuthMonitoring()
+    }
+
+    private func synchronizeMonitorWithCurrentCodex(announce: Bool) {
+        guard let systemProfile = profiles.first(where: \.isSystemProfile) else {
+            refresh(queueIfBusy: true)
+            return
+        }
+        let authExists = authFileState(for: systemProfile).exists
+        let preference = statisticsPreference
+        DispatchQueue.global(qos: .utility).async {
+            let context = RuntimeLoadContext.live(
+                statisticsPreference: preference,
+                codexHomeDirectory: systemProfile.codexHomeURL
+            )
+            let systemSnapshot = CodexUsageReader().load(context: context)
+            let officialProfile = CodexOfficialProfileReader.load(codexHomeURL: systemProfile.codexHomeURL)
+            DispatchQueue.main.async {
+                let previousMonitorID = self.selectedMonitorProfileID
+                do {
+                    if systemSnapshot.account?.email?.isEmpty == false {
+                        try self.profileStore.record(
+                            systemSnapshot,
+                            for: systemProfile.id,
+                            allowAccountOnly: true,
+                            allowSystemAccountChange: true
+                        )
+                        if let officialProfile {
+                            try self.profileStore.recordOfficialProfile(officialProfile, for: systemProfile.id)
+                        }
+                        _ = try self.profileStore.selectMonitorForSystemAccount()
+                    } else {
+                        try self.profileStore.selectMonitor(systemProfile.id)
+                    }
+                    self.syncProfiles()
+                    self.configureAuthMonitoring()
+                    if previousMonitorID != self.selectedMonitorProfileID {
+                        self.clearDisplayedAccount()
+                    }
+                    if announce {
+                        self.accountManagerMessage = systemSnapshot.account?.email?.isEmpty == false
+                            ? "已同步当前 Codex 登录账号与剩余额度"
+                            : (authExists ? "正在核对当前 Codex 登录账号" : "当前 Codex 尚未登录")
+                    }
+                } catch {
+                    self.accountManagerMessage = "同步当前 Codex 账号失败：\(error.localizedDescription)"
+                }
+                self.refresh(queueIfBusy: true)
+            }
         }
     }
+
+    private func authFileState(for profile: CodexProfile) -> AuthFileState {
+        let path = profile.codexHomeURL.appendingPathComponent("auth.json").path
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return AuthFileState(exists: false, size: nil, modifiedAt: nil, fileNumber: nil)
+        }
+        return AuthFileState(
+            exists: true,
+            size: (attributes[.size] as? NSNumber)?.uint64Value,
+            modifiedAt: attributes[.modificationDate] as? Date,
+            fileNumber: (attributes[.systemFileNumber] as? NSNumber)?.uint64Value
+        )
+    }
+
+    private func cancelAuthSources() {
+        authDirectorySource?.cancel()
+        authFileSource?.cancel()
+        authDirectorySource = nil
+        authFileSource = nil
+    }
+
+    private func stopAuthMonitoring() {
+        authRefreshWorkItem?.cancel()
+        authRefreshWorkItem = nil
+        monitoredAuthState = nil
+        ignoresAuthChangesUntil = nil
+        cancelAuthSources()
+    }
+
 }
 
 final class CodexUsageReader {
@@ -1262,9 +1837,15 @@ final class CodexUsageReader {
 
     func load(context: RuntimeLoadContext) -> UsageSnapshot {
         var messages: [String] = []
-        let appServer = readAppServer(messages: &messages)
-        let local = readLocalUsage(context: context, messages: &messages)
-        let taskBoard = readTaskBoard(context: context, messages: &messages)
+        let appServer = readAppServer(context: context, messages: &messages)
+        let local: LocalUsage?
+        switch CCSwitchUsageReader().load(context: context) {
+        case let .success(summary):
+            local = summary.localUsage
+        case let .failure(error):
+            local = nil
+            messages.append(error.localizedDescription)
+        }
 
         return UsageSnapshot(
             refreshedAt: context.now,
@@ -1278,7 +1859,7 @@ final class CodexUsageReader {
             credits: appServer.credits,
             cloudLifetimeTokens: appServer.cloudLifetimeTokens,
             local: local,
-            taskBoard: taskBoard,
+            taskBoard: nil,
             messages: messages
         )
     }
@@ -1301,7 +1882,7 @@ final class CodexUsageReader {
         var cloudLifetimeTokens: Int64?
     }
 
-    private func readAppServer(messages: inout [String]) -> AppServerSnapshot {
+    private func readAppServer(context: RuntimeLoadContext, messages: inout [String]) -> AppServerSnapshot {
         let performanceSpan = PerformanceMonitor.shared.begin(.appServerQuota)
         defer { PerformanceMonitor.shared.end(performanceSpan) }
         guard let codexPath = resolveCodexExecutablePath() else {
@@ -1312,6 +1893,9 @@ final class CodexUsageReader {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = ["app-server"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["CODEX_HOME"] = context.codexHomeDirectory.path
+        process.environment = environment
 
         let input = Pipe()
         let output = Pipe()
@@ -1469,8 +2053,8 @@ final class CodexUsageReader {
             "method": "initialize",
             "params": [
                 "clientInfo": [
-                    "name": "codexu",
-                    "title": "codexU",
+                    "name": "codex-account-manager",
+                    "title": "Codex Account Manager",
                     "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.1"
                 ],
                 "capabilities": [
@@ -1518,7 +2102,8 @@ final class CodexUsageReader {
         return AccountInfo(
             type: type,
             planType: account["planType"] as? String,
-            emailPresent: account["email"] != nil && !(account["email"] is NSNull)
+            emailPresent: account["email"] != nil && !(account["email"] is NSNull),
+            email: account["email"] as? String
         )
     }
 
@@ -3316,26 +3901,7 @@ final class CodexUsageReader {
     }
 
     private func resolveCodexExecutablePath() -> String? {
-        var candidates: [String] = []
-
-        // The app's display name and install path may change, while its bundle identifier remains stable.
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-            candidates.append(
-                appURL
-                    .appendingPathComponent("Contents/Resources/codex")
-                    .path
-            )
-        }
-
-        candidates.append(contentsOf: [
-            "/Applications/ChatGPT.app/Contents/Resources/codex",
-            "/Applications/Codex.app/Contents/Resources/codex",
-            "/opt/homebrew/bin/codex",
-            "/usr/local/bin/codex",
-            "/usr/bin/codex"
-        ])
-
-        return firstExistingPath(candidates)
+        CodexExecutable.path(fileManager: fileManager)
     }
 
     private func firstExistingPath(_ paths: [String]) -> String? {
@@ -3864,6 +4430,21 @@ private func estimatedCostUSD(
     return uncachedInputCost + cachedInputCost + cacheWriteInputCost + outputCost
 }
 
+func estimatedSolProEquivalentCostUSD(
+    officialTotalTokens: Int64,
+    localTokens: TokenBreakdown
+) -> Double? {
+    let localTotal = localTokens.splitTotalTokens
+    guard officialTotalTokens > 0, localTotal > 0 else { return nil }
+    let price = modelTokenPrice(for: "gpt-5.6-sol")
+    // Lifetime totals span many requests, so per-request long-context multipliers do not apply.
+    let localCost = Double(localTokens.ordinaryUncachedInputTokens) / 1_000_000 * price.inputPerMillion
+        + Double(localTokens.billableCachedInputTokens) / 1_000_000 * price.cachedInputPerMillion
+        + Double(localTokens.billableCacheWriteInputTokens) / 1_000_000 * price.cacheWriteInputPerMillion
+        + Double(max(localTokens.outputTokens, 0)) / 1_000_000 * price.outputPerMillion
+    return localCost * Double(officialTotalTokens) / Double(localTotal) * 1.5
+}
+
 private enum ModelPricingSelfTest {
     static func run() -> Bool {
         var failures: [String] = []
@@ -3897,6 +4478,27 @@ private enum ModelPricingSelfTest {
         expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: sol), 0.62), "Sol cached input estimate should use the split rates")
         expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: terra), 0.248), "Terra should use the official standard API rates")
         expect(nearlyEqual(estimatedCostUSD(tokens: sampleTokens, price: luna), 0.0248), "Luna should use the official standard API rates")
+        expect(
+            nearlyEqual(
+                estimatedSolProEquivalentCostUSD(officialTotalTokens: 220_000, localTokens: sampleTokens) ?? -1,
+                1.86
+            ),
+            "Sol Pro lifetime estimate should scale the observed token mix and apply the requested 1.5x factor"
+        )
+        let aggregatedTokens = TokenBreakdown(
+            inputTokens: 1_000_000,
+            cachedInputTokens: 800_000,
+            outputTokens: 100_000,
+            reasoningOutputTokens: 0,
+            totalTokens: 1_100_000
+        )
+        expect(
+            nearlyEqual(
+                estimatedSolProEquivalentCostUSD(officialTotalTokens: 1_100_000, localTokens: aggregatedTokens) ?? -1,
+                6.6
+            ),
+            "Lifetime estimate must not apply per-request long-context pricing"
+        )
         expect(nearlyEqual(gpt55.inputPerMillion, 5) && nearlyEqual(gpt55.cachedInputPerMillion, 0.5) && nearlyEqual(gpt55.outputPerMillion, 30), "GPT-5.5 should use the official standard API rates")
         expect(nearlyEqual(gpt54.inputPerMillion, 2.5) && nearlyEqual(gpt54.cachedInputPerMillion, 0.25) && nearlyEqual(gpt54.outputPerMillion, 15), "GPT-5.4 should use the official standard API rates")
         expect(nearlyEqual(gpt54Mini.inputPerMillion, 0.75) && nearlyEqual(gpt54Mini.cachedInputPerMillion, 0.075) && nearlyEqual(gpt54Mini.outputPerMillion, 4.5), "GPT-5.4 mini should use the official standard API rates")
@@ -4129,6 +4731,25 @@ enum ParticleAnimationMode: String, CaseIterable, Equatable {
     }
 }
 
+enum AccountMenuTransparency: String, CaseIterable, Equatable {
+    case clear
+    case standard
+    case frosted
+
+    static let storageKey = "codexU.accountMenuTransparency"
+
+    static func storedOrDefault(defaults: UserDefaults = .standard) -> AccountMenuTransparency {
+        guard let rawValue = defaults.string(forKey: storageKey),
+              let value = AccountMenuTransparency(rawValue: rawValue)
+        else { return .standard }
+        return value
+    }
+
+    func persist(defaults: UserDefaults = .standard) {
+        defaults.set(rawValue, forKey: Self.storageKey)
+    }
+}
+
 enum PaletteSelectionResult: Equatable {
     case selected
     case unavailable
@@ -4171,6 +4792,12 @@ final class AppSettings: ObservableObject {
     @Published var usageTrendWindow: UsageTrendWindow {
         didSet {
             usageTrendWindow.persist(defaults: defaults)
+        }
+    }
+
+    @Published var accountMenuTransparency: AccountMenuTransparency {
+        didSet {
+            accountMenuTransparency.persist(defaults: defaults)
         }
     }
 
@@ -4233,6 +4860,7 @@ final class AppSettings: ObservableObject {
         themeMode = WidgetThemeMode.storedOrAutomatic(defaults: defaults)
         particleAnimationMode = ParticleAnimationMode.storedOrDefault(defaults: defaults)
         usageTrendWindow = UsageTrendWindow.storedOrDefault(defaults: defaults)
+        accountMenuTransparency = AccountMenuTransparency.storedOrDefault(defaults: defaults)
         keepMainWindowOnTop = defaults.bool(forKey: Self.keepMainWindowOnTopKey)
         if defaults.object(forKey: Self.keepRunningWhenMainWindowClosedKey) == nil {
             keepRunningWhenMainWindowClosed = true
@@ -4323,7 +4951,7 @@ final class AppSettings: ObservableObject {
 
     func resetStatusItemPreferences() {
         StatusItemPreferencesStore.reset(defaults: defaults)
-        statusItemPreferences = .default
+        statusItemPreferences = .accountRing
     }
 
     @discardableResult
@@ -4794,7 +5422,7 @@ struct UsageWidgetView: View {
     }
 
     private var shouldShowEnvironmentChecklist: Bool {
-        if snapshot.messages.contains("正在读取 codexU 数据") { return false }
+        if snapshot.messages.contains("正在读取账号数据") { return false }
         let quotaUnavailable = snapshot.fiveHourQuota == nil
             && snapshot.sevenDayQuota == nil
             && snapshot.monthlyQuota == nil
@@ -5061,13 +5689,17 @@ struct TitlebarToolbarView: View {
     var body: some View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
-            RuntimeSelector(
-                selected: store.selectedRuntimeScope,
-                scopes: settings.visibleRuntimeScopes,
-                language: language
-            ) { scope in
-                store.selectRuntime(scope)
-            }
+            ZYZHMark(size: 27)
+                .frame(width: 42, height: titlebarControlHeight)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(FixedVisualPalette.controlFill(effectiveColorScheme))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .strokeBorder(FixedVisualPalette.controlStroke(effectiveColorScheme), lineWidth: 0.8)
+                        )
+                )
+                .help("帧影帧画")
 
             HStack(spacing: 2) {
                 HeaderActionButton(
@@ -5117,17 +5749,23 @@ struct SettingsPanelView: View {
     @ObservedObject var store: UsageStore
     @ObservedObject var updateStore: AppUpdateStore
     let onOpenPaletteLibrary: () -> Void
+    var compact = false
+    var showsHeader = true
     @Environment(\.colorScheme) private var colorScheme
 
     private var language: WidgetLanguage { settings.language }
 
     var body: some View {
         ZStack {
-            LiquidGlassWindowBackdrop(colorScheme: colorScheme)
+            if !compact {
+                LiquidGlassWindowBackdrop(colorScheme: colorScheme)
+            }
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                settingsHeader
+                if showsHeader {
+                    settingsHeader
+                }
                 settingsSection(
                     title: language.text("通用", "General"),
                     detail: language.text("界面偏好", "Interface")
@@ -5170,6 +5808,21 @@ struct SettingsPanelView: View {
                     }
 
                     SettingsPickerRow(
+                        title: language.text("透明度", "Transparency"),
+                        detail: language.text("调节菜单栏账号面板的玻璃浓度", "Adjusts the glass density of the account popover")
+                    ) {
+                        SettingsSegmentedControl(
+                            selection: $settings.accountMenuTransparency,
+                            options: [
+                                SettingsSegmentOption(value: .clear, title: language.text("清晰", "Clear")),
+                                SettingsSegmentOption(value: .standard, title: language.text("标准", "Standard")),
+                                SettingsSegmentOption(value: .frosted, title: language.text("磨砂", "Frosted"))
+                            ],
+                            width: settingsAccessoryColumnWidth
+                        )
+                    }
+
+                    SettingsPickerRow(
                         title: language.text("额度环动效", "Quota ring motion"),
                         detail: language.text(
                             "默认仅窗口置前且聚焦；省电仅悬停环带",
@@ -5184,6 +5837,16 @@ struct SettingsPanelView: View {
                             ],
                             width: settingsAccessoryColumnWidth
                         )
+                    }
+
+                    SettingsToggleRow(
+                        title: language.text("智能暖号", "Automatic Warm-up"),
+                        detail: language.text("按每个账号的额度窗口自动执行", "Runs automatically for each account quota window")
+                    ) {
+                        SettingsSwitchToggle(isOn: Binding(
+                            get: { store.automaticWarmUpEnabled },
+                            set: { store.setAutomaticWarmUpEnabled($0) }
+                        ))
                     }
                 }
 
@@ -5347,12 +6010,12 @@ struct SettingsPanelView: View {
                     )
                 }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, settingsContentTopInset)
+                .padding(.horizontal, compact ? 14 : 20)
+                .padding(.top, compact ? 12 : settingsContentTopInset)
                 .padding(.bottom, 20)
             }
         }
-        .frame(width: 480, alignment: .topLeading)
+        .frame(width: compact ? CodexAccountMenuView.preferredSize.width : 480, alignment: .topLeading)
         .appVisualEnvironment(
             catalog: settings.paletteCatalog,
             paletteID: settings.paletteID,
@@ -5412,7 +6075,7 @@ struct SettingsPanelView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(language.text("设置", "Settings"))
                     .font(.system(size: 18, weight: .semibold, design: .rounded))
-                Text("codexU")
+                Text("Codex Control")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -6094,7 +6757,6 @@ struct DualQuotaRing: View {
     let visualEnergyMode: VisualEnergyMode
     let animationMode: ParticleAnimationMode
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.visualTokens) private var visualTokens
     @State private var isPointerOverRing = false
 
     private var presentation: QuotaRingPresentation {
@@ -6110,9 +6772,6 @@ struct DualQuotaRing: View {
             ForEach(presentation.items) { item in
                 QuotaRingSegment(
                     percent: item.window.remainingPercent,
-                    tokens: item.paletteRole.tokens(in: visualTokens),
-                    ringAsset: visualTokens.assets[item.paletteRole.ringAssetSlot],
-                    capAsset: visualTokens.assets[item.paletteRole.capAssetSlot],
                     lineWidth: QuotaRingGeometry.lineWidth
                 )
                 .frame(
@@ -6169,7 +6828,8 @@ struct DualQuotaRing: View {
                         QuotaRingLabel(
                             title: item.kind.compactTitle,
                             value: item.remainingText,
-                            color: item.paletteRole.tokens(in: visualTokens).label.color
+                            color: Color(nsColor: RemainingQuotaHealth
+                                .classify(item.window.remainingPercent).colors.end)
                         )
                     }
                     Text(
@@ -6231,38 +6891,30 @@ struct DualQuotaRing: View {
 
 struct QuotaRingSegment: View {
     let percent: Double
-    let tokens: QuotaRoleTokenSet
-    let ringAsset: PaletteAssetDescriptor?
-    let capAsset: PaletteAssetDescriptor?
     let lineWidth: CGFloat
 
     var body: some View {
         let progress = CGFloat(max(0, min(1, percent / 100)))
+        let healthColors = RemainingQuotaHealth.classify(percent).colors
+        let colors = [Color(nsColor: healthColors.end), Color(nsColor: healthColors.start)]
         ZStack {
             Circle()
-                .strokeBorder(tokens.track.color, lineWidth: lineWidth)
+                .strokeBorder(FixedVisualPalette.surfaceTrack, lineWidth: lineWidth)
 
             if progress > 0.001 {
-                if let ringAsset {
-                    PaletteRingArtwork(descriptor: ringAsset, progress: progress, lineWidth: lineWidth)
-                } else {
-                    Circle()
-                        .inset(by: lineWidth / 2)
-                        .trim(from: 0, to: progress)
-                        .stroke(
-                            AngularGradient(
-                                colors: [tokens.start.color, tokens.end.color],
-                                center: .center,
-                                startAngle: .degrees(0),
-                                endAngle: .degrees(max(1, Double(progress) * 360))
-                            ),
-                            style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                }
-                if let capAsset {
-                    PaletteRingCap(descriptor: capAsset, progress: progress, lineWidth: lineWidth)
-                }
+                Circle()
+                    .inset(by: lineWidth / 2)
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        AngularGradient(
+                            colors: colors,
+                            center: .center,
+                            startAngle: .degrees(0),
+                            endAngle: .degrees(max(1, Double(progress) * 360))
+                        ),
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
             }
         }
     }
@@ -7381,13 +8033,13 @@ private struct SingleQuotaRingLabel: View {
     let item: QuotaRingItem
     let language: WidgetLanguage
     let isStale: Bool
-    @Environment(\.visualTokens) private var visualTokens
 
     var body: some View {
         VStack(spacing: 1) {
             Text(item.kind.compactTitle)
                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(item.paletteRole.tokens(in: visualTokens).label.color)
+                .foregroundStyle(Color(nsColor: RemainingQuotaHealth
+                    .classify(item.window.remainingPercent).colors.end))
             Text(item.remainingText)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -11178,7 +11830,7 @@ private func localizedTaskTime(_ item: TaskItem, language: WidgetLanguage) -> St
 
 private func localizedReaderMessage(_ message: String, language: WidgetLanguage) -> String {
     guard !language.isChinese else { return message }
-    if message == "正在读取 codexU 数据" { return "Reading codexU data" }
+    if message == "正在读取账号数据" { return "Reading account data" }
     if message.contains("未找到 codex") { return "Codex executable not found" }
     if message.contains("app-server 启动失败") { return "Failed to start app-server" }
     if message.contains("app-server 响应超时") { return "app-server response timed out" }
@@ -11333,7 +11985,7 @@ final class MainAppWindow: NSWindow {
             backing: .buffered,
             defer: false
         )
-        title = "codexU"
+        title = "Codex 账号"
         titleVisibility = .hidden
         titlebarAppearsTransparent = true
         isReleasedWhenClosed = false
@@ -11371,7 +12023,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private var lastRenderedStatusItemPaletteIdentity: PaletteRenderIdentity?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        NSApp.setActivationPolicy(.accessory)
         settings.themeMode.applyAppearance()
         setupMainMenu()
         debugLog("app launched bundle=\(Bundle.main.bundlePath)")
@@ -11404,13 +12056,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
         store.start()
-        updateStore.startAutomaticCheck()
         PerformanceMonitor.shared.end(startupPerformanceSpan)
     }
 
     private func createMainWindow() {
-        let width = UsageWidgetView.widgetDefaultWidth
-        let height = UsageWidgetView.widgetDefaultHeight
+        let width = CodexAccountManagerView.defaultWidth
+        let height = CodexAccountManagerView.defaultHeight
         let screenFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let origin = CGPoint(
             x: max(screenFrame.minX + 16, screenFrame.maxX - width - 28),
@@ -11419,23 +12070,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
         let mainWindow = MainAppWindow(contentRect: NSRect(origin: origin, size: CGSize(width: width, height: height)))
         mainWindow.delegate = self
-        mainWindow.minSize = CGSize(width: UsageWidgetView.widgetMinWidth, height: UsageWidgetView.widgetMinHeight)
-        mainWindow.maxSize = CGSize(width: UsageWidgetView.widgetMaxWidth, height: .greatestFiniteMagnitude)
+        mainWindow.minSize = CGSize(width: CodexAccountManagerView.minWidth, height: CodexAccountManagerView.minHeight)
+        mainWindow.maxSize = CGSize(width: CodexAccountManagerView.maxWidth, height: .greatestFiniteMagnitude)
         mainWindow.contentMinSize = mainWindow.minSize
         mainWindow.contentMaxSize = mainWindow.maxSize
         mainWindow.contentView = GlassHostingContainer(
-            rootView: UsageWidgetView(
+            rootView: CodexAccountManagerView(
                 store: store,
                 settings: settings,
-                updateStore: updateStore
+                paletteCatalog: paletteCatalog
             ),
-            cornerRadius: UsageWidgetView.windowCornerRadius
+            cornerRadius: CodexAccountManagerView.windowCornerRadius
         )
         installTitlebarToolbar(on: mainWindow)
-        _ = mainWindow.setFrameAutosaveName("codexU.mainWindow")
+        _ = mainWindow.setFrameAutosaveName("CodexAccountManager.mainWindow")
         window = mainWindow
         applyMainWindowLevel()
-        showMainWindow()
     }
 
     private func installTitlebarToolbar(on window: NSWindow) {
@@ -11448,7 +12098,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
                 }
             )
         )
-        toolbarView.frame = NSRect(x: 0, y: 0, width: UsageWidgetView.widgetDefaultWidth - 24, height: 44)
+        toolbarView.frame = NSRect(x: 0, y: 0, width: CodexAccountManagerView.defaultWidth - 24, height: 44)
 
         let controller = NSTitlebarAccessoryViewController()
         controller.layoutAttribute = .right
@@ -11481,7 +12131,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     }
 
     func applicationDidResignActive(_ notification: Notification) {
-        closeStatusPopover()
         updateTaskBoardPollingActivity()
     }
 
@@ -11543,6 +12192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         NSApp.setActivationPolicy(.regular)
         setupStatusItemIfNeeded()
         closeStatusPopover()
+        settingsWindow?.orderOut(nil)
+        paletteLibraryWindow?.orderOut(nil)
         applyMainWindowLevel()
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -11582,10 +12233,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
 
-        let appMenu = NSMenu(title: "codexU")
+        let appMenu = NSMenu(title: "Codex 账号")
         appMenuItem.submenu = appMenu
         appMenu.addItem(NSMenuItem(
-            title: language.text("关于 codexU", "About codexU"),
+            title: language.text("关于 Codex 账号", "About Codex Accounts"),
             action: #selector(showAboutPanel),
             keyEquivalent: ""
         ))
@@ -11598,7 +12249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         appMenu.addItem(.separator())
 
         let hideItem = NSMenuItem(
-            title: language.text("隐藏 codexU", "Hide codexU"),
+            title: language.text("隐藏 Codex 账号", "Hide Codex Accounts"),
             action: #selector(NSApplication.hide(_:)),
             keyEquivalent: "h"
         )
@@ -11623,7 +12274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         appMenu.addItem(showAllItem)
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(
-            title: language.text("退出 codexU", "Quit codexU"),
+            title: language.text("退出 Codex 账号", "Quit Codex Accounts"),
             action: #selector(quitFromMenu),
             keyEquivalent: "q"
         ))
@@ -11652,47 +12303,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func openSettingsWindow() {
         closeStatusPopover()
-
-        if settingsWindow == nil {
-            let settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
-                styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
-                backing: .buffered,
-                defer: false
-            )
-            settingsWindow.title = settings.language.text("设置", "Settings")
-            settingsWindow.titleVisibility = .hidden
-            settingsWindow.titlebarAppearsTransparent = true
-            settingsWindow.isReleasedWhenClosed = false
-            settingsWindow.isOpaque = false
-            settingsWindow.backgroundColor = .clear
-            settingsWindow.hasShadow = true
-            settingsWindow.isMovableByWindowBackground = true
-            settingsWindow.acceptsMouseMovedEvents = true
-            settingsWindow.delegate = self
-            settingsWindow.contentView = GlassHostingContainer(
-                rootView: SettingsPanelView(
-                    settings: settings,
-                    store: store,
-                    updateStore: updateStore,
-                    onOpenPaletteLibrary: { [weak self] in self?.openPaletteLibraryWindow() }
-                ),
-                cornerRadius: 20
-            )
-            settingsWindow.center()
-            self.settingsWindow = settingsWindow
-        }
-
-        guard let settingsWindow else { return }
-        settingsWindow.title = settings.language.text("设置", "Settings")
-        if settingsWindow.isMiniaturized {
-            settingsWindow.deminiaturize(nil)
-        }
-        settingsWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        showStatusPopover(initialScreen: .settings)
     }
 
     private func openPaletteLibraryWindow() {
+        closeStatusPopover()
+        window?.orderOut(nil)
+        settingsWindow?.orderOut(nil)
         if paletteLibraryWindow == nil {
             let paletteLibraryWindow = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 320),
@@ -11720,6 +12337,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
 
         guard let paletteLibraryWindow else { return }
+        NSApp.setActivationPolicy(.regular)
         paletteLibraryWindow.title = settings.language.text("配色库", "Palette Library")
         if paletteLibraryWindow.isMiniaturized {
             paletteLibraryWindow.deminiaturize(nil)
@@ -11766,13 +12384,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             .sink { [weak self] scopes in
                 guard let self else { return }
                 self.store.updateVisibleRuntimeScopes(scopes)
-                self.statusPopover?.contentSize = CGSize(
-                    width: 380,
-                    height: runtimeStatusPopoverHeight(
-                        for: scopes.count,
-                        hasAttention: self.currentPopoverAttention != nil
-                    )
-                )
                 self.updateStatusItem()
             }
             .store(in: &cancellables)
@@ -11803,35 +12414,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             return
         }
 
+        showStatusPopover(initialScreen: .home)
+    }
+
+    private func showStatusPopover(initialScreen: CodexAccountMenuView.Screen) {
         guard let button = statusItem?.button else { return }
+        window?.orderOut(nil)
+        settingsWindow?.orderOut(nil)
+        paletteLibraryWindow?.orderOut(nil)
+        let requiresActivationPolicyTransition = NSApp.activationPolicy() != .accessory
+        NSApp.setActivationPolicy(.accessory)
+        if requiresActivationPolicyTransition {
+            DispatchQueue.main.async { [weak self] in
+                self?.showStatusPopover(initialScreen: initialScreen)
+            }
+            return
+        }
         store.refreshIfStale(maximumAge: 5 * 60)
         let popover = NSPopover()
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
         popover.animates = true
-        popover.contentSize = CGSize(
-            width: 380,
-            height: runtimeStatusPopoverHeight(
-                for: settings.visibleRuntimeScopes.count,
-                hasAttention: currentPopoverAttention != nil
-            )
-        )
+        popover.contentSize = CodexAccountMenuView.preferredSize
         popover.delegate = self
         popover.contentViewController = NSHostingController(
-            rootView: RuntimeStatusMenuView(
+            rootView: CodexAccountMenuView(
                 store: store,
                 settings: settings,
                 updateStore: updateStore,
-                openRuntime: { [weak self] scope in
-                    self?.openMainWindow(selecting: scope)
-                },
-                openCurrent: { [weak self] in
+                paletteCatalog: paletteCatalog,
+                initialScreen: initialScreen,
+                openFullWindow: { [weak self] in
                     self?.openMainWindow(selecting: nil)
                 },
-                openAttention: { [weak self] item in
-                    self?.openAttentionItem(item)
-                },
-                openSettings: { [weak self] in
-                    self?.openSettingsWindow()
+                openPaletteLibrary: { [weak self] in
+                    self?.openPaletteLibraryWindow()
                 },
                 quit: {
                     NSApp.terminate(nil)
@@ -11890,13 +12506,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
 
     private func updateStatusPopoverSize() {
         guard statusPopover?.isShown == true else { return }
-        statusPopover?.contentSize = CGSize(
-            width: 380,
-            height: runtimeStatusPopoverHeight(
-                for: settings.visibleRuntimeScopes.count,
-                hasAttention: currentPopoverAttention != nil
-            )
-        )
+        statusPopover?.contentSize = CodexAccountMenuView.preferredSize
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -12051,7 +12661,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
             appearance: appearance
         )
         button.toolTip = presentation.tooltip
-        button.setAccessibilityLabel("codexU")
+        button.setAccessibilityLabel("Codex 账号")
         button.setAccessibilityValue(presentation.accessibilityValue)
         PerformanceMonitor.shared.end(performanceSpan)
     }
@@ -12264,16 +12874,20 @@ struct codexUMain {
             exit(POSIXPipeReaderSelfTest.run() ? 0 : 1)
         }
 
+        if CommandLine.arguments.contains("--self-test-cc-switch") {
+            exit(CCSwitchUsageReaderSelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-profile-store") {
+            exit(CodexProfileStoreSelfTest.run() ? 0 : 1)
+        }
+
         if CommandLine.arguments.contains("--self-test-task-runtime") {
             exit(TaskRuntimeSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-leadership-model") {
             exit(LeadershipModelSelfTest.run() ? 0 : 1)
-        }
-
-        if CommandLine.arguments.contains("--self-test-claude-skill-paths") {
-            exit(ClaudeSkillPathResolverSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-codex-session-link") {

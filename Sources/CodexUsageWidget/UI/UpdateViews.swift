@@ -17,7 +17,7 @@ struct AppUpdateFooterButton: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(FixedVisualPalette.statusInfo)
-            .help(language.text("下载新版 codexU", "Download the latest codexU release"))
+            .help(language.text("下载新版", "Download the latest release"))
         }
     }
 }

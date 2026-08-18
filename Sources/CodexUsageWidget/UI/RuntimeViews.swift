@@ -112,7 +112,7 @@ struct RuntimeStatusMenuView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
-                Text("codexU")
+                Text("Codex Control")
                     .font(.system(size: 14, weight: .semibold))
                 Text("\(language.text("刷新", "Refreshed")) \(runtimeTimeOnly(store.snapshot.refreshedAt))")
                     .font(.system(size: 10, weight: .medium))

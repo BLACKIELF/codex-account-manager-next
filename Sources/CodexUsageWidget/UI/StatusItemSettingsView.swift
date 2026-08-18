@@ -71,7 +71,7 @@ struct StatusItemSettingsView: View {
 
         SettingsBaseRow(
             title: language.text("默认设置", "Defaults"),
-            detail: language.text("恢复丰富、已用量、5h + 7d + mo 和重置倒计时", "Restore Rich, Used, 5h + 7d + mo, and reset countdown")
+            detail: language.text("恢复单一 7 天剩余额度圆环", "Restore the single 7-day remaining-quota ring")
         ) {
             Button {
                 settings.resetStatusItemPreferences()
@@ -187,7 +187,7 @@ private struct StatusItemPreviewRow: View {
                     )
             }
             .frame(width: settingsAccessoryColumnWidth, height: settingsControlVisualHeight)
-            .accessibilityLabel("codexU")
+            .accessibilityLabel("Codex Control")
             .accessibilityValue(presentation.accessibilityValue)
         }
     }

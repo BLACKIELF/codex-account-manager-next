@@ -19,7 +19,7 @@ struct PaletteSettingsView: View {
                 displayName: settings.language.text("默认", "Default"),
                 shortDescription: settings.language.text("查看与选择配色", "Browse and choose palettes"),
                 inspirationNote: "",
-                authorName: "codexU contributors",
+                authorName: "内置主题",
                 sourceType: "original",
                 lifecycle: .stable,
                 isOfficial: true,
@@ -195,7 +195,7 @@ private struct PaletteArtworkCard: View {
 
     private var sourceLabel: String {
         let source = descriptor.isOfficial
-            ? language.text("codexU 精选", "codexU Curated")
+            ? language.text("内置主题", "Built-in")
             : language.text("社区贡献 · \(descriptor.authorName)", "Community · \(descriptor.authorName)")
         if descriptor.lifecycle == .deprecated {
             return language.text("已弃用 · \(source)", "Deprecated · \(source)")

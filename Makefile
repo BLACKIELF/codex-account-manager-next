@@ -1,5 +1,5 @@
-APP_NAME := codexU
-DISPLAY_NAME := codexU
+APP_NAME := CodexAccountManager
+DISPLAY_NAME := Codex 账号
 VERSION := $(shell /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist 2>/dev/null || echo 0.1.0)
 BUILD_DIR := build
 DIST_DIR := dist
@@ -35,15 +35,14 @@ endif
 
 POWERSHELL ?= powershell.exe
 
-.PHONY: build run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-task-runtime test-leadership-model test-leadership-assets test-claude-skill-paths test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
+.PHONY: build run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-cc-switch test-profile-store test-task-runtime test-leadership-model test-leadership-assets test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
 
-build: test-leadership-assets
+build:
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(MACOS_DIR)" "$(RESOURCES_DIR)"
 	cp Resources/Info.plist "$(APP_DIR)/Contents/Info.plist"
 	cp "$(APP_ICON)" "$(RESOURCES_DIR)/"
-	cp Resources/*.png "$(RESOURCES_DIR)/"
-	cp -R Resources/LeadershipBadges "$(RESOURCES_DIR)/LeadershipBadges"
+	cp Resources/codexU-icon.png Resources/codex-color.png Resources/codex-template.png "$(RESOURCES_DIR)/"
 	cp -R Resources/Palettes "$(RESOURCES_DIR)/Palettes"
 	/usr/bin/xattr -dr com.apple.quarantine "$(APP_DIR)" 2>/dev/null || true
 	MACOSX_DEPLOYMENT_TARGET="$(DEPLOYMENT_TARGET)" swiftc -O -parse-as-library $(SWIFTC_TARGET_FLAGS) $(SWIFTC_FEATURE_FLAGS) $(SOURCES) \
@@ -81,6 +80,12 @@ test-model-inference-performance: build
 test-app-server-pipe: build
 	"$(MACOS_DIR)/$(APP_NAME)" --self-test-app-server-pipe
 
+test-cc-switch: build
+	"$(MACOS_DIR)/$(APP_NAME)" --self-test-cc-switch
+
+test-profile-store: build
+	"$(MACOS_DIR)/$(APP_NAME)" --self-test-profile-store
+
 test-task-runtime: build
 	"$(MACOS_DIR)/$(APP_NAME)" --self-test-task-runtime
 
@@ -95,9 +100,6 @@ test-leadership-assets:
 		alpha=$$(sips -g hasAlpha "$$badge" | awk '/hasAlpha/ { print $$2 }'); \
 		test "$$width" -ge 1024 -a "$$height" -ge 1024 -a "$$alpha" = yes || { echo "invalid leadership badge: $$badge ($$width x $$height, alpha=$$alpha)"; exit 1; }; \
 	done
-
-test-claude-skill-paths: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-claude-skill-paths
 
 test-codex-session-link: build
 	"$(MACOS_DIR)/$(APP_NAME)" --self-test-codex-session-link

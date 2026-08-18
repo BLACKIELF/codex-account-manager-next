@@ -13,7 +13,8 @@ enum PerformanceMonitorSelfTest {
         let monitor = PerformanceMonitor(
             reportURL: reportURL,
             maximumOperationSamples: 256,
-            maximumResourceSamples: 8
+            maximumResourceSamples: 8,
+            recordsMetrics: true
         )
 
         for index in 0..<300 {
@@ -37,7 +38,8 @@ enum PerformanceMonitorSelfTest {
         let restoredMonitor = PerformanceMonitor(
             reportURL: reportURL,
             maximumOperationSamples: 256,
-            maximumResourceSamples: 8
+            maximumResourceSamples: 8,
+            recordsMetrics: true
         )
         let restored = restoredMonitor.snapshot()
         expect(restored.operations[PerformanceOperation.fullRefresh.rawValue]?.count == 300, "persisted counters should survive restart")

@@ -1,30 +1,5 @@
 import Cocoa
 
-private struct StatusItemQuotaPalette {
-    let start: NSColor
-    let end: NSColor
-
-    static func palette(for role: QuotaPaletteRole?, tokens: ResolvedVisualTokens) -> StatusItemQuotaPalette {
-        switch role {
-        case .primary:
-            return StatusItemQuotaPalette(
-                start: tokens.quota.primary.start.nsColor,
-                end: tokens.quota.primary.end.nsColor
-            )
-        case .secondary:
-            return StatusItemQuotaPalette(
-                start: tokens.quota.secondary.start.nsColor,
-                end: tokens.quota.secondary.end.nsColor
-            )
-        case nil:
-            return StatusItemQuotaPalette(
-                start: NSColor.secondaryLabelColor,
-                end: NSColor.secondaryLabelColor
-            )
-        }
-    }
-}
-
 private enum StatusItemTextOpacity {
     static let primary: CGFloat = 0.94
     static let supporting: CGFloat = 0.74
@@ -116,8 +91,7 @@ struct StatusItemRenderer {
     }
 
     private func drawClassic(_ presentation: StatusItemPresentation, tokens: ResolvedVisualTokens) {
-        drawRuntimeLogo(presentation.runtime, in: NSRect(x: 2, y: 2, width: 18, height: 18))
-        var x = StatusItemLayoutMetrics.leadingContentWidth
+        var x = StatusItemLayoutMetrics.classicLeadingContentWidth
 
         if presentation.showsNoActiveQuota {
             drawNoActiveQuota(in: NSRect(x: x, y: 1, width: 22, height: 20))
@@ -401,7 +375,8 @@ struct StatusItemRenderer {
         guard let fraction else { return }
         let progress = max(0, min(1, fraction))
         guard progress > 0.001 else { return }
-        let palette = StatusItemQuotaPalette.palette(for: role, tokens: tokens)
+        let remaining = quotaMode == .remaining ? progress : 1 - progress
+        let palette = RemainingQuotaHealth.classify(Double(remaining * 100)).colors
         let segmentCount = max(12, Int(ceil(progress * 72)))
         let direction: CGFloat = quotaMode.drawsClockwise ? -1 : 1
         for index in 0..<segmentCount {
@@ -464,7 +439,8 @@ struct StatusItemRenderer {
             xRadius: fillRadius,
             yRadius: fillRadius
         )
-        let palette = StatusItemQuotaPalette.palette(for: role, tokens: tokens)
+        let remaining = quotaMode == .remaining ? progress : 1 - progress
+        let palette = RemainingQuotaHealth.classify(Double(remaining * 100)).colors
         guard let context = NSGraphicsContext.current?.cgContext,
               let gradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),

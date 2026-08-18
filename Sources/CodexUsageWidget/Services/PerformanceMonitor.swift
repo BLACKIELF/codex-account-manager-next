@@ -64,6 +64,7 @@ final class PerformanceMonitor {
     private let reportURL: URL
     private let maximumOperationSamples: Int
     private let maximumResourceSamples: Int
+    private let recordsMetrics: Bool
     private var summaries: [PerformanceOperation: MutableOperationSummary] = [:]
     private var resources: [PerformanceResourceSample] = []
     private var pendingWrite: DispatchWorkItem?
@@ -71,10 +72,12 @@ final class PerformanceMonitor {
     init(
         reportURL: URL? = nil,
         maximumOperationSamples: Int = 256,
-        maximumResourceSamples: Int = 128
+        maximumResourceSamples: Int = 128,
+        recordsMetrics: Bool = false
     ) {
         self.maximumOperationSamples = maximumOperationSamples
         self.maximumResourceSamples = maximumResourceSamples
+        self.recordsMetrics = recordsMetrics
         self.reportURL = reportURL ?? FileManager.default.urls(
             for: .cachesDirectory,
             in: .userDomainMask
@@ -82,7 +85,8 @@ final class PerformanceMonitor {
             .appendingPathComponent("codexU", isDirectory: true)
             .appendingPathComponent("performance-v1.json")
 
-        if let data = try? Data(contentsOf: self.reportURL),
+        if recordsMetrics,
+           let data = try? Data(contentsOf: self.reportURL),
            let report = try? JSONDecoder().decode(PerformanceReport.self, from: data),
            report.version == 1 {
             for operation in PerformanceOperation.allCases {
@@ -125,6 +129,7 @@ final class PerformanceMonitor {
             span.operation.rawValue,
             success ? "success" : "failure"
         )
+        guard recordsMetrics else { return }
         queue.async {
             var summary = self.summaries[span.operation] ?? MutableOperationSummary()
             summary.count += 1
@@ -139,6 +144,7 @@ final class PerformanceMonitor {
     }
 
     func recordResourceSample(windowVisible: Bool) {
+        guard recordsMetrics else { return }
         let sample = PerformanceResourceSample(
             capturedAtEpochSeconds: Date().timeIntervalSince1970,
             residentBytes: Self.residentBytes(),
@@ -155,6 +161,7 @@ final class PerformanceMonitor {
     }
 
     func flush() {
+        guard recordsMetrics else { return }
         queue.sync {
             pendingWrite?.cancel()
             pendingWrite = nil

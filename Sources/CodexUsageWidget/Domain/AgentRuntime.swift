@@ -4,6 +4,9 @@ enum RuntimeScope: String, CaseIterable, Identifiable, Codable, Equatable {
     case codex
     case claudeCode
 
+    // Keep the legacy case source-compatible while exposing Codex as the only runtime.
+    static let allCases: [RuntimeScope] = [.codex]
+
     var id: String { rawValue }
 
     static func storedIdentifier(_ value: String) -> RuntimeScope? {

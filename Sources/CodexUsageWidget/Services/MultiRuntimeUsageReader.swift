@@ -2,33 +2,31 @@ import Foundation
 
 final class MultiRuntimeUsageReader {
     private let registry: RuntimeProviderRegistry
-    private let aggregator: AgentUsageAggregator
 
-    init(
-        registry: RuntimeProviderRegistry = RuntimeProviderRegistry(),
-        aggregator: AgentUsageAggregator = AgentUsageAggregator()
-    ) {
+    init(registry: RuntimeProviderRegistry = RuntimeProviderRegistry()) {
         self.registry = registry
-        self.aggregator = aggregator
     }
 
     func load(
         statisticsPreference: StatisticsTimeZonePreference = .default,
-        generation: UInt64 = 0
+        generation: UInt64 = 0,
+        codexHomeDirectory: URL? = nil
     ) -> MultiRuntimeUsageSnapshot {
         let span = PerformanceMonitor.shared.begin(.runtimeLoad)
-        let context = RuntimeLoadContext.live(statisticsPreference: statisticsPreference)
+        let context = RuntimeLoadContext.live(
+            statisticsPreference: statisticsPreference,
+            codexHomeDirectory: codexHomeDirectory
+        )
         let runtimeSnapshots = registry.providers.map { provider in
             provider.loadSnapshot(context: context)
         }
         let refreshedAt = Date()
-        let aggregate = aggregator.aggregate(runtimeSnapshots, at: refreshedAt)
-        let leadership = LeadershipDataReader().load(context: context)
+        let aggregate = runtimeSnapshots.first?.snapshot ?? .empty
         let snapshot = MultiRuntimeUsageSnapshot(
             refreshedAt: refreshedAt,
             runtimes: runtimeSnapshots,
             aggregate: aggregate,
-            leadership: leadership,
+            leadership: .empty,
             statisticsIdentity: StatisticsIdentity(
                 preference: context.statistics.preference,
                 resolvedIdentifier: context.statistics.resolvedIdentifier,

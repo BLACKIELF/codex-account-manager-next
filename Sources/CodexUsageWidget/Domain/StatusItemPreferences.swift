@@ -49,6 +49,13 @@ struct StatusItemPreferences: Equatable {
         showsResetCountdown: true
     )
 
+    static let accountRing = StatusItemPreferences(
+        displayMode: .classic,
+        quotaMode: .remaining,
+        visibleMetrics: [.sevenDayQuota],
+        showsResetCountdown: false
+    )
+
     var orderedVisibleMetrics: [StatusItemMetric] {
         StatusItemMetric.allCases.filter { visibleMetrics.contains($0) }
     }
@@ -70,10 +77,10 @@ struct StatusItemPreferences: Equatable {
     func normalized() -> StatusItemPreferences {
         var result = self
         if result.visibleMetrics.isEmpty {
-            result.visibleMetrics = Self.default.visibleMetrics
+            result.visibleMetrics = Self.accountRing.visibleMetrics
         }
         if result.displayMode == .minimal, !result.hasVisibleQuota {
-            result.visibleMetrics.formUnion(Self.default.visibleMetrics)
+            result.visibleMetrics.formUnion(Self.accountRing.visibleMetrics)
         }
         return result
     }
@@ -85,10 +92,14 @@ enum StatusItemPreferencesStore {
     static let visibleMetricsKey = "codexU.statusItem.visibleMetrics"
     static let metricsSchemaVersionKey = "codexU.statusItem.metricsSchemaVersion"
     static let showsResetCountdownKey = "codexU.statusItem.showsResetCountdown"
-    static let currentMetricsSchemaVersion = 2
+    static let currentMetricsSchemaVersion = 3
 
     static func load(defaults: UserDefaults = .standard) -> StatusItemPreferences {
-        let fallback = StatusItemPreferences.default
+        let fallback = StatusItemPreferences.accountRing
+        if defaults.integer(forKey: metricsSchemaVersionKey) < currentMetricsSchemaVersion {
+            save(fallback, defaults: defaults)
+            return fallback
+        }
         let displayMode = defaults.string(forKey: displayModeKey)
             .flatMap(StatusItemDisplayMode.init(rawValue:)) ?? fallback.displayMode
         let quotaMode = defaults.string(forKey: quotaModeKey)
@@ -96,11 +107,7 @@ enum StatusItemPreferencesStore {
 
         let visibleMetrics: Set<StatusItemMetric>
         if let rawMetrics = defaults.array(forKey: visibleMetricsKey) as? [String] {
-            var migratedMetrics = Set(rawMetrics.compactMap(StatusItemMetric.init(rawValue:)))
-            if defaults.integer(forKey: metricsSchemaVersionKey) < currentMetricsSchemaVersion,
-               migratedMetrics.contains(.sevenDayQuota) {
-                migratedMetrics.insert(.monthlyQuota)
-            }
+            let migratedMetrics = Set(rawMetrics.compactMap(StatusItemMetric.init(rawValue:)))
             visibleMetrics = migratedMetrics
         } else {
             visibleMetrics = fallback.visibleMetrics
@@ -131,10 +138,6 @@ enum StatusItemPreferencesStore {
     }
 
     static func reset(defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: displayModeKey)
-        defaults.removeObject(forKey: quotaModeKey)
-        defaults.removeObject(forKey: visibleMetricsKey)
-        defaults.removeObject(forKey: metricsSchemaVersionKey)
-        defaults.removeObject(forKey: showsResetCountdownKey)
+        save(.accountRing, defaults: defaults)
     }
 }

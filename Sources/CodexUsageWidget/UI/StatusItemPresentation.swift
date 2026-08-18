@@ -1,5 +1,44 @@
 import Cocoa
 
+enum RemainingQuotaHealth: Equatable {
+    case unavailable
+    case critical
+    case warning
+    case healthy
+
+    static func classify(_ remainingPercent: Double?) -> RemainingQuotaHealth {
+        guard let remainingPercent else { return .unavailable }
+        switch remainingPercent {
+        case 55...: return .healthy
+        case 25..<55: return .warning
+        default: return .critical
+        }
+    }
+
+    var colors: (start: NSColor, end: NSColor) {
+        switch self {
+        case .healthy:
+            return (
+                NSColor(srgbRed: 0.36, green: 0.76, blue: 1.0, alpha: 1),
+                NSColor(srgbRed: 0.10, green: 0.43, blue: 0.94, alpha: 1)
+            )
+        case .warning:
+            return (
+                NSColor(srgbRed: 1.0, green: 0.82, blue: 0.22, alpha: 1),
+                NSColor(srgbRed: 0.95, green: 0.58, blue: 0.05, alpha: 1)
+            )
+        case .critical:
+            return (
+                NSColor(srgbRed: 1.0, green: 0.42, blue: 0.35, alpha: 1),
+                NSColor(srgbRed: 0.82, green: 0.10, blue: 0.12, alpha: 1)
+            )
+        case .unavailable:
+            let color = NSColor.secondaryLabelColor.withAlphaComponent(0.38)
+            return (color, color)
+        }
+    }
+}
+
 struct StatusItemSourceSnapshot: Equatable {
     let runtime: RuntimeScope
     let status: RuntimeMenuStatus
@@ -104,6 +143,7 @@ enum StatusItemLayoutMetrics {
     static let minimalOuterRingLineWidth: CGFloat = 2.5
     static let minimalInnerRingLineWidth: CGFloat = 2.2
     static let minimalRingClearance: CGFloat = 0.75
+    static let classicLeadingContentWidth: CGFloat = 0
     static let leadingContentWidth: CGFloat = 22
     static let classicQuotaUnitWidth: CGFloat = 23
     static let classicTokenUnitWidth: CGFloat = 54
@@ -154,7 +194,7 @@ enum StatusItemLayoutMetrics {
         case .minimal:
             return minimalImageWidth
         case .classic:
-            return leadingContentWidth
+            return classicLeadingContentWidth
                 + CGFloat(quotaCount + (showsNoActiveQuota ? 1 : 0)) * classicQuotaUnitWidth
                 + (showsToday ? classicTokenUnitWidth : 0)
                 + 2
@@ -238,7 +278,7 @@ struct StatusItemPresentationBuilder {
             itemLength: imageWidth + StatusItemLayoutMetrics.itemOuterPadding,
             showsNoActiveQuota: showsNoActiveQuota,
             metrics: metrics,
-            tooltip: "codexU · \(description) · \(action)",
+            tooltip: "Codex Control · \(description) · \(action)",
             accessibilityValue: description
         )
     }
