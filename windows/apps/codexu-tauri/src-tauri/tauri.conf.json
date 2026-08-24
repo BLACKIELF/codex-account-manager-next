@@ -1,0 +1,60 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Codex Account Manager Next",
+  "version": "0.1.0",
+  "identifier": "com.blackielf.codex-account-manager-next.windows",
+  "build": {
+    "beforeDevCommand": "node src-tauri/scripts/frontend-hook.mjs dev",
+    "beforeBuildCommand": "node src-tauri/scripts/frontend-hook.mjs build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../web/dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Codex Account Manager Next",
+        "width": 960,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 540,
+        "center": true,
+        "visible": false,
+        "decorations": true,
+        "transparent": false,
+        "focus": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "publisher": "Codex Account Manager Next contributors",
+    "copyright": "© 2026 Codex Account Manager Next contributors",
+    "category": "DeveloperTool",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "language": "en-US"
+      },
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "installMode": "currentUser",
+        "languages": ["English"]
+      }
+    }
+  }
+}

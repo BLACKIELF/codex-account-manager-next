@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="32" viewBox="0 0 240 32">
+  <defs>
+    <linearGradient id="moonwhite" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9e7e3"/>
+      <stop offset=".34" stop-color="#b9d0ca"/>
+      <stop offset=".72" stop-color="#91b3ab"/>
+      <stop offset="1" stop-color="#759a92"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 0H240V32H0Z" fill="url(#moonwhite)"/>
+  <path d="M0 3.5H240M0 28.5H240" fill="none" stroke="#376f7c" stroke-width="1.2" opacity=".82"/>
+  <path d="M0 16C15 3 45 3 60 16S105 29 120 16C135 3 165 3 180 16S225 29 240 16"
+        fill="none" stroke="#245e70" stroke-width="1.7" stroke-linecap="round"/>
+  <g fill="none" stroke="#245e70" stroke-width="1.05" stroke-linecap="round" stroke-linejoin="round" opacity=".92">
+    <path d="M31 6C37 9 39 13 36 17C31 16 28 12 31 6Z"/>
+    <path d="M88 25C82 22 80 18 83 14C88 15 91 19 88 25Z"/>
+    <path d="M151 6C157 9 159 13 156 17C151 16 148 12 151 6Z"/>
+    <path d="M208 25C202 22 200 18 203 14C208 15 211 19 208 25Z"/>
+    <path d="M60 16C66 9 75 10 75 15C75 19 69 20 67 16C66 13 70 12 72 14"/>
+    <path d="M180 16C186 9 195 10 195 15C195 19 189 20 187 16C186 13 190 12 192 14"/>
+  </g>
+  <path d="M0 6H240" stroke="#f4faf8" stroke-width="1.1" opacity=".62"/>
+</svg>

@@ -1,0 +1,70 @@
+{
+  "accent": {
+    "primary": "#6CB4AE",
+    "primaryStrong": "#4E9995",
+    "primaryLight": "#9BCFC9",
+    "secondary": "#D3836D",
+    "secondaryStrong": "#B76555",
+    "highlight": "#DDBB61"
+  },
+  "quota": {
+    "primary": {
+      "start": "#9BCFC9",
+      "end": "#6CB4AE",
+      "track": "#6CB4AE29",
+      "label": "#9BCFC9"
+    },
+    "secondary": {
+      "start": "#E7AA92",
+      "end": "#D3836D",
+      "track": "#D3836D29",
+      "label": "#E7AA92"
+    }
+  },
+  "data": {
+    "series": [
+      "#6CB4AE",
+      "#D3836D",
+      "#DDBB61"
+    ],
+    "modelSeries": ["#6CB4AE", "#D3836D", "#DDBB61", "#8BAEE3", "#BE8FC9", "#E6CB78", "#86C9C0", "#E5A082", "#A7D08D"],
+    "tokenInput": "#86C2BC",
+    "tokenCached": "#D3836D",
+    "tokenOutput": "#DDBB61",
+    "heatmap": [
+      "#FFFFFF14",
+      "#6CB4AE47",
+      "#6CB4AE75",
+      "#6CB4AEB3",
+      "#6CB4AEF5"
+    ],
+    "zero": "#98989D59",
+    "valueProgress": [
+      "#DDBB61",
+      "#8CB9A0",
+      "#66ADA8"
+    ],
+    "milestones": [
+      "#6CB4AE",
+      "#D3836D",
+      "#DDBB61"
+    ]
+  },
+  "selection": {
+    "foreground": "#9BCFC9",
+    "fill": "#6CB4AE29",
+    "stroke": "#6CB4AE70",
+    "focusRing": "#9BCFC9C2"
+  },
+  "surfaceTint": {
+    "color": "#6CB4AE",
+    "maximumOpacity": 0.05
+  },
+  "ornament": {
+    "ink": "#6CB4AE",
+    "inkSoft": "#9BCFC9",
+    "secondaryInk": "#D3836D",
+    "highlight": "#FFF1D9",
+    "metal": "#DDBB61"
+  }
+}

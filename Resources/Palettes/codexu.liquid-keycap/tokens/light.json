@@ -1,0 +1,18 @@
+{
+  "accent": { "primary": "#2F7DE5", "primaryStrong": "#1558BD", "primaryLight": "#79B8FF", "secondary": "#F3BD12", "secondaryStrong": "#D99B00", "highlight": "#2DA74C" },
+  "quota": {
+    "primary": { "start": "#79B8FF", "end": "#2F7DE5", "track": "#2F7DE51F", "label": "#1558BD" },
+    "secondary": { "start": "#FFD75A", "end": "#F3A712", "track": "#F3BD1224", "label": "#9C6800" }
+  },
+  "data": {
+    "series": ["#2F7DE5", "#F3BD12", "#2DA74C"],
+    "modelSeries": ["#2F7DE5", "#F3BD12", "#2DA74C", "#E5484D", "#6A8FB5", "#F08C46", "#4BA3C7", "#7E73D8", "#6C8176"],
+    "tokenInput": "#2F7DE5", "tokenCached": "#2DA74C", "tokenOutput": "#F3A712",
+    "heatmap": ["#8B979A1A", "#79B8FF47", "#2F7DE575", "#2F7DE5B3", "#1558BDF5"],
+    "zero": "#8B979A59", "valueProgress": ["#79B8FF", "#2F7DE5", "#1558BD"],
+    "milestones": ["#2DA74C", "#F3BD12", "#E5484D"]
+  },
+  "selection": { "foreground": "#1558BD", "fill": "#2F7DE51F", "stroke": "#2F7DE55C", "focusRing": "#2F7DE5A6" },
+  "surfaceTint": { "color": "#D9E6EA", "maximumOpacity": 0.12 },
+  "ornament": { "ink": "#2F7DE5", "inkSoft": "#79B8FF", "secondaryInk": "#F3BD12", "highlight": "#FFFFFF", "metal": "#AAB7BA" }
+}

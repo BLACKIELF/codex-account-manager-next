@@ -1,0 +1,104 @@
+name: Build release packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to package (must match Resources/Info.plist)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - id: version
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            version="$INPUT_VERSION"
+          else
+            version="${REF_NAME#v}"
+          fi
+          version="${version#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]] || {
+            echo "Invalid release version: $version" >&2
+            exit 1
+          }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: resolve-version
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify macOS DMGs
+        run: make release-package VERSION="${{ needs.resolve-version.outputs.version }}"
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-manager-next-macos-${{ needs.resolve-version.outputs.version }}
+          path: |
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-arm64.dmg
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-arm64.dmg.sha256
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-x86_64.dmg
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-x86_64.dmg.sha256
+          if-no-files-found: error
+
+  windows:
+    needs: resolve-version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/apps/codexu-tauri/web/package-lock.json
+      - name: Build and verify Windows installers
+        shell: pwsh
+        run: .\scripts\build-windows-release.ps1 -Version "${{ needs.resolve-version.outputs.version }}"
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-manager-next-windows-${{ needs.resolve-version.outputs.version }}
+          path: dist/windows/*
+          if-no-files-found: error
+
+  verify:
+    needs: [resolve-version, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: account-manager-next-macos-${{ needs.resolve-version.outputs.version }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: account-manager-next-windows-${{ needs.resolve-version.outputs.version }}
+          path: dist/windows
+      - name: Verify all installers and checksums
+        run: bash scripts/check-cross-platform-release-assets.sh "${{ needs.resolve-version.outputs.version }}" dist
+      - name: Upload verified release bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-manager-next-release-${{ needs.resolve-version.outputs.version }}
+          path: |
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-arm64.dmg*
+            dist/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-mac-x86_64.dmg*
+            dist/windows/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-windows-x86_64.msi*
+            dist/windows/CodexAccountManagerNext-${{ needs.resolve-version.outputs.version }}-windows-x86_64-setup.exe*
+          if-no-files-found: error

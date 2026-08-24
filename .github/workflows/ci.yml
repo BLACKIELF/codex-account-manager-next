@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: make build
+      - name: Account automation safety tests
+        run: |
+          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-automatic-account-switch
+          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-switch-safety
+          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-feishu-webhook
+          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-automation-audit
+      - name: Palette package and rendering tests
+        run: ./scripts/test-palettes.sh
+      - name: Menu bar rendering tests
+        run: ./scripts/test-status-item.sh
+      - name: Particle animation tests
+        run: ./scripts/test-particle-animation.sh
+      - name: Rate limit tests
+        run: ./scripts/test-rate-limits.sh
+      - name: Statistics time zone tests
+        run: ./scripts/test-statistics-time-zone.sh
+
+  windows-rust-format:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt
+      - name: Check Windows Rust formatting
+        working-directory: windows
+        run: cargo fmt --all -- --check
+      - name: Test Windows Rust workspace
+        working-directory: windows
+        run: cargo test --workspace --locked
+
+  windows-web:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: windows/apps/codexu-tauri/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: windows/apps/codexu-tauri/web/package-lock.json
+      - name: Install pinned Windows web dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Test Windows web contracts
+        run: npm test
+      - name: Build Windows web frontend
+        run: npm run build

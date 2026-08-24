@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+VERSION="${1:-$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)}"
+PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' Resources/Info.plist)"
+
+if [[ "$VERSION" != "$PLIST_VERSION" ]]; then
+  echo "Requested version $VERSION does not match Info.plist version $PLIST_VERSION" >&2
+  exit 1
+fi
+
+make memory-risk-check
+plutil -lint Resources/Info.plist
+git diff --check
+
+make test-macos-compatibility
+make build >/dev/null
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-statistics-time-zone
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-token-counter
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-app-server-pipe
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-status-item
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-rate-limits
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-particle-animation
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-updates
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-profile-store
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-automatic-account-switch
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-feishu-webhook
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-automation-audit
+build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-switch-safety
+./scripts/test-parsers.sh
+
+make release-all
+
+verify_asset() {
+  local arch="$1"
+  local expected_arch="$2"
+  local dmg="dist/CodexAccountManagerNext-${VERSION}-mac-${arch}.dmg"
+  local checksum="${dmg}.sha256"
+  local mount_dir
+
+  [[ -f "$dmg" ]] || { echo "Missing release asset: $dmg" >&2; exit 1; }
+  [[ -f "$checksum" ]] || { echo "Missing checksum: $checksum" >&2; exit 1; }
+  shasum -a 256 -c "$checksum"
+  hdiutil verify "$dmg" >/dev/null
+
+  mount_dir="$(mktemp -d)"
+  hdiutil attach -nobrowse -readonly -mountpoint "$mount_dir" "$dmg" >/dev/null
+  file "$mount_dir/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext" | grep -q "$expected_arch"
+  codesign --verify --deep --strict "$mount_dir/CodexAccountManagerNext.app"
+  hdiutil detach "$mount_dir" >/dev/null
+  rmdir "$mount_dir"
+}
+
+verify_asset arm64 arm64
+verify_asset x86_64 x86_64
+
+echo "Release artifacts verified for Codex Account Manager Next $VERSION"
+cat "dist/CodexAccountManagerNext-${VERSION}-mac-arm64.dmg.sha256"
+cat "dist/CodexAccountManagerNext-${VERSION}-mac-x86_64.dmg.sha256"

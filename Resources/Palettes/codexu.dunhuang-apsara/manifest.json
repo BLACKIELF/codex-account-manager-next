@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "codexu.dunhuang-apsara",
+  "version": "1.0.0",
+  "minimumAppVersion": "1.0.5",
+  "lifecycle": "stable",
+  "defaultLocale": "zh-Hans",
+  "localizations": {
+    "zh-Hans": "localizations/zh-Hans.json",
+    "en": "localizations/en.json"
+  },
+  "variants": {
+    "light": "tokens/light.json",
+    "dark": "tokens/dark.json"
+  },
+  "assetManifest": "assets/manifest.json",
+  "author": {
+    "name": "codexU contributors",
+    "url": "https://github.com/shanggqm/codexU"
+  },
+  "license": "MIT",
+  "source": {
+    "type": "original-design-translation",
+    "note": "Inspired by the mineral teal, earth red, and sand-gold relationship of Dunhuang mural painting; not an official mural pigment measurement."
+  },
+  "capabilities": [
+    "color-tokens"
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "codexu.thousand-li-landscape",
+  "version": "1.0.0",
+  "minimumAppVersion": "1.0.5",
+  "lifecycle": "stable",
+  "defaultLocale": "zh-Hans",
+  "localizations": {
+    "zh-Hans": "localizations/zh-Hans.json",
+    "en": "localizations/en.json"
+  },
+  "variants": {
+    "light": "tokens/light.json",
+    "dark": "tokens/dark.json"
+  },
+  "assetManifest": "assets/manifest.json",
+  "author": {
+    "name": "codexU contributors",
+    "url": "https://github.com/shanggqm/codexU"
+  },
+  "license": "MIT",
+  "source": {
+    "type": "original-design-translation",
+    "note": "Inspired by the mineral-blue, mineral-green, and restrained gold relationship of blue-green landscape painting; not an official artwork color measurement."
+  },
+  "capabilities": [
+    "color-tokens"
+  ]
+}

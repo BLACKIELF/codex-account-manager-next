@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "codexu.orchid-dawn",
+  "version": "1.0.0",
+  "minimumAppVersion": "1.0.5",
+  "lifecycle": "stable",
+  "defaultLocale": "zh-Hans",
+  "localizations": {
+    "zh-Hans": "localizations/zh-Hans.json",
+    "en": "localizations/en.json"
+  },
+  "variants": {
+    "light": "tokens/light.json",
+    "dark": "tokens/dark.json"
+  },
+  "assetManifest": "assets/manifest.json",
+  "author": {
+    "name": "codexU contributors",
+    "url": "https://github.com/shanggqm/codexU"
+  },
+  "license": "MIT",
+  "source": {
+    "type": "original-design-translation",
+    "note": "An original design translation inspired by the abstract violet and dawn hues associated with macOS Monterey; not an Apple official color palette."
+  },
+  "capabilities": [
+    "color-tokens"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "codexu.liquid-keycap",
+  "version": "1.0.0",
+  "minimumAppVersion": "1.0.5",
+  "lifecycle": "stable",
+  "defaultLocale": "zh-Hans",
+  "localizations": {
+    "zh-Hans": "localizations/zh-Hans.json",
+    "en": "localizations/en.json"
+  },
+  "variants": {
+    "light": "tokens/light.json",
+    "dark": "tokens/dark.json"
+  },
+  "assetManifest": "assets/manifest.json",
+  "author": { "name": "Codex Account Manager" },
+  "license": "MIT",
+  "source": { "type": "original", "note": "A translucent keycap-inspired palette." },
+  "capabilities": ["color-tokens"]
+}

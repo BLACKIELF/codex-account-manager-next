@@ -1,0 +1,41 @@
+.DS_Store
+*.swp
+*.swo
+*.log
+
+# Build products
+/build/
+/dist/
+*.dSYM/
+
+# Xcode and SwiftPM local state
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Generated project-local skill links
+/.codex/skills
+/.cursor/skills
+/.claude/skills
+
+# macOS packaging leftovers
+*.dmg
+*.pkg
+*.zip
+
+# dev context
+requirements/
+explore/
+/designs/
+/.planning/
+/HANDOFF.local.md
+
+# Private local visual-acceptance artifacts (screenshots, logs, and capture helpers)
+/.local-artifacts/

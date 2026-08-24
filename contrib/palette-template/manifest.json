@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "community.example",
+  "version": "1.0.0",
+  "minimumAppVersion": "1.0.5",
+  "lifecycle": "stable",
+  "defaultLocale": "zh-Hans",
+  "localizations": {
+    "zh-Hans": "localizations/zh-Hans.json",
+    "en": "localizations/en.json"
+  },
+  "variants": {
+    "light": "tokens/light.json",
+    "dark": "tokens/dark.json"
+  },
+  "assetManifest": "assets/manifest.json",
+  "author": { "name": "Contributor" },
+  "license": "MIT",
+  "source": { "type": "original", "note": "Replace with a precise design and asset source statement." },
+  "capabilities": ["color-tokens"]
+}

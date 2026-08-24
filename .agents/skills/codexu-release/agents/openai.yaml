@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Account Manager Next Release"
+  short_description: "Package and publish verified Next releases"
+  default_prompt: "Use $codexu-release to prepare a verified Codex Account Manager Next release."

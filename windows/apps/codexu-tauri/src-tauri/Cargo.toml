@@ -1,0 +1,28 @@
+[package]
+name = "codexu-tauri"
+version = "0.1.0"
+description = "Codex Account Manager Next Windows desktop app"
+authors = ["Codex Account Manager Next contributors"]
+license = "MIT"
+repository = "https://github.com/BLACKIELF/codex-account-manager-next"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+codexu-core = { path = "../../../crates/codexu-core" }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+dirs = { workspace = true }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
