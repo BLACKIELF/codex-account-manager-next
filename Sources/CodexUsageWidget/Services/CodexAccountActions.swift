@@ -3,6 +3,10 @@ import CryptoKit
 import Darwin
 import Foundation
 
+enum CodexCredentialAccessGate {
+    static let lock = NSRecursiveLock()
+}
+
 private enum CodexLoginError: LocalizedError {
     case browserUnavailable
     case cancelled
@@ -95,6 +99,148 @@ private enum CodexLoginProtocolParser {
     private static func nonEmpty(_ value: String?) -> String? {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+enum ChromeProfileBrowser {
+    private struct Record {
+        let binding: ChromeProfileBinding
+        let normalizedUserName: String?
+    }
+
+    static func availableProfiles(
+        fileManager: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> [ChromeProfileBinding] {
+        records(fileManager: fileManager, homeDirectory: homeDirectory).map(\.binding)
+    }
+
+    static func matchingProfile(
+        for accountEmail: String?,
+        fileManager: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> ChromeProfileBinding? {
+        let normalized = accountEmail?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        guard !normalized.isEmpty else { return nil }
+        return records(fileManager: fileManager, homeDirectory: homeDirectory)
+            .first { $0.normalizedUserName == normalized }?
+            .binding
+    }
+
+    static func open(
+        _ url: URL,
+        binding: ChromeProfileBinding?,
+        managedUserDataDirectory: URL? = nil,
+        fileManager: FileManager = .default,
+        homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) throws {
+        guard url.scheme?.lowercased() == "https" else { throw CodexLoginError.browserUnavailable }
+        guard binding != nil || managedUserDataDirectory != nil else {
+            guard NSWorkspace.shared.open(url) else { throw CodexLoginError.browserUnavailable }
+            return
+        }
+        if let binding {
+            guard binding.isValid,
+                  records(fileManager: fileManager, homeDirectory: homeDirectory)
+                    .contains(where: { $0.binding.directoryName == binding.directoryName })
+            else {
+                throw CodexLoginError.message("绑定的 Chrome 用户资料不可用，请重新选择后再登录")
+            }
+        }
+        if let managedUserDataDirectory {
+            do {
+                try fileManager.createDirectory(
+                    at: managedUserDataDirectory,
+                    withIntermediateDirectories: true,
+                    attributes: [.posixPermissions: 0o700]
+                )
+                try fileManager.setAttributes(
+                    [.posixPermissions: 0o700],
+                    ofItemAtPath: managedUserDataDirectory.path
+                )
+            } catch {
+                throw CodexLoginError.message("无法准备账号专属 Chrome 会话")
+            }
+        }
+        guard let executable = chromeExecutable(fileManager: fileManager) else {
+            throw CodexLoginError.message("未找到 Google Chrome，无法打开账号专属登录窗口")
+        }
+
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = launchArguments(
+            binding: binding,
+            managedUserDataDirectory: managedUserDataDirectory,
+            url: url
+        )
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            throw CodexLoginError.browserUnavailable
+        }
+    }
+
+    fileprivate static func launchArguments(
+        binding: ChromeProfileBinding?,
+        managedUserDataDirectory: URL? = nil,
+        url: URL
+    ) -> [String] {
+        if let binding {
+            return ["--profile-directory=\(binding.directoryName)", "--new-window", url.absoluteString]
+        }
+        if let managedUserDataDirectory {
+            return [
+                "--user-data-dir=\(managedUserDataDirectory.path)",
+                "--profile-directory=Default",
+                "--no-first-run",
+                "--new-window",
+                url.absoluteString
+            ]
+        }
+        return ["--new-window", url.absoluteString]
+    }
+
+    private static func records(fileManager: FileManager, homeDirectory: URL) -> [Record] {
+        let chromeRoot = homeDirectory
+            .appendingPathComponent("Library/Application Support/Google/Chrome", isDirectory: true)
+        let localStateURL = chromeRoot.appendingPathComponent("Local State")
+        guard let data = try? Data(contentsOf: localStateURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let profile = object["profile"] as? [String: Any],
+              let infoCache = profile["info_cache"] as? [String: Any]
+        else { return [] }
+
+        return infoCache.compactMap { directoryName, rawValue -> Record? in
+            guard let value = rawValue as? [String: Any],
+                  fileManager.fileExists(
+                      atPath: chromeRoot.appendingPathComponent(directoryName, isDirectory: true).path
+                  ),
+                  let binding = ChromeProfileBinding(
+                      directoryName: directoryName,
+                      displayName: value["name"] as? String ?? directoryName
+                  )
+            else { return nil }
+            let userName = (value["user_name"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            return Record(binding: binding, normalizedUserName: userName?.isEmpty == false ? userName : nil)
+        }
+        .sorted {
+            if $0.binding.directoryName == "Default" { return true }
+            if $1.binding.directoryName == "Default" { return false }
+            return $0.binding.displayName.localizedStandardCompare($1.binding.displayName) == .orderedAscending
+        }
+    }
+
+    private static func chromeExecutable(fileManager: FileManager) -> URL? {
+        let candidates = [
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome")?
+                .appendingPathComponent("Contents/MacOS/Google Chrome"),
+            URL(fileURLWithPath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+        ].compactMap { $0 }
+        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
     }
 }
 
@@ -254,10 +400,23 @@ private final class CodexLoginSession {
                 return finish(.failure(CodexLoginError.browserUnavailable))
             }
             DispatchQueue.main.async { [weak self] in
-                let opened = NSWorkspace.shared.open(url)
-                self?.queue.async {
-                    guard let self, !self.isFinished, !opened else { return }
-                    self.finish(.failure(CodexLoginError.browserUnavailable))
+                guard let self else { return }
+                let binding = self.profile.chromeProfile
+                    ?? ChromeProfileBrowser.matchingProfile(for: self.profile.lastSnapshot?.email)
+                let managedUserDataDirectory = self.profile.isSystemProfile || binding != nil
+                    ? nil
+                    : self.profile.codexHomeURL.appendingPathComponent("chrome-session", isDirectory: true)
+                do {
+                    try ChromeProfileBrowser.open(
+                        url,
+                        binding: binding,
+                        managedUserDataDirectory: managedUserDataDirectory
+                    )
+                } catch {
+                    self.queue.async {
+                        guard !self.isFinished else { return }
+                        self.finish(.failure(error))
+                    }
                 }
             }
         case .loginCompleted:
@@ -394,15 +553,20 @@ final class CodexAccountActions {
         let createdAt: Date
         let originalAuth: Data?
         let targetAuthFingerprint: Data
+        let originalIdentityDigest: Data?
+        let targetIdentityDigest: Data?
         let originalCodexWasRunning: Bool
+        let originalDaemonWasRunning: Bool?
 
         init(
             originalAuth: AuthState,
             targetAuthFingerprint: Data,
+            targetIdentity: CodexCredentialIdentity,
             originalCodexWasRunning: Bool,
+            originalDaemonWasRunning: Bool,
             createdAt: Date = Date()
         ) {
-            version = 1
+            version = 2
             self.createdAt = createdAt
             switch originalAuth {
             case .missing:
@@ -411,7 +575,10 @@ final class CodexAccountActions {
                 self.originalAuth = data
             }
             self.targetAuthFingerprint = targetAuthFingerprint
+            originalIdentityDigest = CodexAccountActions.identityDigest(for: originalAuth)
+            targetIdentityDigest = CodexAccountActions.identityDigest(for: targetIdentity)
             self.originalCodexWasRunning = originalCodexWasRunning
+            self.originalDaemonWasRunning = originalDaemonWasRunning
         }
 
         var originalAuthState: AuthState {
@@ -488,7 +655,11 @@ final class CodexAccountActions {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            defer { Self.releaseSwitchLock(switchLock) }
+            CodexCredentialAccessGate.lock.lock()
+            defer {
+                Self.releaseSwitchLock(switchLock)
+                CodexCredentialAccessGate.lock.unlock()
+            }
             let result: Result<PendingSwitchRecoveryOutcome, Error>
             do {
                 guard let journal = try Self.loadPendingSwitchJournal(fileManager: fileManager) else {
@@ -500,6 +671,8 @@ final class CodexAccountActions {
                     .appendingPathComponent(".codex", isDirectory: true)
                 let systemAuthURL = systemHome.appendingPathComponent("auth.json")
                 let currentAuth = try Self.authState(at: systemAuthURL)
+                let originalDaemonWasRunning = try journal.originalDaemonWasRunning
+                    ?? Self.codexDaemonIsRunning()
                 switch Self.pendingSwitchRecoveryDecision(current: currentAuth, journal: journal) {
                 case .preserveExternal:
                     guard Self.pendingSwitchRecoveryDecision(
@@ -512,11 +685,15 @@ final class CodexAccountActions {
                     result = .success(.preservedExternalAuth)
                 case .originalAlreadyPresent:
                     let reopened = try Self.restoreOriginalCodexRuntimeIfNeeded(
-                        originalAuth: journal.originalAuthState,
+                        originalAuth: currentAuth,
                         originalCodexWasRunning: journal.originalCodexWasRunning,
+                        originalDaemonWasRunning: originalDaemonWasRunning,
                         systemHome: systemHome
                     )
-                    guard try Self.authState(at: systemAuthURL) == journal.originalAuthState else {
+                    guard Self.pendingSwitchRecoveryDecision(
+                        current: try Self.authState(at: systemAuthURL),
+                        journal: journal
+                    ) == .originalAlreadyPresent else {
                         throw Self.switchError("补开原 Codex 期间凭据变化；已保留恢复记录且不覆盖")
                     }
                     try Self.clearPendingSwitchJournal(fileManager: fileManager)
@@ -528,6 +705,7 @@ final class CodexAccountActions {
                         throw CocoaError(.fileNoSuchFile)
                     }
                     try Self.stopCodexGracefullyIfRunning(appURL: appURL)
+                    _ = try Self.stopCodexDaemonIfRunning()
                     guard Self.pendingSwitchRecoveryDecision(
                         current: try Self.authState(at: systemAuthURL),
                         journal: journal
@@ -546,10 +724,14 @@ final class CodexAccountActions {
                     let reopened = try Self.restoreOriginalCodexRuntimeIfNeeded(
                         originalAuth: journal.originalAuthState,
                         originalCodexWasRunning: journal.originalCodexWasRunning,
+                        originalDaemonWasRunning: originalDaemonWasRunning,
                         systemHome: systemHome,
                         appURL: appURL
                     )
-                    guard try Self.authState(at: systemAuthURL) == journal.originalAuthState else {
+                    guard Self.pendingSwitchRecoveryDecision(
+                        current: try Self.authState(at: systemAuthURL),
+                        journal: journal
+                    ) == .originalAlreadyPresent else {
                         throw Self.switchError("原 Codex 恢复期间凭据变化；已保留恢复记录且不覆盖")
                     }
                     try Self.clearPendingSwitchJournal(fileManager: fileManager)
@@ -564,9 +746,15 @@ final class CodexAccountActions {
 
     func launchCodex(
         profile: CodexProfile,
+        sourceBackupProfile: CodexProfile? = nil,
         expectedSourceAuthFingerprint: Data? = nil,
+        expectedSourceIdentity: CodexCredentialIdentity? = nil,
         completion: @escaping (Error?) -> Void
     ) {
+        guard !isWarmUpRunning else {
+            completion(Self.switchError("账号暖号仍在运行；完成后会再允许切换"))
+            return
+        }
         guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") else {
             completion(CocoaError(.fileNoSuchFile))
             return
@@ -600,10 +788,15 @@ final class CodexAccountActions {
             }
             previousAuth = try Self.authState(at: systemAuthURL)
             if let expectedSourceAuthFingerprint {
-                guard case let .data(data) = previousAuth,
-                      Self.authFingerprint(data) == expectedSourceAuthFingerprint
-                else {
+                guard case let .data(data) = previousAuth else {
                     throw Self.switchError("低额度触发后当前 Codex 凭据已变化；已取消切换")
+                }
+                if Self.authFingerprint(data) != expectedSourceAuthFingerprint {
+                    guard let expectedSourceIdentity,
+                          CodexOfficialProfileReader.credentialIdentity(fromAuthData: data) == expectedSourceIdentity
+                    else {
+                        throw Self.switchError("低额度触发后当前 Codex 账号已变化；已取消切换")
+                    }
                 }
             }
             if profile.isSystemProfile {
@@ -620,18 +813,27 @@ final class CodexAccountActions {
             return
         }
 
-        let requiresRestart = targetAuth.map { previousAuth != .data($0) } ?? false
+        let previousIdentity: CodexCredentialIdentity?
+        if case let .data(data) = previousAuth {
+            previousIdentity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: data)
+        } else {
+            previousIdentity = nil
+        }
+        let requiresRestart = targetIdentity.map { $0 != previousIdentity } ?? false
         let runningApplications = requiresRestart
             ? NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.codex")
             : []
         let previousProcessIDs = Set(runningApplications.map(\.processIdentifier))
         let originalCodexWasRunning: Bool
+        let originalDaemonWasRunning: Bool
         do {
             if requiresRestart {
                 let detectedProcessIDs = try Self.codexProcessIDs(appURL: appURL)
                 originalCodexWasRunning = !runningApplications.isEmpty || !detectedProcessIDs.isEmpty
+                originalDaemonWasRunning = try Self.codexDaemonIsRunning()
             } else {
                 originalCodexWasRunning = false
+                originalDaemonWasRunning = false
             }
         } catch {
             Self.releaseSwitchLock(switchLock)
@@ -640,11 +842,13 @@ final class CodexAccountActions {
         }
         let preparedJournal: PendingSwitchJournal?
         do {
-            if let targetAuth, requiresRestart {
+            if let targetAuth, let targetIdentity, requiresRestart {
                 let pending = PendingSwitchJournal(
                     originalAuth: previousAuth,
                     targetAuthFingerprint: Self.authFingerprint(targetAuth),
-                    originalCodexWasRunning: originalCodexWasRunning
+                    targetIdentity: targetIdentity,
+                    originalCodexWasRunning: originalCodexWasRunning,
+                    originalDaemonWasRunning: originalDaemonWasRunning
                 )
                 try Self.persistPendingSwitchJournal(pending, fileManager: fileManager)
                 preparedJournal = pending
@@ -664,12 +868,23 @@ final class CodexAccountActions {
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
-            defer { Self.releaseSwitchLock(switchLock) }
-            let journal = preparedJournal
+            CodexCredentialAccessGate.lock.lock()
+            defer {
+                Self.releaseSwitchLock(switchLock)
+                CodexCredentialAccessGate.lock.unlock()
+            }
+            var journal = preparedJournal
             var journalPersisted = preparedJournal != nil
+            var originalAuthForRecovery = previousAuth
+            var daemonShouldRunAfterTransaction = originalDaemonWasRunning
             do {
                 if requiresRestart {
-                    try Self.waitForGracefulCodexExit(appURL: appURL)
+                    try Self.waitForCodexExit(
+                        appURL: appURL,
+                        runningApplications: runningApplications
+                    )
+                    daemonShouldRunAfterTransaction = try Self.stopCodexDaemonIfRunning()
+                        || originalDaemonWasRunning
                 }
                 try fileManager.createDirectory(
                     at: systemHome,
@@ -680,15 +895,51 @@ final class CodexAccountActions {
                     guard NSRunningApplication.runningApplications(withBundleIdentifier: "local.codex.account-manager").isEmpty else {
                         throw Self.switchError("旧版账号管理器在写入前启动；已取消切换")
                     }
-                    guard try Self.authState(at: systemAuthURL) == previousAuth else {
-                        throw Self.switchError("切换期间 Codex 登录已被其他程序修改；已取消写入")
+                    let currentSourceAuth = try Self.authState(at: systemAuthURL)
+                    if currentSourceAuth != previousAuth {
+                        guard Self.identityDigest(for: currentSourceAuth) == Self.identityDigest(for: previousAuth),
+                              let targetIdentity,
+                              let existingJournal = journal
+                        else {
+                            throw Self.switchError("切换期间 Codex 登录账号已变化；已取消写入")
+                        }
+                        let updatedJournal = PendingSwitchJournal(
+                            originalAuth: currentSourceAuth,
+                            targetAuthFingerprint: Self.authFingerprint(targetAuth),
+                            targetIdentity: targetIdentity,
+                            originalCodexWasRunning: originalCodexWasRunning,
+                            originalDaemonWasRunning: originalDaemonWasRunning,
+                            createdAt: existingJournal.createdAt
+                        )
+                        try Self.replacePendingSwitchJournal(
+                            existingJournal,
+                            with: updatedJournal,
+                            fileManager: fileManager
+                        )
+                        journal = updatedJournal
+                        originalAuthForRecovery = currentSourceAuth
+                    }
+                    if let sourceBackupProfile {
+                        try Self.writeManagedAuthBackup(
+                            originalAuthForRecovery,
+                            to: sourceBackupProfile,
+                            fileManager: fileManager
+                        )
                     }
                     if let expectedSourceAuthFingerprint {
-                        guard case let .data(data) = previousAuth,
-                              Self.authFingerprint(data) == expectedSourceAuthFingerprint
-                        else {
+                        guard case let .data(data) = previousAuth else {
                             throw Self.switchError("低额度触发账号凭据已变化；已取消写入")
                         }
+                        if Self.authFingerprint(data) != expectedSourceAuthFingerprint {
+                            guard let expectedSourceIdentity,
+                                  CodexOfficialProfileReader.credentialIdentity(fromAuthData: data) == expectedSourceIdentity
+                            else {
+                                throw Self.switchError("低额度触发账号身份已变化；已取消写入")
+                            }
+                        }
+                    }
+                    guard try Self.codexDaemonIsRunning() == false else {
+                        throw Self.switchError("Codex 共享运行时在写入前重新出现；账号未切换")
                     }
                     try targetAuth.write(to: systemAuthURL, options: .atomic)
                     try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: systemAuthURL.path)
@@ -696,14 +947,28 @@ final class CodexAccountActions {
                         throw Self.switchError("目标账号凭据写入后校验失败")
                     }
                 }
+                if let targetIdentity, requiresRestart {
+                    guard try Self.codexDaemonIsRunning() == false else {
+                        throw Self.switchError("Codex 共享运行时在验证前重新出现；已停止切换")
+                    }
+                    try Self.verifyAccountCredentials(at: systemHome, expectedIdentity: targetIdentity)
+                    guard try Self.codexDaemonIsRunning() == false else {
+                        throw Self.switchError("目标验证期间出现第二个凭据写者；已停止切换")
+                    }
+                }
                 if requiresRestart {
+                    try Self.startCodexDaemonIfNeeded(daemonShouldRunAfterTransaction)
                     try Self.openCodex(at: appURL)
                     try Self.waitForNewCodexProcess(previousProcessIDs: previousProcessIDs)
                 } else {
                     try Self.openCodex(at: appURL)
                 }
                 if let targetIdentity {
-                    try Self.verifyActiveAccount(at: systemHome, expectedIdentity: targetIdentity)
+                    try Self.verifyRuntimeIdentity(
+                        at: systemHome,
+                        expectedIdentity: targetIdentity,
+                        daemonRequired: daemonShouldRunAfterTransaction
+                    )
                 }
                 if requiresRestart,
                    !Self.hasNewCodexProcess(previousProcessIDs: previousProcessIDs) {
@@ -736,14 +1001,16 @@ final class CodexAccountActions {
                             throw Self.switchError("切换失败后凭据已被其他程序修改；已保留外部最新状态，不覆盖")
                         case .rollbackOriginal:
                             try Self.stopCodexGracefullyIfRunning(appURL: appURL)
+                            daemonShouldRunAfterTransaction = try Self.stopCodexDaemonIfRunning()
+                                || daemonShouldRunAfterTransaction
                             guard Self.pendingSwitchRecoveryDecision(
                                 current: try Self.authState(at: systemAuthURL),
                                 journal: journal
                             ) == .rollbackOriginal else {
                                 throw Self.switchError("恢复前凭据再次变化；已保留外部最新状态，不覆盖")
                             }
-                            try Self.restoreAuth(previousAuth, at: systemAuthURL, fileManager: fileManager)
-                            guard try Self.authState(at: systemAuthURL) == previousAuth else {
+                            try Self.restoreAuth(originalAuthForRecovery, at: systemAuthURL, fileManager: fileManager)
+                            guard try Self.authState(at: systemAuthURL) == originalAuthForRecovery else {
                                 throw Self.switchError("原账号凭据回滚后校验失败")
                             }
                         }
@@ -754,20 +1021,27 @@ final class CodexAccountActions {
                     }
                 }
 
+                var restoredAuthState: AuthState?
                 var originalStateRestored = false
                 do {
-                    originalStateRestored = try Self.authState(at: systemAuthURL) == previousAuth
+                    let current = try Self.authState(at: systemAuthURL)
+                    restoredAuthState = current
+                    originalStateRestored = journal.map {
+                        Self.pendingSwitchRecoveryDecision(current: current, journal: $0)
+                            == .originalAlreadyPresent
+                    } ?? (current == originalAuthForRecovery)
                 } catch {
                     reportedError = Self.switchError(
                         "\(reportedError.localizedDescription)；无法确认原凭据是否已恢复"
                     )
                 }
-                var originalRuntimeRestored = !originalCodexWasRunning
-                if originalStateRestored, originalCodexWasRunning {
+                var originalRuntimeRestored = !originalCodexWasRunning && !daemonShouldRunAfterTransaction
+                if originalStateRestored, originalCodexWasRunning || daemonShouldRunAfterTransaction {
                     do {
                         _ = try Self.restoreOriginalCodexRuntimeIfNeeded(
-                            originalAuth: previousAuth,
-                            originalCodexWasRunning: true,
+                            originalAuth: restoredAuthState ?? originalAuthForRecovery,
+                            originalCodexWasRunning: originalCodexWasRunning,
+                            originalDaemonWasRunning: daemonShouldRunAfterTransaction,
                             systemHome: systemHome,
                             appURL: appURL,
                             previousProcessIDs: previousProcessIDs
@@ -781,7 +1055,11 @@ final class CodexAccountActions {
                 }
                 if journalPersisted, originalStateRestored, originalRuntimeRestored {
                     do {
-                        guard try Self.authState(at: systemAuthURL) == previousAuth else {
+                        guard let journal,
+                              Self.pendingSwitchRecoveryDecision(
+                                  current: try Self.authState(at: systemAuthURL),
+                                  journal: journal
+                              ) == .originalAlreadyPresent else {
                             throw Self.switchError("清理恢复记录前凭据再次变化；已保留恢复记录")
                         }
                         try Self.clearPendingSwitchJournal(fileManager: fileManager)
@@ -803,9 +1081,26 @@ final class CodexAccountActions {
         case data(Data)
     }
 
-    private static func waitForGracefulCodexExit(appURL: URL) throws {
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline {
+    private static func waitForCodexExit(
+        appURL: URL,
+        runningApplications: [NSRunningApplication]
+    ) throws {
+        let gracefulDeadline = Date().addingTimeInterval(3)
+        while Date() < gracefulDeadline {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.codex").isEmpty,
+               try codexProcessIDs(appURL: appURL).isEmpty {
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+
+        for application in runningApplications where !application.isTerminated {
+            guard application.forceTerminate() else {
+                throw switchError("Codex 无法退出；账号未切换")
+            }
+        }
+        let forcedDeadline = Date().addingTimeInterval(10)
+        while Date() < forcedDeadline {
             if NSRunningApplication.runningApplications(withBundleIdentifier: "com.openai.codex").isEmpty,
                try codexProcessIDs(appURL: appURL).isEmpty {
                 return
@@ -813,18 +1108,18 @@ final class CodexAccountActions {
             Thread.sleep(forTimeInterval: 0.2)
         }
         guard try codexProcessIDs(appURL: appURL).isEmpty else {
-            throw switchError("Codex 未能在 10 秒内安全退出；账号未切换，且不会强制结束进程")
+            throw switchError("Codex 强制退出后仍有主进程残留；账号未切换")
         }
         throw switchError("Codex 仍在运行；账号未切换")
     }
 
     private static func waitForNewCodexProcess(previousProcessIDs: Set<pid_t>) throws {
-        let deadline = Date().addingTimeInterval(8)
+        let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {
             if hasNewCodexProcess(previousProcessIDs: previousProcessIDs) { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
-        throw switchError("Codex 未在 8 秒内重新启动，原账号已恢复")
+        throw switchError("Codex 未在 30 秒内重新启动，原账号已恢复")
     }
 
     private static func hasNewCodexProcess(previousProcessIDs: Set<pid_t>) -> Bool {
@@ -840,11 +1135,11 @@ final class CodexAccountActions {
             throw switchError("新 Codex 未能安全退出；为避免运行中身份错配，未恢复原凭据")
         }
         if !applications.isEmpty || !processIDs.isEmpty {
-            try waitForGracefulCodexExit(appURL: appURL)
+            try waitForCodexExit(appURL: appURL, runningApplications: applications)
         }
     }
 
-    private static func verifyActiveAccount(
+    private static func verifyAccountCredentials(
         at codexHome: URL,
         expectedIdentity: CodexCredentialIdentity
     ) throws {
@@ -853,17 +1148,305 @@ final class CodexAccountActions {
         )
         let credentialIdentity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: codexHome)
         guard normalizedEmail(snapshot.account?.email) == expectedIdentity.email,
-              credentialIdentity == expectedIdentity
+              credentialIdentity == expectedIdentity,
+              snapshot.quotaReadSucceeded
         else {
-            throw switchError("Codex 重新打开后未确认目标账号身份")
+            throw switchError("目标账号未通过官方身份与额度验收")
         }
+    }
+
+    private static func verifyRuntimeIdentity(
+        at codexHome: URL,
+        expectedIdentity: CodexCredentialIdentity,
+        daemonRequired: Bool
+    ) throws {
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline {
+            let identity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: codexHome)
+            let daemonReady = !daemonRequired || (try? codexDaemonIsRunning()) == true
+            if identity == expectedIdentity, daemonReady { return }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw switchError("Codex 冷启动后未确认目标账号与共享运行时")
+    }
+
+    private static func codexDaemonIsRunning() throws -> Bool {
+        do {
+            let data = try runCodexDaemonCommand("version")
+            guard let running = daemonRunningStatus(from: data)
+            else { throw switchError("无法读取 Codex 共享运行时状态") }
+            return running
+        } catch {
+            guard try processIDsOwningSocket(at: sharedDaemonControlSocket.path).isEmpty else {
+                throw error
+            }
+            return false
+        }
+    }
+
+    fileprivate static func daemonRunningStatus(from data: Data) -> Bool? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = object["status"] as? String
+        else { return nil }
+        switch status {
+        case "running": return true
+        case "stopped", "notRunning", "not_running": return false
+        default: return nil
+        }
+    }
+
+    fileprivate static func daemonSocketPath(from data: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = object["socketPath"] as? String,
+              path.hasPrefix("/"),
+              !path.contains("\0")
+        else { return nil }
+        return path
+    }
+
+    @discardableResult
+    private static func stopCodexDaemonIfRunning() throws -> Bool {
+        guard try codexDaemonIsRunning() else { return false }
+        if sharedDaemonLaunchAgentIsLoaded() {
+            let ownerProcessIDs = try daemonSocketOwnerProcessIDs()
+            try runLaunchctl(
+                ["bootout", sharedDaemonLaunchAgentTarget],
+                failureMessage: "无法暂停 Mimi 的 Codex 共享运行时"
+            )
+            try terminateDaemonProcesses(ownerProcessIDs)
+        } else {
+            _ = try runCodexDaemonCommand("stop")
+        }
+        let deadline = Date().addingTimeInterval(10)
+        var consecutiveStoppedChecks = 0
+        while Date() < deadline {
+            if try codexDaemonIsRunning() == false {
+                consecutiveStoppedChecks += 1
+                if consecutiveStoppedChecks >= 3 { return true }
+            } else {
+                consecutiveStoppedChecks = 0
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw switchError("Codex 共享运行时未能保持停止；账号未切换")
+    }
+
+    private static func startCodexDaemonIfNeeded(_ shouldRun: Bool) throws {
+        guard shouldRun, try codexDaemonIsRunning() == false else { return }
+        try removeStaleSharedDaemonControlSocket()
+        if FileManager.default.fileExists(atPath: sharedDaemonLaunchAgentPlist.path),
+           !sharedDaemonLaunchAgentIsLoaded() {
+            try startSharedDaemonLaunchAgent()
+        } else {
+            _ = try runCodexDaemonCommand("start")
+        }
+        // Mimi 会在启动共享运行时前恢复插件，实机可能超过 10 秒。
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            if try codexDaemonIsRunning() { return }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        throw switchError("Codex 共享运行时未能重新启动")
+    }
+
+    private static let sharedDaemonLaunchAgentLabel = "com.gaixianggeng.mimi.codex-shared-daemon"
+
+    private static var sharedDaemonLaunchAgentDomain: String {
+        "gui/\(getuid())"
+    }
+
+    private static var sharedDaemonLaunchAgentTarget: String {
+        "\(sharedDaemonLaunchAgentDomain)/\(sharedDaemonLaunchAgentLabel)"
+    }
+
+    private static var sharedDaemonLaunchAgentPlist: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/\(sharedDaemonLaunchAgentLabel).plist")
+    }
+
+    private static var sharedDaemonControlSocket: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/app-server-control/app-server-control.sock")
+    }
+
+    private static func sharedDaemonLaunchAgentIsLoaded() -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = ["print", sharedDaemonLaunchAgentTarget]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+
+    private static func startSharedDaemonLaunchAgent() throws {
+        let deadline = Date().addingTimeInterval(5)
+        var lastError: Error?
+        repeat {
+            if sharedDaemonLaunchAgentIsLoaded() { return }
+            do {
+                try runLaunchctl(
+                    ["bootstrap", sharedDaemonLaunchAgentDomain, sharedDaemonLaunchAgentPlist.path],
+                    failureMessage: "无法恢复 Mimi 的 Codex 共享运行时"
+                )
+                return
+            } catch {
+                lastError = error
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+        } while Date() < deadline
+        throw lastError ?? switchError("无法恢复 Mimi 的 Codex 共享运行时")
+    }
+
+    private static func daemonSocketOwnerProcessIDs() throws -> [pid_t] {
+        let version = try runCodexDaemonCommand("version")
+        guard let socketPath = daemonSocketPath(from: version) else {
+            throw switchError("无法定位 Mimi 的 Codex 共享运行时")
+        }
+        return try processIDsOwningSocket(at: socketPath)
+    }
+
+    private static func processIDsOwningSocket(at socketPath: String) throws -> [pid_t] {
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        process.arguments = ["-t", "--", socketPath]
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            throw switchError("无法探测 Mimi 的 Codex 共享运行时进程")
+        }
+        let data = try readAllBytes(
+            from: output.fileHandleForReading.fileDescriptor,
+            maximumBytes: 8 * 1_024,
+            failureMessage: "无法读取 Mimi 的 Codex 共享运行时进程"
+        )
+        process.waitUntilExit()
+        if process.terminationStatus == 1 { return [] }
+        guard process.terminationStatus == 0,
+              let text = String(data: data, encoding: .utf8)
+        else {
+            throw switchError("无法探测 Mimi 的 Codex 共享运行时进程")
+        }
+        let processIDs = try text.split(whereSeparator: \.isNewline).map { value -> pid_t in
+            guard value.allSatisfy({ $0.isNumber }),
+                  let processID = pid_t(String(value)),
+                  processID > 1,
+                  processID != getpid()
+            else { throw switchError("Mimi 的 Codex 共享运行时返回了无效进程") }
+            return processID
+        }
+        guard processIDs.count <= 8 else {
+            throw switchError("Mimi 的 Codex 共享运行时进程数量异常")
+        }
+        return Array(Set(processIDs))
+    }
+
+    private static func removeStaleSharedDaemonControlSocket() throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: sharedDaemonControlSocket.path) else { return }
+        let attributes = try fileManager.attributesOfItem(atPath: sharedDaemonControlSocket.path)
+        guard attributes[.type] as? FileAttributeType == .typeSocket else {
+            throw switchError("Codex 共享运行时控制路径不是 socket；已停止切换")
+        }
+        guard try processIDsOwningSocket(at: sharedDaemonControlSocket.path).isEmpty else { return }
+        try fileManager.removeItem(at: sharedDaemonControlSocket)
+    }
+
+    private static func terminateDaemonProcesses(_ processIDs: [pid_t]) throws {
+        for processID in processIDs where processExists(processID) {
+            guard Darwin.kill(processID, SIGTERM) == 0 || errno == ESRCH else {
+                throw switchError("无法停止 Mimi 的 Codex 共享运行时进程")
+            }
+        }
+        let gracefulDeadline = Date().addingTimeInterval(3)
+        while Date() < gracefulDeadline {
+            if processIDs.allSatisfy({ !processExists($0) }) { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        for processID in processIDs where processExists(processID) {
+            guard Darwin.kill(processID, SIGKILL) == 0 || errno == ESRCH else {
+                throw switchError("无法强制停止 Mimi 的 Codex 共享运行时进程")
+            }
+        }
+        let forcedDeadline = Date().addingTimeInterval(3)
+        while Date() < forcedDeadline {
+            if processIDs.allSatisfy({ !processExists($0) }) { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        guard processIDs.allSatisfy({ !processExists($0) }) else {
+            throw switchError("Mimi 的 Codex 共享运行时进程仍未退出")
+        }
+    }
+
+    private static func processExists(_ processID: pid_t) -> Bool {
+        if Darwin.kill(processID, 0) == 0 { return true }
+        return errno == EPERM
+    }
+
+    private static func runLaunchctl(_ arguments: [String], failureMessage: String) throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            throw switchError(failureMessage)
+        }
+        guard process.terminationStatus == 0 else {
+            throw switchError(failureMessage, code: Int(process.terminationStatus))
+        }
+    }
+
+    private static func runCodexDaemonCommand(_ command: String) throws -> Data {
+        guard let executable = CodexExecutable.path() else { throw CocoaError(.fileNoSuchFile) }
+        let process = Process()
+        let output = Pipe()
+        let finished = DispatchSemaphore(value: 0)
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["app-server", "daemon", command]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { _ in finished.signal() }
+        do {
+            try process.run()
+        } catch {
+            throw switchError("无法执行 Codex 共享运行时命令")
+        }
+        guard finished.wait(timeout: .now() + 12) == .success else {
+            if process.isRunning { process.terminate() }
+            throw switchError("Codex 共享运行时命令超时")
+        }
+        guard process.terminationStatus == 0 else {
+            throw switchError(
+                "Codex 共享运行时命令失败",
+                code: Int(process.terminationStatus)
+            )
+        }
+        return try readAllBytes(
+            from: output.fileHandleForReading.fileDescriptor,
+            maximumBytes: 64 * 1_024,
+            failureMessage: "无法读取 Codex 共享运行时命令结果"
+        )
     }
 
     private static func codexProcessIDs(appURL: URL) throws -> [pid_t] {
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-        process.arguments = ["-f", "\(NSRegularExpression.escapedPattern(for: appURL.path))/Contents/"]
+        // app-server 位于 Resources 并由 daemon 生命周期单独停止；这里只等待主 App 退出。
+        process.arguments = ["-f", "\(NSRegularExpression.escapedPattern(for: appURL.path))/Contents/MacOS/"]
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         do {
@@ -948,6 +1531,30 @@ final class CodexAccountActions {
         return data
     }
 
+    private static func writeManagedAuthBackup(
+        _ state: AuthState,
+        to profile: CodexProfile,
+        fileManager: FileManager
+    ) throws {
+        guard !profile.isSystemProfile,
+              case let .data(data) = state,
+              profile.matchesRecordedCredential(
+                  CodexOfficialProfileReader.credentialIdentity(fromAuthData: data)
+              )
+        else { throw switchError("原账号最新凭据无法安全绑定到账号卡") }
+        try fileManager.createDirectory(
+            at: profile.codexHomeURL,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        let authURL = profile.codexHomeURL.appendingPathComponent("auth.json")
+        try data.write(to: authURL, options: .atomic)
+        try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: authURL.path)
+        guard try Data(contentsOf: authURL) == data else {
+            throw switchError("原账号最新凭据备份后校验失败")
+        }
+    }
+
     fileprivate static func authState(at url: URL) throws -> AuthState {
         do {
             return .data(try Data(contentsOf: url))
@@ -961,6 +1568,17 @@ final class CodexAccountActions {
 
     fileprivate static func authFingerprint(_ data: Data) -> Data {
         Data(SHA256.hash(data: data))
+    }
+
+    fileprivate static func identityDigest(for identity: CodexCredentialIdentity) -> Data {
+        Data(SHA256.hash(data: Data("\(identity.email)\u{0}\(identity.accountID)".utf8)))
+    }
+
+    fileprivate static func identityDigest(for state: AuthState) -> Data? {
+        guard case let .data(data) = state,
+              let identity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: data)
+        else { return nil }
+        return identityDigest(for: identity)
     }
 
     fileprivate static func mayRestoreAuth(
@@ -996,11 +1614,30 @@ final class CodexAccountActions {
     private static func restoreOriginalCodexRuntimeIfNeeded(
         originalAuth: AuthState,
         originalCodexWasRunning: Bool,
+        originalDaemonWasRunning: Bool,
         systemHome: URL,
         appURL suppliedAppURL: URL? = nil,
         previousProcessIDs suppliedProcessIDs: Set<pid_t>? = nil
     ) throws -> Bool {
-        guard originalCodexWasRunning else { return false }
+        guard originalCodexWasRunning || originalDaemonWasRunning else { return false }
+        try startCodexDaemonIfNeeded(originalDaemonWasRunning)
+
+        let originalIdentity: CodexCredentialIdentity?
+        if case let .data(data) = originalAuth {
+            originalIdentity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: data)
+        } else {
+            originalIdentity = nil
+        }
+        guard originalCodexWasRunning else {
+            if let identity = originalIdentity {
+                try verifyRuntimeIdentity(
+                    at: systemHome,
+                    expectedIdentity: identity,
+                    daemonRequired: originalDaemonWasRunning
+                )
+            }
+            return false
+        }
         guard let appURL = suppliedAppURL
             ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex")
         else { throw CocoaError(.fileNoSuchFile) }
@@ -1011,12 +1648,6 @@ final class CodexAccountActions {
             throw switchError("仅检测到未受控的 Codex 辅助进程；未自动补开原 Codex")
         }
 
-        let originalIdentity: CodexCredentialIdentity?
-        if case let .data(data) = originalAuth {
-            originalIdentity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: data)
-        } else {
-            originalIdentity = nil
-        }
         var previousProcessIDs = suppliedProcessIDs ?? []
         previousProcessIDs.formUnion(applications.map(\.processIdentifier))
         let needsFreshLaunch = applications.isEmpty || originalIdentity == nil
@@ -1034,7 +1665,11 @@ final class CodexAccountActions {
             reopened = true
         }
         if let identity = originalIdentity {
-            try verifyActiveAccount(at: systemHome, expectedIdentity: identity)
+            try verifyRuntimeIdentity(
+                at: systemHome,
+                expectedIdentity: identity,
+                daemonRequired: originalDaemonWasRunning
+            )
         }
         return reopened
     }
@@ -1048,6 +1683,11 @@ final class CodexAccountActions {
            authFingerprint(data) == journal.targetAuthFingerprint {
             return .rollbackOriginal
         }
+        guard let currentIdentityDigest = identityDigest(for: current) else { return .preserveExternal }
+        let originalIdentityDigest = journal.originalIdentityDigest
+            ?? identityDigest(for: journal.originalAuthState)
+        if currentIdentityDigest == originalIdentityDigest { return .originalAlreadyPresent }
+        if currentIdentityDigest == journal.targetIdentityDigest { return .rollbackOriginal }
         return .preserveExternal
     }
 
@@ -1079,8 +1719,45 @@ final class CodexAccountActions {
         ),
         loaded.originalAuthState == journal.originalAuthState,
         loaded.targetAuthFingerprint == journal.targetAuthFingerprint,
-        loaded.originalCodexWasRunning == journal.originalCodexWasRunning
+        loaded.originalIdentityDigest == journal.originalIdentityDigest,
+        loaded.targetIdentityDigest == journal.targetIdentityDigest,
+        loaded.originalCodexWasRunning == journal.originalCodexWasRunning,
+        loaded.originalDaemonWasRunning == journal.originalDaemonWasRunning
         else { throw switchError("账号切换恢复记录写入后校验失败") }
+    }
+
+    fileprivate static func replacePendingSwitchJournal(
+        _ expected: PendingSwitchJournal,
+        with replacement: PendingSwitchJournal,
+        fileManager: FileManager,
+        applicationSupportDirectory: URL? = nil
+    ) throws {
+        try validatePendingSwitchJournal(replacement)
+        guard try loadPendingSwitchJournal(
+            fileManager: fileManager,
+            applicationSupportDirectory: applicationSupportDirectory
+        ) == expected else {
+            throw switchError("账号切换恢复记录已变化；未覆盖最新状态")
+        }
+        let directory = try accountManagerSupportDirectory(
+            fileManager: fileManager,
+            applicationSupportDirectory: applicationSupportDirectory,
+            createIfNeeded: false
+        )
+        let url = directory.appendingPathComponent("pending-account-switch-v1.json")
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        try writeMode600Atomically(
+            encoder.encode(replacement),
+            to: url,
+            replacingExisting: true
+        )
+        guard try loadPendingSwitchJournal(
+            fileManager: fileManager,
+            applicationSupportDirectory: applicationSupportDirectory
+        ) == replacement else {
+            throw switchError("账号切换恢复记录更新后校验失败")
+        }
     }
 
     fileprivate static func loadPendingSwitchJournal(
@@ -1146,12 +1823,26 @@ final class CodexAccountActions {
     }
 
     private static func validatePendingSwitchJournal(_ journal: PendingSwitchJournal) throws {
-        guard journal.version == 1,
+        let validVersion = journal.version == 1 || journal.version == 2
+        let validIdentityDigests = journal.version == 1
+            || (journal.targetIdentityDigest?.count == SHA256.Digest.byteCount
+                && journal.originalIdentityDigest.map { $0.count == SHA256.Digest.byteCount } != false
+                && journal.originalDaemonWasRunning != nil)
+        guard validVersion,
+              validIdentityDigests,
               journal.targetAuthFingerprint.count == SHA256.Digest.byteCount
         else { throw switchError("账号切换恢复记录版本或指纹无效") }
     }
 
     private static func writeMode600AtomicallyWithoutReplacement(_ data: Data, to url: URL) throws {
+        try writeMode600Atomically(data, to: url, replacingExisting: false)
+    }
+
+    private static func writeMode600Atomically(
+        _ data: Data,
+        to url: URL,
+        replacingExisting: Bool
+    ) throws {
         let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(
             ".\(url.lastPathComponent).\(UUID().uuidString).tmp"
         )
@@ -1181,12 +1872,16 @@ final class CodexAccountActions {
         }
         let renameResult = temporaryURL.path.withCString { sourcePath in
             url.path.withCString { destinationPath in
-                Darwin.renamex_np(sourcePath, destinationPath, UInt32(RENAME_EXCL))
+                replacingExisting
+                    ? Darwin.rename(sourcePath, destinationPath)
+                    : Darwin.renamex_np(sourcePath, destinationPath, UInt32(RENAME_EXCL))
             }
         }
         guard renameResult == 0 else {
             throw switchError(
-                errno == EEXIST ? "已有未完成的账号切换恢复记录" : "无法原子安装账号切换恢复记录",
+                !replacingExisting && errno == EEXIST
+                    ? "已有未完成的账号切换恢复记录"
+                    : "无法原子安装账号切换恢复记录",
                 code: Int(errno)
             )
         }
@@ -1309,6 +2004,24 @@ final class CodexAccountActions {
         )
     }
 
+    fileprivate static func warmUpArguments(workingDirectory: String) -> [String] {
+        [
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--ignore-user-config",
+            "--ignore-rules",
+            "--strict-config",
+            "--config", "model_reasoning_effort=\"low\"",
+            "--config", "model_verbosity=\"low\"",
+            "--model", "gpt-5.6-luna",
+            "--sandbox", "read-only",
+            "--color", "never",
+            "-C", workingDirectory,
+            "只回复 1，不调用工具。"
+        ]
+    }
+
     func warmUp(
         profile: CodexProfile,
         completion: @escaping (Result<Void, Error>) -> Void
@@ -1319,18 +2032,9 @@ final class CodexAccountActions {
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = [
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--ignore-user-config",
-            "--ignore-rules",
-            "--model", "gpt-5.6-luna",
-            "--sandbox", "read-only",
-            "--color", "never",
-            "-C", FileManager.default.temporaryDirectory.path,
-            "你好"
-        ]
+        process.arguments = Self.warmUpArguments(
+            workingDirectory: FileManager.default.temporaryDirectory.path
+        )
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = profile.codexHomePath
         process.environment = environment
@@ -1587,7 +2291,20 @@ enum CodexAccountSwitchSafetySelfTest {
                       didWriteTarget: false,
                       current: .data(auth),
                       target: auth
-                  )
+                  ),
+                  CodexAccountActions.daemonRunningStatus(
+                      from: Data(#"{"status":"running"}"#.utf8)
+                  ) == true,
+                  CodexAccountActions.daemonRunningStatus(
+                      from: Data(#"{"status":"notRunning"}"#.utf8)
+                  ) == false,
+                  CodexAccountActions.daemonRunningStatus(from: Data(#"{"status":"unknown"}"#.utf8)) == nil,
+                  CodexAccountActions.daemonSocketPath(
+                      from: Data(#"{"socketPath":"/tmp/codex.sock"}"#.utf8)
+                  ) == "/tmp/codex.sock",
+                  CodexAccountActions.daemonSocketPath(
+                      from: Data(#"{"socketPath":"relative.sock"}"#.utf8)
+                  ) == nil
             else {
                 print("Codex account switch safety self-test failed: auth state, fingerprint, or rollback ownership")
                 return false
@@ -1597,11 +2314,45 @@ enum CodexAccountSwitchSafetySelfTest {
                 print("Codex account switch safety self-test failed: unreadable auth treated as missing")
                 return false
             } catch {}
-            let originalAuth = Data(#"{"tokens":{"original":true}}"#.utf8)
+            func makeAuth(email: String, accountID: String, accessToken: String) -> Data {
+                let tokenPayload = Data(#"{"email":"\#(email)"}"#.utf8)
+                    .base64EncodedString()
+                    .replacingOccurrences(of: "+", with: "-")
+                    .replacingOccurrences(of: "/", with: "_")
+                    .replacingOccurrences(of: "=", with: "")
+                return Data(
+                    #"{"tokens":{"access_token":"\#(accessToken)","id_token":"e30.\#(tokenPayload).sig","account_id":"\#(accountID)"}}"#.utf8
+                )
+            }
+            let originalAuth = makeAuth(
+                email: "source@example.com",
+                accountID: "acct-source",
+                accessToken: "source-original"
+            )
+            let rotatedOriginalAuth = makeAuth(
+                email: "source@example.com",
+                accountID: "acct-source",
+                accessToken: "source-rotated"
+            )
+            let rotatedTargetAuth = makeAuth(
+                email: "person@example.com",
+                accountID: "acct-person",
+                accessToken: "target-rotated"
+            )
+            let externalAuth = makeAuth(
+                email: "external@example.com",
+                accountID: "acct-external",
+                accessToken: "external"
+            )
             let pending = CodexAccountActions.PendingSwitchJournal(
                 originalAuth: .data(originalAuth),
                 targetAuthFingerprint: CodexAccountActions.authFingerprint(auth),
+                targetIdentity: CodexCredentialIdentity(
+                    email: "person@example.com",
+                    accountID: "acct-person"
+                ),
                 originalCodexWasRunning: true,
+                originalDaemonWasRunning: true,
                 createdAt: Date(timeIntervalSince1970: 0)
             )
             try CodexAccountActions.persistPendingSwitchJournal(
@@ -1627,11 +2378,43 @@ enum CodexAccountSwitchSafetySelfTest {
                       journal: pending
                   ) == .originalAlreadyPresent,
                   CodexAccountActions.pendingSwitchRecoveryDecision(
-                      current: .data(Data("external-change".utf8)),
+                      current: .data(rotatedOriginalAuth),
+                      journal: pending
+                  ) == .originalAlreadyPresent,
+                  CodexAccountActions.pendingSwitchRecoveryDecision(
+                      current: .data(rotatedTargetAuth),
+                      journal: pending
+                  ) == .rollbackOriginal,
+                  CodexAccountActions.pendingSwitchRecoveryDecision(
+                      current: .data(externalAuth),
                       journal: pending
                   ) == .preserveExternal
             else {
                 print("Codex account switch safety self-test failed: journal decision or permissions")
+                return false
+            }
+            let updatedPending = CodexAccountActions.PendingSwitchJournal(
+                originalAuth: .data(rotatedOriginalAuth),
+                targetAuthFingerprint: CodexAccountActions.authFingerprint(auth),
+                targetIdentity: CodexCredentialIdentity(
+                    email: "person@example.com",
+                    accountID: "acct-person"
+                ),
+                originalCodexWasRunning: true,
+                originalDaemonWasRunning: true,
+                createdAt: pending.createdAt
+            )
+            try CodexAccountActions.replacePendingSwitchJournal(
+                pending,
+                with: updatedPending,
+                fileManager: fileManager,
+                applicationSupportDirectory: root
+            )
+            guard try CodexAccountActions.loadPendingSwitchJournal(
+                fileManager: fileManager,
+                applicationSupportDirectory: root
+            ) == updatedPending else {
+                print("Codex account switch safety self-test failed: journal rotation update")
                 return false
             }
             try CodexAccountActions.clearPendingSwitchJournal(
@@ -1645,6 +2428,108 @@ enum CodexAccountSwitchSafetySelfTest {
                   ) == nil
             else {
                 print("Codex account switch safety self-test failed: journal cleanup")
+                return false
+            }
+
+            let legacyJournal = try JSONSerialization.data(withJSONObject: [
+                "version": 1,
+                "createdAt": Date(timeIntervalSince1970: 0).timeIntervalSinceReferenceDate,
+                "originalAuth": originalAuth.base64EncodedString(),
+                "targetAuthFingerprint": CodexAccountActions.authFingerprint(auth).base64EncodedString(),
+                "originalCodexWasRunning": true
+            ])
+            try legacyJournal.write(to: journalURL, options: .atomic)
+            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: journalURL.path)
+            guard let loadedLegacy = try CodexAccountActions.loadPendingSwitchJournal(
+                fileManager: fileManager,
+                applicationSupportDirectory: root
+            ),
+            loadedLegacy.version == 1,
+            CodexAccountActions.pendingSwitchRecoveryDecision(
+                current: .data(rotatedOriginalAuth),
+                journal: loadedLegacy
+            ) == .originalAlreadyPresent else {
+                print("Codex account switch safety self-test failed: legacy journal recovery")
+                return false
+            }
+            try CodexAccountActions.clearPendingSwitchJournal(
+                fileManager: fileManager,
+                applicationSupportDirectory: root
+            )
+
+            let chromeHome = root.appendingPathComponent("chrome-home", isDirectory: true)
+            let chromeRoot = chromeHome
+                .appendingPathComponent("Library/Application Support/Google/Chrome", isDirectory: true)
+            try fileManager.createDirectory(
+                at: chromeRoot.appendingPathComponent("Default", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try fileManager.createDirectory(
+                at: chromeRoot.appendingPathComponent("Profile 2", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            let localState = try JSONSerialization.data(withJSONObject: [
+                "profile": [
+                    "info_cache": [
+                        "Default": ["name": "工作", "user_name": "person@example.com"],
+                        "Profile 2": ["name": "备用", "user_name": "source@example.com"],
+                        "Guest Profile": ["name": "访客"]
+                    ]
+                ]
+            ])
+            try localState.write(to: chromeRoot.appendingPathComponent("Local State"), options: .atomic)
+            let chromeProfiles = ChromeProfileBrowser.availableProfiles(
+                fileManager: fileManager,
+                homeDirectory: chromeHome
+            )
+            let managedChrome = root.appendingPathComponent("managed-chrome", isDirectory: true)
+            guard let authenticationURL = URL(string: "https://auth.openai.com/example"),
+                  chromeProfiles.map(\.directoryName) == ["Default", "Profile 2"],
+                  ChromeProfileBrowser.matchingProfile(
+                      for: "PERSON@example.com",
+                      fileManager: fileManager,
+                      homeDirectory: chromeHome
+                  )?.directoryName == "Default",
+                  let boundChrome = chromeProfiles.first,
+                  ChromeProfileBrowser.launchArguments(
+                      binding: boundChrome,
+                      url: authenticationURL
+                  ) == [
+                      "--profile-directory=Default",
+                      "--new-window",
+                      "https://auth.openai.com/example"
+                  ],
+                  ChromeProfileBrowser.launchArguments(
+                      binding: nil,
+                      managedUserDataDirectory: managedChrome,
+                      url: authenticationURL
+                  ) == [
+                      "--user-data-dir=\(managedChrome.path)",
+                      "--profile-directory=Default",
+                      "--no-first-run",
+                      "--new-window",
+                      "https://auth.openai.com/example"
+                  ]
+            else {
+                print("Codex account switch safety self-test failed: Chrome profile routing")
+                return false
+            }
+            guard CodexAccountActions.warmUpArguments(workingDirectory: "/tmp/warm-up") == [
+                "exec",
+                "--ephemeral",
+                "--skip-git-repo-check",
+                "--ignore-user-config",
+                "--ignore-rules",
+                "--strict-config",
+                "--config", "model_reasoning_effort=\"low\"",
+                "--config", "model_verbosity=\"low\"",
+                "--model", "gpt-5.6-luna",
+                "--sandbox", "read-only",
+                "--color", "never",
+                "-C", "/tmp/warm-up",
+                "只回复 1，不调用工具。"
+            ] else {
+                print("Codex account switch safety self-test failed: minimal warm-up command")
                 return false
             }
             print("Codex account switch safety self-test passed")

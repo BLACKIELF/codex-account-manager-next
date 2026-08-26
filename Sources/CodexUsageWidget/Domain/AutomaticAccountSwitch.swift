@@ -65,16 +65,13 @@ enum CodexAutomaticSwitchPolicy {
     static let taskSnapshotMaximumAge: TimeInterval = 45
     static let codexInactivePeriod: TimeInterval = 2 * 60
 
-    static func hasSafeTaskState(
+    static func hasNoActiveTasks(
         _ snapshot: CodexTaskLiveSnapshot,
-        codexInactiveSince: Date?,
         legacyManagerRunning: Bool,
         now: Date = Date()
     ) -> Bool {
         guard !legacyManagerRunning,
-              snapshot.connectionMode != .disconnected,
-              let codexInactiveSince,
-              now.timeIntervalSince(codexInactiveSince) >= codexInactivePeriod
+              snapshot.connectionMode != .disconnected
         else { return false }
         let snapshotAge = now.timeIntervalSince(snapshot.refreshedAt)
         guard snapshotAge >= -5, snapshotAge <= taskSnapshotMaximumAge else { return false }
@@ -86,6 +83,22 @@ enum CodexAutomaticSwitchPolicy {
                 return false
             }
         }
+    }
+
+    static func hasSafeTaskState(
+        _ snapshot: CodexTaskLiveSnapshot,
+        codexInactiveSince: Date?,
+        legacyManagerRunning: Bool,
+        now: Date = Date()
+    ) -> Bool {
+        guard let codexInactiveSince,
+              now.timeIntervalSince(codexInactiveSince) >= codexInactivePeriod
+        else { return false }
+        return hasNoActiveTasks(
+            snapshot,
+            legacyManagerRunning: legacyManagerRunning,
+            now: now
+        )
     }
 
     static func shouldEvaluate(
@@ -175,7 +188,22 @@ enum CodexAutomaticSwitchPolicySelfTest {
             .init(profileID: "third", quota: .init(fiveHourRemaining: 20, sevenDayRemaining: 99))
         ], for: [.fiveHour])
 
-        guard CodexAutomaticSwitchPolicy.shouldEvaluate(
+        guard CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+            idle,
+            legacyManagerRunning: false,
+            now: now
+        ),
+        !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+            active,
+            legacyManagerRunning: false,
+            now: now
+        ),
+        !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+            .disconnected,
+            legacyManagerRunning: false,
+            now: now
+        ),
+        CodexAutomaticSwitchPolicy.shouldEvaluate(
             enabled: true,
             sourceQuota: low,
             sourceRefreshedAt: now,

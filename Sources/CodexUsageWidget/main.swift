@@ -779,7 +779,13 @@ final class UsageStore: ObservableObject {
     @Published private(set) var profiles: [CodexProfile]
     @Published private(set) var selectedMonitorProfileID: String
     @Published private(set) var selectedLaunchProfileID: String
-    @Published private(set) var accountManagerMessage: String?
+    @Published private(set) var accountManagerMessage: String? {
+        didSet {
+            if let accountManagerMessage {
+                debugLog("account manager: \(accountManagerMessage)")
+            }
+        }
+    }
     @Published private(set) var isLoggingIn = false
     @Published private(set) var isLaunchingCodex = false
     @Published private(set) var warmingProfileID: String?
@@ -805,6 +811,7 @@ final class UsageStore: ObservableObject {
     private var wakeObserver: NSObjectProtocol?
     private var codexActivationObserver: NSObjectProtocol?
     private var codexInactiveSince: Date?
+    private var isRefreshingWarmUpProfiles = false
     private var unexpectedWarmUpKindsByAccount: [String: Set<CodexWarmUpWindowKind>] = [:]
     private var shouldWarmUpAfterManualRefresh = false
     private var refreshGeneration: UInt64 = 0
@@ -872,6 +879,10 @@ final class UsageStore: ObservableObject {
         profiles.first { $0.id == selectedLaunchProfileID }
     }
 
+    var availableChromeProfiles: [ChromeProfileBinding] {
+        ChromeProfileBrowser.availableProfiles()
+    }
+
     func totalTodayTokens(for scopes: [RuntimeScope]) -> Int64 {
         scopes.reduce(Int64(0)) { total, scope in
             total + (runtimeSnapshot(for: scope)?.todayTokens ?? 0)
@@ -879,21 +890,31 @@ final class UsageStore: ObservableObject {
     }
 
     func addProfile() {
-        beginAddingProfile(copyingRemarkFrom: nil)
+        beginAddingProfile(copyingRemarkFrom: nil, chromeProfile: nil)
+    }
+
+    func addProfile(using chromeProfile: ChromeProfileBinding) {
+        beginAddingProfile(copyingRemarkFrom: nil, chromeProfile: chromeProfile)
     }
 
     func loginProfileIndependently(_ profileID: String) {
         guard let profile = profiles.first(where: { $0.id == profileID }),
               profile.isSystemProfile
         else { return }
-        beginAddingProfile(copyingRemarkFrom: profile.id)
+        beginAddingProfile(copyingRemarkFrom: profile.id, chromeProfile: profile.chromeProfile)
     }
 
-    private func beginAddingProfile(copyingRemarkFrom sourceProfileID: String?) {
+    private func beginAddingProfile(
+        copyingRemarkFrom sourceProfileID: String?,
+        chromeProfile: ChromeProfileBinding?
+    ) {
         guard !isLoggingIn, captureCurrentProfile() else { return }
         let profile: CodexProfile
         do {
-            profile = try profileStore.addManagedProfile(copyingRemarkFrom: sourceProfileID)
+            profile = try profileStore.addManagedProfile(
+                copyingRemarkFrom: sourceProfileID,
+                chromeProfile: chromeProfile
+            )
         } catch {
             accountManagerMessage = "创建账号失败：\(error.localizedDescription)"
             return
@@ -1050,6 +1071,17 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    func setChromeProfile(_ binding: ChromeProfileBinding?, for id: String) {
+        do {
+            try profileStore.setChromeProfile(binding, for: id)
+            syncProfiles()
+            accountManagerMessage = binding.map { "已绑定 Chrome 用户资料：\($0.displayName)" }
+                ?? "已启用自动匹配；无匹配时使用账号专属 Chrome 会话"
+        } catch {
+            accountManagerMessage = "Chrome 用户资料保存失败：\(error.localizedDescription)"
+        }
+    }
+
     func moveProfile(_ id: String, relativeTo targetID: String, before: Bool) {
         do {
             try profileStore.moveProfile(id, relativeTo: targetID, before: before)
@@ -1187,8 +1219,25 @@ final class UsageStore: ObservableObject {
             )
             return
         }
+        let legacyManagerRunning = !NSRunningApplication
+            .runningApplications(withBundleIdentifier: "local.codex.account-manager")
+            .isEmpty
         let isAutomaticSwitch = automaticSwitchTargetID == profileID
-        let previousLaunchProfileID = selectedLaunchProfileID
+        guard !isAutomaticSwitch || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+            codexLiveTasks,
+            legacyManagerRunning: legacyManagerRunning
+        ) else {
+            accountManagerMessage = "自动切换已暂停：当前仍有活跃或无法确认的 Codex 任务"
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .appBusy,
+                detail: "任务安全状态未通过"
+            )
+            return
+        }
+        let targetCredentialHome = profileStore.effectiveCredentialHome(for: profile.id)
+            ?? profile.codexHomeURL
         isLaunchingCodex = true
         accountManagerMessage = isAutomaticSwitch
             ? "安全自动切换：正在验证 \(AccountDisplay.profileName(profile))…"
@@ -1197,12 +1246,12 @@ final class UsageStore: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             let context = RuntimeLoadContext.live(
                 statisticsPreference: preference,
-                codexHomeDirectory: profile.codexHomeURL
+                codexHomeDirectory: targetCredentialHome
             )
             let verifiedSnapshot = CodexUsageReader().load(context: context)
-            let verifiedOfficialProfile = CodexOfficialProfileReader.load(codexHomeURL: profile.codexHomeURL)
+            let verifiedOfficialProfile = CodexOfficialProfileReader.load(codexHomeURL: targetCredentialHome)
             let targetCredentialIdentity = CodexOfficialProfileReader.credentialIdentity(
-                codexHomeURL: profile.codexHomeURL
+                codexHomeURL: targetCredentialHome
             )
             let systemContext = RuntimeLoadContext.live(
                 statisticsPreference: preference,
@@ -1296,6 +1345,7 @@ final class UsageStore: ObservableObject {
                         return
                     }
                 }
+                var sourceBackupProfile: CodexProfile?
                 do {
                     try self.profileStore.record(
                         currentSystemSnapshot,
@@ -1308,12 +1358,9 @@ final class UsageStore: ObservableObject {
                     }
                     let currentEmail = currentSystemSnapshot.account?.email?.lowercased()
                     if currentSystemCredentialIdentity?.accountID != targetCredentialIdentity?.accountID {
-                        try self.profileStore.preserveSystemLogin(
+                        sourceBackupProfile = try self.profileStore.preserveSystemLogin(
                             expectedEmail: currentEmail,
-                            expectedAccountID: currentSystemCredentialIdentity?.accountID,
-                            expectedAuthFingerprint: isAutomaticSwitch
-                                ? self.automaticSwitchContext?.sourceAuthFingerprint
-                                : nil
+                            expectedAccountID: currentSystemCredentialIdentity?.accountID
                         )
                     }
                     try self.profileStore.record(
@@ -1321,7 +1368,6 @@ final class UsageStore: ObservableObject {
                         for: profile.id,
                         allowSystemAccountChange: profile.isSystemProfile
                     )
-                    try self.profileStore.selectLaunch(profile.id)
                     self.syncProfiles()
                 } catch {
                     self.isLaunchingCodex = false
@@ -1338,10 +1384,24 @@ final class UsageStore: ObservableObject {
                 self.accountManagerMessage = isAutomaticSwitch
                     ? "安全自动切换：正在切换到 \(AccountDisplay.profileName(profile))…"
                     : "正在切换到 \(AccountDisplay.profileName(profile))…"
+                let legacyManagerRunning = !NSRunningApplication
+                    .runningApplications(withBundleIdentifier: "local.codex.account-manager")
+                    .isEmpty
+                guard !isAutomaticSwitch || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+                    self.codexLiveTasks,
+                    legacyManagerRunning: legacyManagerRunning
+                ) else {
+                    self.isLaunchingCodex = false
+                    self.accountManagerMessage = "自动切换已取消：写入前检测到活跃或无法确认的任务"
+                    self.finishAutomaticSwitchAttempt(
+                        for: profileID,
+                        succeeded: false,
+                        failureReason: .appBusy,
+                        detail: "写入前任务安全状态发生变化"
+                    )
+                    return
+                }
                 if isAutomaticSwitch {
-                    let legacyManagerRunning = !NSRunningApplication
-                        .runningApplications(withBundleIdentifier: "local.codex.account-manager")
-                        .isEmpty
                     guard self.automaticAccountSwitchEnabled,
                           CodexAutomaticSwitchPolicy.hasSafeTaskState(
                               self.codexLiveTasks,
@@ -1363,8 +1423,14 @@ final class UsageStore: ObservableObject {
                 self.isAccountSwitchTransactionActive = true
                 self.accountActions.launchCodex(
                     profile: launchProfile,
+                    sourceBackupProfile: sourceBackupProfile,
                     expectedSourceAuthFingerprint: isAutomaticSwitch
                         ? self.automaticSwitchContext?.sourceAuthFingerprint
+                        : nil,
+                    expectedSourceIdentity: isAutomaticSwitch
+                        ? self.automaticSwitchContext.map {
+                            CodexCredentialIdentity(email: $0.sourceIdentityKey, accountID: $0.sourceAccountID)
+                        }
                         : nil
                 ) { [weak self] error in
                     guard let self else { return }
@@ -1373,7 +1439,7 @@ final class UsageStore: ObservableObject {
                     self.isLaunchingCodex = false
                     if let error {
                         do {
-                            try self.profileStore.selectLaunch(previousLaunchProfileID)
+                            try self.profileStore.selectLaunch(systemProfile.id)
                             self.syncProfiles()
                             self.accountManagerMessage = "账号切换失败，启动账号已回滚：\(error.localizedDescription)"
                         } catch {
@@ -1397,6 +1463,8 @@ final class UsageStore: ObservableObject {
                             if let verifiedOfficialProfile {
                                 try self.profileStore.recordOfficialProfile(verifiedOfficialProfile, for: systemProfile.id)
                             }
+                            try self.profileStore.syncSystemAuthToMatchingManagedProfiles()
+                            try self.profileStore.selectLaunch(profile.id)
                             try self.profileStore.selectMonitor(profile.id)
                             self.syncProfiles()
                             self.configureAuthMonitoring()
@@ -1858,7 +1926,7 @@ final class UsageStore: ObservableObject {
         warmUpSelection.fiveHour = enabled
         warmUpSelection.save()
         accountManagerMessage = enabled
-            ? "5 小时暖号已开启；点刷新时检查，或按已知重置时间执行一次"
+            ? "5 小时暖号已开启；将按每个账号自己的重置时间轮流执行"
             : "5 小时暖号已关闭"
         handleWarmUpSelectionChanged()
     }
@@ -1867,7 +1935,7 @@ final class UsageStore: ObservableObject {
         warmUpSelection.sevenDay = enabled
         warmUpSelection.save()
         accountManagerMessage = enabled
-            ? "7 天暖号已开启；点刷新时检查，或按已知重置时间执行一次"
+            ? "7 天暖号已开启；每个账号将按自己的周窗口执行"
             : "7 天暖号已关闭"
         handleWarmUpSelectionChanged()
     }
@@ -1884,12 +1952,12 @@ final class UsageStore: ObservableObject {
             unexpectedWarmUpKindsByAccount.removeAll()
             return
         }
-        scheduleWarmUpTimer()
+        refreshWarmUpProfilesThenSchedule()
     }
 
     func warmUpStatus(for profile: CodexProfile) -> String? {
         if warmingProfileID == profile.id {
-            return "正在发送「你好」，以开始已开启的额度窗口…"
+            return "正在发送最小请求，以开始已开启的额度窗口…"
         }
         guard warmUpSelection.isEnabled || profile.lastWarmUpAt != nil else { return nil }
         if profile.officialProfile?.subscriptionActiveUntil.map({ $0 <= Date() }) == true {
@@ -1918,7 +1986,7 @@ final class UsageStore: ObservableObject {
 
     private func warmUpWindowStatus(label: String, window: CodexQuotaWindowSnapshot?) -> String {
         if CodexWarmUpPolicy.isWindowIdle(window) {
-            return "\(label)等待手动刷新后检查"
+            return "\(label)等待额度刷新确认"
         }
         if let resetsAt = window?.resetsAt, resetsAt > Date() {
             return "\(label)将在重置后执行一次 · " + resetsAt.formatted(.dateTime.month().day().hour().minute())
@@ -1936,10 +2004,17 @@ final class UsageStore: ObservableObject {
               warmingProfileID == nil,
               !isLoggingIn,
               !isLaunchingCodex,
+              !isAccountSwitchTransactionActive,
+              !isEvaluatingAutomaticAccountSwitch,
+              CodexWarmUpPolicy.isDue(
+                profile,
+                selection: warmUpSelection,
+                unexpected: unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
+              ),
               profile.officialProfile?.subscriptionActiveUntil.map({ $0 > Date() }) ?? true
         else { return }
         warmingProfileID = profile.id
-        accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 发送「你好」…"
+        accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 发送最小请求…"
         do {
             try accountActions.warmUp(profile: profile) { [weak self] result in
                 guard let self else { return }
@@ -1948,10 +2023,11 @@ final class UsageStore: ObservableObject {
                 self.syncProfiles()
                 self.warmingProfileID = nil
                 if succeeded {
-                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送「你好」，正在确认窗口是否开始…"
+                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，正在确认窗口是否开始…"
                     self.refreshProfileAfterWarmUp(profile)
                 } else {
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败；不会自动重试，请稍后点刷新"
+                    self.scheduleWarmUpTimer()
                 }
             }
         } catch {
@@ -1959,6 +2035,7 @@ final class UsageStore: ObservableObject {
             syncProfiles()
             warmingProfileID = nil
             accountManagerMessage = "暖号启动失败：\(error.localizedDescription)；不会自动重试"
+            scheduleWarmUpTimer()
         }
     }
 
@@ -1980,20 +2057,23 @@ final class UsageStore: ObservableObject {
         warmUpTimer?.invalidate()
         warmUpTimer = nil
         guard warmUpSelection.isEnabled, hasStarted, warmingProfileID == nil else { return }
-        guard let schedule = nextScheduledWarmUp() else { return }
-        let timer = Timer(fire: schedule.fireAt, interval: 0, repeats: false) { [weak self] _ in
+        if let profile = nextDueWarmUpProfile() {
+            performWarmUp(profile)
+            return
+        }
+        guard let fireAt = nextScheduledWarmUp() else { return }
+        let timer = Timer(fire: fireAt, interval: 0, repeats: false) { [weak self] _ in
             guard let self else { return }
             self.warmUpTimer = nil
-            guard let profile = self.profiles.first(where: { $0.id == schedule.profileID }) else { return }
-            self.performWarmUp(profile)
+            self.refreshWarmUpProfilesThenSchedule()
         }
-        timer.tolerance = schedule.fireAt.timeIntervalSinceNow < 30 ? 1 : 2
+        timer.tolerance = fireAt.timeIntervalSinceNow < 30 ? 1 : 2
         RunLoop.main.add(timer, forMode: .common)
         warmUpTimer = timer
     }
 
-    private func nextScheduledWarmUp(now: Date = Date()) -> (profileID: String, fireAt: Date)? {
-        CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> (String, Date)? in
+    private func nextScheduledWarmUp(now: Date = Date()) -> Date? {
+        CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> Date? in
             let dates = group.compactMap {
                 CodexWarmUpPolicy.nextScheduledResetDate(
                     for: $0,
@@ -2002,9 +2082,8 @@ final class UsageStore: ObservableObject {
                 )
             }
             guard dates.count == group.count else { return nil }
-            let profile = group.first { $0.id == selectedMonitorProfileID } ?? group[0]
-            return (profile.id, dates.max()!)
-        }.min { $0.1 < $1.1 }
+            return dates.max()
+        }.min()
     }
 
     private func noteUnexpectedWarmUpResets(previous: CodexProfile, current: UsageSnapshot) {
@@ -2064,7 +2143,7 @@ final class UsageStore: ObservableObject {
                 let stillIdle = (self.warmUpSelection.fiveHour && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.fiveHour))
                     || (self.warmUpSelection.sevenDay && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.sevenDay))
                 if stillIdle {
-                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送「你好」，官方尚未出现新窗口；不会自动重试"
+                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，官方尚未出现新窗口；不会自动重试"
                 } else {
                     let resetTexts = [
                         self.warmUpSelection.fiveHour ? updated.lastSnapshot?.fiveHour?.resetsAt.map { "5 小时重置 " + $0.formatted(.dateTime.month().day().hour().minute()) } : nil,
@@ -2077,6 +2156,43 @@ final class UsageStore: ObservableObject {
                 if profile.id == self.selectedMonitorProfileID {
                     self.refresh(queueIfBusy: true)
                 }
+                self.scheduleWarmUpTimer()
+            }
+        }
+    }
+
+    private func refreshWarmUpProfilesThenSchedule() {
+        warmUpTimer?.invalidate()
+        warmUpTimer = nil
+        guard warmUpSelection.isEnabled,
+              hasStarted,
+              !isRefreshingWarmUpProfiles,
+              warmingProfileID == nil,
+              !isLoggingIn,
+              !isLaunchingCodex,
+              !isAccountSwitchTransactionActive,
+              !isEvaluatingAutomaticAccountSwitch
+        else { return }
+        let profiles = profiles
+        let preference = statisticsPreference
+        isRefreshingWarmUpProfiles = true
+        DispatchQueue.global(qos: .utility).async {
+            let snapshots = profiles.map { profile in
+                let context = RuntimeLoadContext.live(
+                    statisticsPreference: preference,
+                    codexHomeDirectory: profile.codexHomeURL
+                )
+                return (profile.id, CodexUsageReader().load(context: context))
+            }
+            DispatchQueue.main.async {
+                self.isRefreshingWarmUpProfiles = false
+                guard self.hasStarted else { return }
+                for (profileID, snapshot) in snapshots {
+                    try? self.profileStore.record(snapshot, for: profileID)
+                }
+                self.syncProfiles()
+                self.runDueWarmUp()
+                self.scheduleWarmUpTimer()
             }
         }
     }
@@ -2171,10 +2287,10 @@ final class UsageStore: ObservableObject {
                 self?.codexInactiveSince = nil
                 self?.updateCodexForegroundState()
                 self?.taskClient.refreshThreads()
-                self?.scheduleWarmUpTimer()
+                self?.refreshWarmUpProfilesThenSchedule()
             }
         }
-        scheduleWarmUpTimer()
+        refreshWarmUpProfilesThenSchedule()
     }
 
     private func refreshStaleOfficialProfiles() {
@@ -2208,6 +2324,7 @@ final class UsageStore: ObservableObject {
         statisticsFeedbackTimer?.invalidate()
         warmUpTimer?.invalidate()
         warmUpTimer = nil
+        isRefreshingWarmUpProfiles = false
         accountActions.cancelLogin()
         stopAuthMonitoring()
         if let wakeObserver {
@@ -2236,7 +2353,11 @@ final class UsageStore: ObservableObject {
     }
 
     func refresh(queueIfBusy: Bool = false) {
-        guard !isRefreshing else {
+        guard !isRefreshing,
+              !isLaunchingCodex,
+              !isAccountSwitchTransactionActive,
+              !isEvaluatingAutomaticAccountSwitch
+        else {
             if queueIfBusy { hasPendingRefresh = true }
             return
         }
@@ -2244,7 +2365,7 @@ final class UsageStore: ObservableObject {
         let generation = refreshGeneration
         let preference = statisticsPreference
         let profileID = selectedMonitorProfileID
-        let codexHomeDirectory = selectedMonitorProfile?.codexHomeURL
+        let codexHomeDirectory = profileStore.effectiveCredentialHome(for: profileID)
         ignoresAuthChangesUntil = Date().addingTimeInterval(5)
         isRefreshing = true
         let performanceSpan = PerformanceMonitor.shared.begin(.fullRefresh)
@@ -2587,8 +2708,9 @@ final class UsageStore: ObservableObject {
 
     @discardableResult
     private func captureCurrentProfile() -> Bool {
-        let credentialIdentity = selectedMonitorProfile.flatMap {
-            CodexOfficialProfileReader.credentialIdentity(codexHomeURL: $0.codexHomeURL)
+        let effectiveHome = profileStore.effectiveCredentialHome(for: selectedMonitorProfileID)
+        let credentialIdentity = effectiveHome.flatMap {
+            CodexOfficialProfileReader.credentialIdentity(codexHomeURL: $0)
         }
         if snapshot.quotaReadSucceeded,
            let profile = selectedMonitorProfile,
@@ -2602,6 +2724,11 @@ final class UsageStore: ObservableObject {
                 noteUnexpectedWarmUpResets(previous: profile, current: snapshot)
             }
             try profileStore.record(snapshot, for: selectedMonitorProfileID)
+            if let effectiveHome,
+               let systemHome = profiles.first(where: \.isSystemProfile)?.codexHomeURL,
+               effectiveHome.standardizedFileURL == systemHome.standardizedFileURL {
+                try profileStore.syncSystemAuthToMatchingManagedProfiles()
+            }
             syncProfiles()
             return true
         } catch {
@@ -2895,6 +3022,8 @@ final class CodexUsageReader {
     }
 
     private func readAppServer(context: RuntimeLoadContext, messages: inout [String]) -> AppServerSnapshot {
+        CodexCredentialAccessGate.lock.lock()
+        defer { CodexCredentialAccessGate.lock.unlock() }
         let performanceSpan = PerformanceMonitor.shared.begin(.appServerQuota)
         defer { PerformanceMonitor.shared.end(performanceSpan) }
         guard let codexPath = resolveCodexExecutablePath() else {
@@ -6854,8 +6983,8 @@ struct SettingsPanelView: View {
                     SettingsToggleRow(
                         title: language.text("5 小时暖号", "5-hour warm-up"),
                         detail: language.text(
-                            "手动刷新时检查，或按已知重置时间执行一次",
-                            "Check on manual refresh, or run once at the known reset time"
+                            "各账号按自己的重置时间串行执行；周额度不足时暂停",
+                            "Run accounts serially at their own reset times; pause on low weekly quota"
                         )
                     ) {
                         SettingsSwitchToggle(isOn: Binding(
@@ -6867,8 +6996,8 @@ struct SettingsPanelView: View {
                     SettingsToggleRow(
                         title: language.text("7 天暖号", "7-day warm-up"),
                         detail: language.text(
-                            "手动刷新时检查，或按已知重置时间执行一次",
-                            "Check on manual refresh, or run once at the known reset time"
+                            "各账号分别跟随自己的 7 天窗口",
+                            "Follow each account's own 7-day window"
                         )
                     ) {
                         SettingsSwitchToggle(isOn: Binding(
@@ -13084,6 +13213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
         store.start()
+        if let argumentIndex = CommandLine.arguments.firstIndex(of: "--switch-profile-id"),
+           CommandLine.arguments.indices.contains(argumentIndex + 1) {
+            let profileID = CommandLine.arguments[argumentIndex + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                self?.store.launchCodex(with: profileID)
+            }
+        }
         PerformanceMonitor.shared.end(startupPerformanceSpan)
     }
 

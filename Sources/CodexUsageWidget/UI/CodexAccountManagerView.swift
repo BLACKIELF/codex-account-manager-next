@@ -423,8 +423,14 @@ struct CodexAccountManagerView: View {
                 }
                 .buttonStyle(.bordered)
                 .accessibilityValue(isEditingProfiles ? "编辑模式已开启" : "编辑模式已关闭")
-                Button {
-                    store.addProfile()
+                Menu {
+                    Button("账号专属 Chrome（推荐）") { store.addProfile() }
+                    if !store.availableChromeProfiles.isEmpty { Divider() }
+                    ForEach(store.availableChromeProfiles) { chromeProfile in
+                        Button(chromeProfile.displayName) {
+                            store.addProfile(using: chromeProfile)
+                        }
+                    }
                 } label: {
                     Label(store.isLoggingIn ? "登录中…" : "添加账号", systemImage: "plus")
                 }
@@ -435,7 +441,7 @@ struct CodexAccountManagerView: View {
             HStack(spacing: 12) {
                 Text("智能暖号")
                     .font(.caption.weight(.semibold))
-                Text("按已知重置时间执行一次；未知或提前重置时点刷新检查")
+                Text("按各账号自己的 5 小时与 7 天窗口轮流执行")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -446,14 +452,14 @@ struct CodexAccountManagerView: View {
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .help("打开后，按已知的 5 小时重置时间执行一次；时间未知或提前重置时，仅在你手动刷新后检查，不自动重试。")
+                .help("打开后，各账号按自己的 5 小时重置时间串行执行；7 天剩余额度不高于 5% 时暂停到周窗口重置。")
                 Toggle("7 天", isOn: Binding(
                     get: { store.warmUpSelection.sevenDay },
                     set: { store.setWarmUpSevenDayEnabled($0) }
                 ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                .help("打开后，按已知的 7 天重置时间执行一次；时间未知或提前重置时，仅在你手动刷新后检查，不自动重试。")
+                .help("打开后，各账号分别跟随自己的 7 天重置时间执行；失败不会自动重试。")
             }
 
             VStack(spacing: 9) {
@@ -477,6 +483,7 @@ struct CodexAccountManagerView: View {
                         warmUpStatus: linkedProfile == nil ? store.warmUpStatus(for: profile) : nil,
                         resetCount: store.resetCount(for: profile),
                         resetCardExpiry: store.resetCardExpiry(for: profile),
+                        chromeProfiles: store.availableChromeProfiles,
                         onMonitor: { store.selectMonitorProfile(profile.id) },
                         onRelogin: {
                             if linkedProfile != nil {
@@ -487,6 +494,7 @@ struct CodexAccountManagerView: View {
                         },
                         onLaunch: { store.launchCodex(with: profile.id) },
                         onRename: { store.setProfileRemark($0, for: profile.id) },
+                        onSetChromeProfile: { store.setChromeProfile($0, for: profile.id) },
                         onMoveUp: {
                             let target = presentedProfiles[index - 1]
                             store.moveProfile(profile.id, relativeTo: target.id, before: true)
@@ -1833,10 +1841,12 @@ private struct ProfileRow: View {
     let warmUpStatus: String?
     let resetCount: Int
     var resetCardExpiry: Date? = nil
+    let chromeProfiles: [ChromeProfileBinding]
     let onMonitor: () -> Void
     let onRelogin: () -> Void
     let onLaunch: () -> Void
     let onRename: (String) -> Void
+    let onSetChromeProfile: (ChromeProfileBinding?) -> Void
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
     let onDelete: () -> Void
@@ -1981,6 +1991,19 @@ private struct ProfileRow: View {
                         .buttonStyle(.bordered)
                         .disabled(isLoggingIn || isLaunching)
                 }
+                Menu {
+                    Button("自动匹配 / 账号专属") { onSetChromeProfile(nil) }
+                    if !chromeProfiles.isEmpty { Divider() }
+                    ForEach(chromeProfiles) { chromeProfile in
+                        Button(chromeProfile.displayName) { onSetChromeProfile(chromeProfile) }
+                    }
+                } label: {
+                    Label(profile.chromeProfile?.displayName ?? "Chrome 专属", systemImage: "person.crop.circle")
+                        .lineLimit(1)
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("首次登录或重新认证时使用；平时切号不会打开浏览器")
                 VStack(spacing: 4) {
                     Text("重置 \(resetCount)")
                         .font(.caption2.weight(.semibold).monospacedDigit())

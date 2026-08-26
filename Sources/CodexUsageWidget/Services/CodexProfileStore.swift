@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 
 struct CodexQuotaWindowSnapshot: Codable, Equatable {
@@ -58,6 +57,33 @@ struct CodexCredentialIdentity: Equatable {
     let accountID: String
 }
 
+struct ChromeProfileBinding: Codable, Equatable, Hashable, Identifiable {
+    let directoryName: String
+    let displayName: String
+
+    var id: String { directoryName }
+
+    init?(directoryName: String, displayName: String) {
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Self.isSafeDirectoryName(directoryName), !name.isEmpty else { return nil }
+        self.directoryName = directoryName
+        self.displayName = String(name.prefix(60))
+    }
+
+    var isValid: Bool {
+        Self.isSafeDirectoryName(directoryName)
+            && !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && displayName.count <= 60
+    }
+
+    private static func isSafeDirectoryName(_ value: String) -> Bool {
+        if value == "Default" { return true }
+        guard value.hasPrefix("Profile ") else { return false }
+        let suffix = value.dropFirst("Profile ".count)
+        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
+    }
+}
+
 struct CodexOfficialProfileSnapshot: Codable, Equatable {
     let accountEmail: String?
     let displayName: String?
@@ -81,6 +107,7 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var officialProfile: CodexOfficialProfileSnapshot? = nil
     var lastWarmUpAt: Date? = nil
     var lastWarmUpSucceeded: Bool? = nil
+    var chromeProfile: ChromeProfileBinding? = nil
 
     var codexHomeURL: URL {
         URL(fileURLWithPath: codexHomePath, isDirectory: true)
@@ -152,6 +179,7 @@ enum CodexWarmUpPolicy {
     static let failureRetryInterval: TimeInterval = 30 * 60
     static let resetGrace: TimeInterval = 8
     static let windowStartRetryInterval: TimeInterval = 45
+    static let maximumQuotaAge: TimeInterval = 15 * 60
     static let idleUsedPercentThreshold = 0.5
     static let unexpectedResetDrop = 8.0
     static let minimumWeeklyRemaining = 5.0
@@ -261,8 +289,17 @@ enum CodexWarmUpPolicy {
         unexpected: Set<CodexWarmUpWindowKind> = [],
         now: Date = Date()
     ) -> Bool {
-        nextEligibleDate(for: profile, selection: selection, unexpected: unexpected, now: now)
+        guard hasFreshQuotaEvidence(profile, now: now) else { return false }
+        return nextEligibleDate(for: profile, selection: selection, unexpected: unexpected, now: now)
             .map { $0 <= now } ?? false
+    }
+
+    static func hasFreshQuotaEvidence(_ profile: CodexProfile, now: Date = Date()) -> Bool {
+        guard let snapshot = profile.lastSnapshot,
+              snapshot.email?.isEmpty == false
+        else { return false }
+        let age = now.timeIntervalSince(snapshot.fetchedAt)
+        return age >= -60 && age <= maximumQuotaAge
     }
 
     static func nextScheduledResetDate(
@@ -276,11 +313,14 @@ enum CodexWarmUpPolicy {
         else { return nil }
 
         var dates: [Date] = []
-        if selection.fiveHour,
-           !shouldSkipFiveHourToProtectWeekly(profile, now: now),
-           let resetsAt = profile.lastSnapshot?.fiveHour?.resetsAt,
-           resetsAt > now {
-            dates.append(resetsAt.addingTimeInterval(resetGrace))
+        if selection.fiveHour {
+            if shouldSkipFiveHourToProtectWeekly(profile, now: now) {
+                if let resetsAt = profile.lastSnapshot?.sevenDay?.resetsAt, resetsAt > now {
+                    dates.append(resetsAt.addingTimeInterval(resetGrace))
+                }
+            } else if let resetsAt = profile.lastSnapshot?.fiveHour?.resetsAt, resetsAt > now {
+                dates.append(resetsAt.addingTimeInterval(resetGrace))
+            }
         }
         if selection.sevenDay,
            let resetsAt = profile.lastSnapshot?.sevenDay?.resetsAt,
@@ -586,7 +626,10 @@ final class CodexProfileStore {
         state.profiles.first { $0.id == state.selectedMonitorProfileID } ?? state.profiles[0]
     }
 
-    func addManagedProfile(copyingRemarkFrom sourceProfileID: String? = nil) throws -> CodexProfile {
+    func addManagedProfile(
+        copyingRemarkFrom sourceProfileID: String? = nil,
+        chromeProfile: ChromeProfileBinding? = nil
+    ) throws -> CodexProfile {
         let id = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(12)).lowercased()
         let home = managedRootURL.appendingPathComponent(id, isDirectory: true)
         try fileManager.createDirectory(
@@ -604,7 +647,8 @@ final class CodexProfileStore {
             codexHomePath: home.path,
             isSystemProfile: false,
             createdAt: Date(),
-            lastSnapshot: nil
+            lastSnapshot: nil,
+            chromeProfile: chromeProfile
         )
         if let sourceProfileID,
            let sourceIndex = state.profiles.firstIndex(where: { $0.id == sourceProfileID }) {
@@ -619,8 +663,7 @@ final class CodexProfileStore {
     @discardableResult
     func preserveSystemLogin(
         expectedEmail: String? = nil,
-        expectedAccountID: String? = nil,
-        expectedAuthFingerprint: Data? = nil
+        expectedAccountID: String? = nil
     ) throws -> CodexProfile {
         guard let systemIndex = state.profiles.firstIndex(where: \.isSystemProfile) else {
             throw CocoaError(.fileReadCorruptFile)
@@ -657,15 +700,6 @@ final class CodexProfileStore {
                 userInfo: [NSLocalizedDescriptionKey: "当前 Codex 凭据身份与系统账号记录不一致"]
             )
         }
-        if let expectedAuthFingerprint {
-            guard Data(SHA256.hash(data: authData)) == expectedAuthFingerprint else {
-                throw NSError(
-                    domain: "CodexAccountManagerNext.ProfileStore",
-                    code: 3,
-                    userInfo: [NSLocalizedDescriptionKey: "保存前当前 Codex 凭据已变化"]
-                )
-            }
-        }
         let boundSnapshot = system.lastSnapshot.map { Self.snapshot($0, accountID: boundAccountID) }
         if let existing = state.profiles.first(where: {
             !$0.isSystemProfile
@@ -689,7 +723,8 @@ final class CodexProfileStore {
             lastSnapshot: boundSnapshot,
             officialProfile: system.officialProfile,
             lastWarmUpAt: system.lastWarmUpAt,
-            lastWarmUpSucceeded: system.lastWarmUpSucceeded
+            lastWarmUpSucceeded: system.lastWarmUpSucceeded,
+            chromeProfile: system.chromeProfile
         )
         do {
             try writeAuth(authData, to: home)
@@ -735,6 +770,23 @@ final class CodexProfileStore {
         let trimmed = remark.trimmingCharacters(in: .whitespacesAndNewlines)
         state.profiles[index].remark = trimmed.isEmpty ? nil : String(trimmed.prefix(40))
         try save()
+    }
+
+    func setChromeProfile(_ binding: ChromeProfileBinding?, for id: String) throws {
+        guard let index = state.profiles.firstIndex(where: { $0.id == id }) else { return }
+        guard binding?.isValid != false else { throw CocoaError(.validationMissingMandatoryProperty) }
+        state.profiles[index].chromeProfile = binding
+        try save()
+    }
+
+    func effectiveCredentialHome(for profileID: String) -> URL? {
+        guard let profile = state.profiles.first(where: { $0.id == profileID }) else { return nil }
+        guard !profile.isSystemProfile,
+              let system = state.profiles.first(where: \.isSystemProfile),
+              let identity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: system.codexHomeURL),
+              profile.matchesRecordedCredential(identity)
+        else { return profile.codexHomeURL }
+        return system.codexHomeURL
     }
 
     func moveProfile(_ id: String, relativeTo targetID: String, before: Bool) throws {
@@ -785,6 +837,11 @@ final class CodexProfileStore {
             state.profiles[index].lastWarmUpSucceeded = nil
             if state.profiles[index].isSystemProfile {
                 state.profiles[index].remark = nil
+                state.profiles[index].chromeProfile = state.profiles.first {
+                    !$0.isSystemProfile
+                        && $0.matchesRecordedAccount(email: snapshot.account?.email)
+                        && ($0.lastSnapshot?.accountID == nil || $0.lastSnapshot?.accountID == verifiedAccountID)
+                }?.chromeProfile
             }
         }
         let record = CodexAccountSnapshot(
@@ -1061,7 +1118,8 @@ final class CodexProfileStore {
         let root = managedRoot.standardizedFileURL.path + "/"
         return state.profiles.allSatisfy { profile in
             let path = profile.codexHomeURL.standardizedFileURL.path
-            return profile.isSystemProfile ? path == systemPath : path.hasPrefix(root)
+            let homeIsValid = profile.isSystemProfile ? path == systemPath : path.hasPrefix(root)
+            return homeIsValid && profile.chromeProfile?.isValid != false
         }
     }
 }
@@ -1116,6 +1174,11 @@ enum CodexProfileStoreSelfTest {
             try first.recordOfficialProfile(official, for: added.id)
             try first.recordWarmUp(at: Date(timeIntervalSince1970: 360), succeeded: true, for: added.id)
             try first.setRemark(" 工作账号 ", for: added.id)
+            guard let chromeProfile = ChromeProfileBinding(directoryName: "Profile 2", displayName: "工作") else {
+                print("Codex profile store self-test failed: Chrome profile validation")
+                return false
+            }
+            try first.setChromeProfile(chromeProfile, for: added.id)
             try first.record(managedSnapshot, for: added.id)
             try first.record(firstSnapshot, for: "system")
             try first.record(secondSnapshot, for: "system")
@@ -1175,6 +1238,7 @@ enum CodexProfileStoreSelfTest {
                   restored.profiles.first(where: { $0.id == added.id })?.remark == "工作账号",
                   restored.profiles.first(where: { $0.id == added.id })?.officialProfile == official,
                   restored.profiles.first(where: { $0.id == added.id })?.lastWarmUpSucceeded == true,
+                  restored.profiles.first(where: { $0.id == added.id })?.chromeProfile == chromeProfile,
                   restored.profiles[0].matchesRecordedAccount(email: "FIRST@example.com"),
                   !restored.profiles[0].matchesRecordedAccount(email: "other@example.com"),
                   CodexProfile.groupsByRecordedAccount([
@@ -1210,7 +1274,9 @@ enum CodexProfileStoreSelfTest {
                   preserved.lastSnapshot?.accountID == "acct-first",
                   preservedAuth == systemAuth,
                   preservedAgain.id == preserved.id,
-                  reordered.profiles.count == 3
+                  reordered.profiles.count == 3,
+                  reordered.effectiveCredentialHome(for: preserved.id)?.standardizedFileURL
+                    == systemHome.standardizedFileURL
             else {
                 print("Codex profile store self-test failed: preserve system login")
                 return false
@@ -1414,9 +1480,27 @@ enum CodexProfileStoreSelfTest {
                 print("Codex profile store self-test failed: 5-hour switch pauses when weekly remaining is low")
                 return false
             }
+            guard CodexWarmUpPolicy.nextScheduledResetDate(
+                for: lowWeekly,
+                selection: fiveHourOnly,
+                now: now
+            ) == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+                print("Codex profile store self-test failed: 5-hour warm-up resumes at its own weekly reset")
+                return false
+            }
             guard CodexWarmUpPolicy.nextEligibleDate(for: lowWeekly, selection: sevenDayOnly, now: now)
                     == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
                 print("Codex profile store self-test failed: 7-day switch still waits when remaining is low")
+                return false
+            }
+            guard CodexWarmUpPolicy.hasFreshQuotaEvidence(idleWeek, now: now),
+                  !CodexWarmUpPolicy.isDue(
+                    idleWeek,
+                    selection: fiveHourOnly,
+                    now: now.addingTimeInterval(CodexWarmUpPolicy.maximumQuotaAge + 1)
+                  )
+            else {
+                print("Codex profile store self-test failed: stale quota evidence must block warm-up")
                 return false
             }
             policyProfile.lastWarmUpAt = Date(timeIntervalSince1970: 1_000)
