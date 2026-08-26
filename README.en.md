@@ -1,4 +1,4 @@
-# Codex Account Manager Next 0824v1
+# Codex Account Manager Next 0826v1
 
 [中文](README.md) | **English**
 
@@ -6,11 +6,13 @@ A local-first macOS control center for Codex accounts, quota, tasks, and local u
 
 > This is an unofficial project. Automatic switching replaces the active `~/.codex/auth.json` and restarts Codex. Both automation features are disabled by default and require explicit opt-in.
 
-## Automatic switching below 10%
+![Sanitized 0826v1 settings interface](docs/screenshot-0826v1-settings.png)
+
+## Automatic switching at the safe threshold
 
 A switch is allowed only when every guard passes:
 
-- An official 5-hour or 7-day window is strictly below `10%`; exactly `10%` does not trigger.
+- The official 5-hour window has `<= 5%` remaining, or the 7-day window has `< 10%` remaining.
 - The live task connection is online and at most 45 seconds old, with no running or waiting-for-input realtime task.
 - Codex has been out of the foreground for at least two minutes, and the legacy account manager is not running.
 - Each candidate is verified in realtime through its own `CODEX_HOME`, and has at least `30%` remaining in every triggering window.
@@ -32,7 +34,8 @@ Manual and automatic switches share one safety path: email plus stable `chatgpt_
 - Menu-bar quota rings, main window, status density, optional global shortcut, light/dark palettes, and accessibility basics.
 - Today tasks, automations, session opening, and local Codex token, cost, trend, project, and Skill statistics.
 - Local inference performance and AI leadership views; CC Switch remains read-only.
-- Warm-up is now a one-shot schedule after an explicit manual refresh, with no automatic retry after startup, wake, or failure.
+- Each account follows its own 5-hour and 7-day warm-up schedule. A successful warm-up is throttled for the corresponding window; failures are not retried automatically.
+- Accounts excluded from automatic switching still keep the 7-day warm-up and official unexpected-reset warm-up.
 - Existing macOS release tooling and the Windows Tauri workspace remain in the repository.
 
 ## Isolation from the legacy app
@@ -58,12 +61,13 @@ build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-
 build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-automation-audit
 ```
 
-The release artifact is named `CodexAccountManagerNext-8.24.1-mac-arm64.dmg`. `make run`, `make probe`, a real account switch, and a real Feishu send access local or external state and must be invoked explicitly in a trusted environment.
+`make run`, `make probe`, a real account switch, and a real Feishu send access local or external state and must be invoked explicitly in a trusted environment.
 
 ## Version and provenance
 
-- Release: `0824v1`
-- Bundle version: `8.24.1 (1)`
+- Release: `0826v1`
+- Bundle version: `8.26.1 (2)`
+- Detailed implementation and verification: [docs/0826v1-IMPLEMENTATION.md](docs/0826v1-IMPLEMENTATION.md)
 - Direct baseline: the current working tree of Codex Account Manager 0818v1
 - Upstream: a SwiftUI project derived from [codexU](https://github.com/shanggqm/codexU)
 - Reference research: [docs/REFERENCE_IMPLEMENTATIONS.md](docs/REFERENCE_IMPLEMENTATIONS.md)

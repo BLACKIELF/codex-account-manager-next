@@ -35,10 +35,15 @@ struct AutomaticSwitchQuotaState: Equatable {
         }
     }
 
-    func triggeredWindows(threshold: Double = CodexAutomaticSwitchPolicy.triggerRemainingPercent) -> [AutomaticQuotaWindow] {
+    func triggeredWindows() -> [AutomaticQuotaWindow] {
         AutomaticQuotaWindow.allCases.filter { window in
             guard let remaining = remaining(for: window) else { return false }
-            return remaining < threshold
+            switch window {
+            case .fiveHour:
+                return remaining <= CodexAutomaticSwitchPolicy.fiveHourTriggerRemainingPercent
+            case .sevenDay:
+                return remaining < CodexAutomaticSwitchPolicy.sevenDayTriggerRemainingPercent
+            }
         }
     }
 
@@ -57,7 +62,8 @@ enum CodexAutomaticSwitchPolicy {
     static let enabledDefaultsKey = "CodexManagerNext.automaticAccountSwitch.enabled"
     static let lastAttemptDefaultsKey = "CodexManagerNext.automaticAccountSwitch.lastAttemptAt"
     static let lastSuccessDefaultsKey = "CodexManagerNext.automaticAccountSwitch.lastSucceededAt"
-    static let triggerRemainingPercent = 10.0
+    static let fiveHourTriggerRemainingPercent = 5.0
+    static let sevenDayTriggerRemainingPercent = 10.0
     static let minimumCandidateRemainingPercent = 30.0
     static let failureRetryInterval: TimeInterval = 60 * 60
     static let successCooldown: TimeInterval = 30 * 60
@@ -179,8 +185,10 @@ enum CodexAutomaticSwitchPolicySelfTest {
             ],
             refreshedAt: now
         )
-        let low = AutomaticSwitchQuotaState(fiveHourRemaining: 9, sevenDayRemaining: 55)
-        let exactThreshold = AutomaticSwitchQuotaState(fiveHourRemaining: 10, sevenDayRemaining: 55)
+        let low = AutomaticSwitchQuotaState(fiveHourRemaining: 5, sevenDayRemaining: 55)
+        let aboveFiveHourThreshold = AutomaticSwitchQuotaState(fiveHourRemaining: 5.01, sevenDayRemaining: 55)
+        let lowSevenDay = AutomaticSwitchQuotaState(fiveHourRemaining: 90, sevenDayRemaining: 9)
+        let exactSevenDayThreshold = AutomaticSwitchQuotaState(fiveHourRemaining: 90, sevenDayRemaining: 10)
         let safeSince = now.addingTimeInterval(-CodexAutomaticSwitchPolicy.codexInactivePeriod)
         let selected = CodexAutomaticSwitchPolicy.preferredCandidate([
             .init(profileID: "first", quota: .init(fiveHourRemaining: 65, sevenDayRemaining: 80)),
@@ -216,7 +224,29 @@ enum CodexAutomaticSwitchPolicySelfTest {
         ),
         !CodexAutomaticSwitchPolicy.shouldEvaluate(
             enabled: true,
-            sourceQuota: exactThreshold,
+            sourceQuota: aboveFiveHourThreshold,
+            sourceRefreshedAt: now,
+            taskSnapshot: idle,
+            codexInactiveSince: safeSince,
+            legacyManagerRunning: false,
+            lastAttemptAt: nil,
+            lastSucceededAt: nil,
+            now: now
+        ),
+        CodexAutomaticSwitchPolicy.shouldEvaluate(
+            enabled: true,
+            sourceQuota: lowSevenDay,
+            sourceRefreshedAt: now,
+            taskSnapshot: idle,
+            codexInactiveSince: safeSince,
+            legacyManagerRunning: false,
+            lastAttemptAt: nil,
+            lastSucceededAt: nil,
+            now: now
+        ),
+        !CodexAutomaticSwitchPolicy.shouldEvaluate(
+            enabled: true,
+            sourceQuota: exactSevenDayThreshold,
             sourceRefreshedAt: now,
             taskSnapshot: idle,
             codexInactiveSince: safeSince,

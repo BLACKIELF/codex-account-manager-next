@@ -1,5 +1,22 @@
 # Changelog
 
+## 8.26.1 / 0826v1 - 2026-08-26
+
+- 自动切换阈值调整为 5 小时剩余 `<= 5%`、7 天剩余 `< 10%`；候选账号对应触发窗口仍需 `>= 30%`。
+- 每个账号新增“参与自动切换”范围开关；关闭后不会消耗其自动切换额度，但继续参与 7 天暖号与官方随机重置暖号。
+- 手动卡片按钮、菜单栏按钮、自动切换和命令行验收入口统一复用同一条身份、锁、原子写入、校验、回滚与恢复路径；当前账号按钮改为不可重复点击。
+- 5 小时与 7 天暖号分别按自己的成功间隔节流；修复窗口状态未知时短间隔重复执行的问题。
+- 官方账号累计与本机全 Agent 累计采用持久化高水位，切换账号或短暂缺失统计时不再倒退。
+- Pro 账号可手动标记 `5x` 或 `20x`，只影响显示，不参与额度和切换判断。
+- 重排账号卡和设置页信息层级，使用原生菜单、图标分区与 Next 品牌标识；新增不读取账号数据的可重复文档截图入口。
+
+### English
+
+- Automatic switching now triggers at `<= 5%` remaining for the 5-hour window or `< 10%` for the 7-day window; candidates still require at least `30%` in each triggered window.
+- Added per-account automatic-switch participation while preserving 7-day and unexpected-reset warm-ups for excluded accounts.
+- Unified manual, menu, automatic, and CLI switching through the existing verified transaction path and disabled the action for the current account.
+- Added per-window warm-up throttling, monotonic lifetime totals, optional Pro `5x`/`20x` labels, refreshed account/settings layouts, and a privacy-safe documentation screenshot renderer.
+
 ## 8.24.1 / 0824v1 - 2026-08-24
 
 - 新增默认关闭的低额度自动切换：官方 5 小时或 7 天窗口严格低于 10% 才评估；候选账号必须实时验证身份，并在全部触发窗口不少于 30%。

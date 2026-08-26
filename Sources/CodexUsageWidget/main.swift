@@ -763,6 +763,8 @@ final class UsageStore: ObservableObject {
     }
 
     private static let feishuNotificationsEnabledKey = "CodexManagerNext.feishuNotifications.enabled"
+    private static let officialLifetimeHighWaterKey = "CodexManagerNext.tokens.officialLifetimeHighWater"
+    private static let localLifetimeHighWaterKey = "CodexManagerNext.tokens.localLifetimeHighWater"
 
     @Published var snapshot: UsageSnapshot = .empty
     @Published var multiRuntimeSnapshot: MultiRuntimeUsageSnapshot = .empty
@@ -777,6 +779,8 @@ final class UsageStore: ObservableObject {
     @Published private(set) var codexLiveTasks: CodexTaskLiveSnapshot = .disconnected
     @Published private(set) var taskFocusRequest: TaskFocusRequest?
     @Published private(set) var profiles: [CodexProfile]
+    @Published private(set) var officialAccountsLifetimeTokens: Int64?
+    @Published private(set) var localAllAgentsLifetimeTokens: Int64?
     @Published private(set) var selectedMonitorProfileID: String
     @Published private(set) var selectedLaunchProfileID: String
     @Published private(set) var accountManagerMessage: String? {
@@ -846,6 +850,14 @@ final class UsageStore: ObservableObject {
         try? profileStore.discardUnverifiedManagedProfiles()
         self.profileStore = profileStore
         profiles = profileStore.profiles
+        officialAccountsLifetimeTokens = Self.persistedHighWater(
+            forKey: Self.officialLifetimeHighWaterKey,
+            observed: Self.observedOfficialLifetimeTokens(in: profileStore.profiles)
+        )
+        localAllAgentsLifetimeTokens = Self.persistedHighWater(
+            forKey: Self.localLifetimeHighWaterKey,
+            observed: nil
+        )
         selectedMonitorProfileID = profileStore.selectedMonitorProfileID
         selectedLaunchProfileID = profileStore.selectedLaunchProfileID
         automationEvents = automationAuditStore.load()
@@ -1071,6 +1083,37 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    func automaticSwitchParticipation(for profile: CodexProfile) -> Bool {
+        automaticSwitchParticipation(for: profile.id)
+    }
+
+    private func automaticSwitchParticipation(for profileID: String) -> Bool {
+        CodexProfile.participatesInAutomaticSwitch(profileID, among: profiles)
+    }
+
+    func setAutomaticSwitchParticipation(_ enabled: Bool, for id: String) {
+        do {
+            try profileStore.setAutomaticSwitchParticipation(enabled, for: id)
+            syncProfiles()
+            accountManagerMessage = enabled
+                ? "该账号已加入自动切换范围"
+                : "该账号已排除自动切换；仅保留 7 天与官方随机重置暖号"
+            refreshWarmUpProfilesThenSchedule()
+        } catch {
+            accountManagerMessage = "自动切换范围保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func setProTierMultiplier(_ multiplier: Int?, for id: String) {
+        do {
+            try profileStore.setProTierMultiplier(multiplier, for: id)
+            syncProfiles()
+            accountManagerMessage = multiplier.map { "Pro 档位已设为 \($0)x" } ?? "Pro 档位已恢复为未指定"
+        } catch {
+            accountManagerMessage = "Pro 档位保存失败：\(error.localizedDescription)"
+        }
+    }
+
     func setChromeProfile(_ binding: ChromeProfileBinding?, for id: String) {
         do {
             try profileStore.setChromeProfile(binding, for: id)
@@ -1223,6 +1266,20 @@ final class UsageStore: ObservableObject {
             .runningApplications(withBundleIdentifier: "local.codex.account-manager")
             .isEmpty
         let isAutomaticSwitch = automaticSwitchTargetID == profileID
+        let isWithinAutomaticSwitchScope = automaticSwitchParticipation(for: profileID)
+            && automaticSwitchContext.map {
+                automaticSwitchParticipation(for: $0.sourceProfileID)
+            } == true
+        guard !isAutomaticSwitch || isWithinAutomaticSwitchScope else {
+            accountManagerMessage = "自动切换已取消：账号已被排除自动切换范围"
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .validationFailed,
+                detail: "源账号或目标账号已被排除自动切换范围"
+            )
+            return
+        }
         guard !isAutomaticSwitch || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
             codexLiveTasks,
             legacyManagerRunning: legacyManagerRunning
@@ -1315,6 +1372,8 @@ final class UsageStore: ObservableObject {
                         .isEmpty
                     guard let context = self.automaticSwitchContext,
                           self.automaticAccountSwitchEnabled,
+                          self.automaticSwitchParticipation(for: profileID),
+                          self.automaticSwitchParticipation(for: context.sourceProfileID),
                           context.sourceProfileID == self.selectedMonitorProfileID,
                           currentEmail == context.sourceIdentityKey,
                           currentSystemCredentialIdentity?.accountID == context.sourceAccountID,
@@ -1402,7 +1461,10 @@ final class UsageStore: ObservableObject {
                     return
                 }
                 if isAutomaticSwitch {
-                    guard self.automaticAccountSwitchEnabled,
+                    guard let context = self.automaticSwitchContext,
+                          self.automaticAccountSwitchEnabled,
+                          self.automaticSwitchParticipation(for: profileID),
+                          self.automaticSwitchParticipation(for: context.sourceProfileID),
                           CodexAutomaticSwitchPolicy.hasSafeTaskState(
                               self.codexLiveTasks,
                               codexInactiveSince: self.codexInactiveSince,
@@ -1503,7 +1565,7 @@ final class UsageStore: ObservableObject {
             updateCodexForegroundState()
             taskClient.start(reason: .startup)
             taskClient.refreshThreads()
-            accountManagerMessage = "安全自动切换已开启；任一官方窗口严格低于 10% 才会执行"
+            accountManagerMessage = "安全自动切换已开启；5 小时剩余 ≤5% 或 7 天剩余 <10% 时评估"
             refresh(queueIfBusy: true)
         } else {
             taskClient.stop()
@@ -1583,7 +1645,8 @@ final class UsageStore: ObservableObject {
               let sourceAccountID = sourceProfile.lastSnapshot?.accountID,
               systemProfile.lastSnapshot?.accountID == sourceAccountID,
               sourceProfile.recordedAccountKey == sourceEmail,
-              systemProfile.recordedAccountKey == sourceEmail
+              systemProfile.recordedAccountKey == sourceEmail,
+              automaticSwitchParticipation(for: sourceProfile)
         else { return }
 
         let now = Date()
@@ -1607,6 +1670,7 @@ final class UsageStore: ObservableObject {
         defaults.set(now, forKey: CodexAutomaticSwitchPolicy.lastAttemptDefaultsKey)
         let candidates = profiles.filter { profile in
             !profile.isSystemProfile
+                && automaticSwitchParticipation(for: profile)
                 && profile.lastSnapshot?.accountID != sourceAccountID
                 && profile.lastSnapshot?.email?.isEmpty == false
                 && profile.lastSnapshot?.accountID?.isEmpty == false
@@ -1701,7 +1765,7 @@ final class UsageStore: ObservableObject {
                 let currentQuota = AutomaticSwitchQuotaState(snapshot: refreshedSourceSnapshot)
                 let triggeredWindows = currentQuota.triggeredWindows()
                 guard !triggeredWindows.isEmpty else {
-                    self.accountManagerMessage = "自动切换已取消：当前账号额度已恢复到 10% 或以上"
+                    self.accountManagerMessage = "自动切换已取消：当前账号额度已高于触发线"
                     return
                 }
                 guard let preferred = CodexAutomaticSwitchPolicy.preferredCandidate(
@@ -1719,7 +1783,9 @@ final class UsageStore: ObservableObject {
                     )
                     return
                 }
-                guard let targetProfile = self.profiles.first(where: { $0.id == preferred.profileID }),
+                guard self.automaticSwitchParticipation(for: sourceProfile.id),
+                      self.automaticSwitchParticipation(for: preferred.profileID),
+                      let targetProfile = self.profiles.first(where: { $0.id == preferred.profileID }),
                       targetProfile.lastSnapshot?.accountID?.isEmpty == false,
                       let sourceAccount = self.maskedAccount(for: sourceProfile),
                       let targetAccount = self.maskedAccount(for: targetProfile)
@@ -1847,7 +1913,7 @@ final class UsageStore: ObservableObject {
                 event: event,
                 sourceAccount: source,
                 targetAccount: target,
-                triggerThresholdPercent: Int(CodexAutomaticSwitchPolicy.triggerRemainingPercent),
+                triggerThresholdPercent: Int(CodexAutomaticSwitchPolicy.sevenDayTriggerRemainingPercent),
                 fiveHourRemainingPercent: quota.fiveHourRemaining.map { Int($0.rounded()) },
                 sevenDayRemainingPercent: quota.sevenDayRemaining.map { Int($0.rounded()) },
                 eventID: eventID
@@ -1955,6 +2021,17 @@ final class UsageStore: ObservableObject {
         refreshWarmUpProfilesThenSchedule()
     }
 
+    private func effectiveWarmUpSelection(
+        for profile: CodexProfile,
+        unexpected: Set<CodexWarmUpWindowKind> = []
+    ) -> CodexWarmUpSelection {
+        CodexWarmUpPolicy.effectiveSelection(
+            warmUpSelection,
+            participatesInAutomaticSwitch: automaticSwitchParticipation(for: profile),
+            unexpected: unexpected
+        )
+    }
+
     func warmUpStatus(for profile: CodexProfile) -> String? {
         if warmingProfileID == profile.id {
             return "正在发送最小请求，以开始已开启的额度窗口…"
@@ -1970,22 +2047,46 @@ final class UsageStore: ObservableObject {
         guard warmUpSelection.isEnabled else {
             return last.map { "智能暖号已关闭 · \($0)" }
         }
+        let selection = effectiveWarmUpSelection(for: profile)
         var parts = [last].compactMap { $0 }
-        if warmUpSelection.fiveHour {
+        if warmUpSelection.fiveHour, !selection.fiveHour {
+            parts.append("5 小时已排除 · 官方随机重置仍会暖号")
+        } else if selection.fiveHour {
             if CodexWarmUpPolicy.shouldSkipFiveHourToProtectWeekly(profile) {
                 parts.append("5 小时已暂停 · 7 天额度不足")
             } else {
-                parts.append(warmUpWindowStatus(label: "5 小时", window: profile.lastSnapshot?.fiveHour))
+                parts.append(warmUpWindowStatus(
+                    label: "5 小时",
+                    window: profile.lastSnapshot?.fiveHour,
+                    profile: profile,
+                    successfulInterval: CodexWarmUpPolicy.fiveHourSuccessInterval
+                ))
             }
         }
-        if warmUpSelection.sevenDay {
-            parts.append(warmUpWindowStatus(label: "7 天", window: profile.lastSnapshot?.sevenDay))
+        if selection.sevenDay {
+            parts.append(warmUpWindowStatus(
+                label: "7 天",
+                window: profile.lastSnapshot?.sevenDay,
+                profile: profile,
+                successfulInterval: CodexWarmUpPolicy.sevenDaySuccessInterval
+            ))
         }
         return parts.joined(separator: " · ")
     }
 
-    private func warmUpWindowStatus(label: String, window: CodexQuotaWindowSnapshot?) -> String {
+    private func warmUpWindowStatus(
+        label: String,
+        window: CodexQuotaWindowSnapshot?,
+        profile: CodexProfile,
+        successfulInterval: TimeInterval
+    ) -> String {
         if CodexWarmUpPolicy.isWindowIdle(window) {
+            if profile.lastWarmUpSucceeded == true, let lastWarmUpAt = profile.lastWarmUpAt {
+                let next = lastWarmUpAt.addingTimeInterval(successfulInterval)
+                if next > Date() {
+                    return "\(label)下次 " + next.formatted(.dateTime.month().day().hour().minute())
+                }
+            }
             return "\(label)等待额度刷新确认"
         }
         if let resetsAt = window?.resetsAt, resetsAt > Date() {
@@ -2000,6 +2101,7 @@ final class UsageStore: ObservableObject {
     }
 
     private func performWarmUp(_ profile: CodexProfile) {
+        let unexpected = unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
         guard warmUpSelection.isEnabled,
               warmingProfileID == nil,
               !isLoggingIn,
@@ -2008,8 +2110,8 @@ final class UsageStore: ObservableObject {
               !isEvaluatingAutomaticAccountSwitch,
               CodexWarmUpPolicy.isDue(
                 profile,
-                selection: warmUpSelection,
-                unexpected: unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
+                selection: effectiveWarmUpSelection(for: profile, unexpected: unexpected),
+                unexpected: unexpected
               ),
               profile.officialProfile?.subscriptionActiveUntil.map({ $0 > Date() }) ?? true
         else { return }
@@ -2042,10 +2144,11 @@ final class UsageStore: ObservableObject {
     private func nextDueWarmUpProfile(now: Date = Date()) -> CodexProfile? {
         CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> CodexProfile? in
             guard group.allSatisfy({
-                CodexWarmUpPolicy.isDue(
+                let unexpected = unexpectedWarmUpKindsByAccount[$0.recordedAccountKey] ?? []
+                return CodexWarmUpPolicy.isDue(
                     $0,
-                    selection: warmUpSelection,
-                    unexpected: unexpectedWarmUpKindsByAccount[$0.recordedAccountKey] ?? [],
+                    selection: effectiveWarmUpSelection(for: $0, unexpected: unexpected),
+                    unexpected: unexpected,
                     now: now
                 )
             }) else { return nil }
@@ -2074,12 +2177,25 @@ final class UsageStore: ObservableObject {
 
     private func nextScheduledWarmUp(now: Date = Date()) -> Date? {
         CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> Date? in
-            let dates = group.compactMap {
-                CodexWarmUpPolicy.nextScheduledResetDate(
-                    for: $0,
-                    selection: warmUpSelection,
-                    now: now
-                )
+            let dates = group.compactMap { profile -> Date? in
+                let unexpected = unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
+                let selection = effectiveWarmUpSelection(for: profile, unexpected: unexpected)
+                let successfulNext = profile.lastWarmUpSucceeded == true
+                    ? CodexWarmUpPolicy.nextEligibleDate(
+                        for: profile,
+                        selection: selection,
+                        unexpected: unexpected,
+                        now: now
+                    ).flatMap { $0 > now ? $0 : nil }
+                    : nil
+                return [
+                    successfulNext,
+                    CodexWarmUpPolicy.nextScheduledResetDate(
+                        for: profile,
+                        selection: selection,
+                        now: now
+                    )
+                ].compactMap { $0 }.min()
             }
             guard dates.count == group.count else { return nil }
             return dates.max()
@@ -2139,15 +2255,19 @@ final class UsageStore: ObservableObject {
                 try? self.profileStore.record(snapshot, for: profile.id)
                 self.syncProfiles()
                 let updated = self.profiles.first { $0.id == profile.id } ?? profile
+                let selection = self.effectiveWarmUpSelection(
+                    for: updated,
+                    unexpected: self.unexpectedWarmUpKindsByAccount[updated.recordedAccountKey] ?? []
+                )
                 self.clearResolvedUnexpectedWarmUp(for: updated)
-                let stillIdle = (self.warmUpSelection.fiveHour && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.fiveHour))
-                    || (self.warmUpSelection.sevenDay && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.sevenDay))
+                let stillIdle = (selection.fiveHour && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.fiveHour))
+                    || (selection.sevenDay && CodexWarmUpPolicy.isWindowIdle(updated.lastSnapshot?.sevenDay))
                 if stillIdle {
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，官方尚未出现新窗口；不会自动重试"
                 } else {
                     let resetTexts = [
-                        self.warmUpSelection.fiveHour ? updated.lastSnapshot?.fiveHour?.resetsAt.map { "5 小时重置 " + $0.formatted(.dateTime.month().day().hour().minute()) } : nil,
-                        self.warmUpSelection.sevenDay ? updated.lastSnapshot?.sevenDay?.resetsAt.map { "7 天重置 " + $0.formatted(.dateTime.month().day().hour().minute()) } : nil
+                        selection.fiveHour ? updated.lastSnapshot?.fiveHour?.resetsAt.map { "5 小时重置 " + $0.formatted(.dateTime.month().day().hour().minute()) } : nil,
+                        selection.sevenDay ? updated.lastSnapshot?.sevenDay?.resetsAt.map { "7 天重置 " + $0.formatted(.dateTime.month().day().hour().minute()) } : nil
                     ].compactMap { $0 }
                     self.accountManagerMessage = resetTexts.isEmpty
                         ? "\(AccountDisplay.profileName(profile)) 已开始额度窗口"
@@ -2188,6 +2308,11 @@ final class UsageStore: ObservableObject {
                 self.isRefreshingWarmUpProfiles = false
                 guard self.hasStarted else { return }
                 for (profileID, snapshot) in snapshots {
+                    if snapshot.quotaReadSucceeded,
+                       let previous = self.profiles.first(where: { $0.id == profileID }),
+                       previous.matchesRecordedAccount(email: snapshot.account?.email) {
+                        self.noteUnexpectedWarmUpResets(previous: previous, current: snapshot)
+                    }
                     try? self.profileStore.record(snapshot, for: profileID)
                 }
                 self.syncProfiles()
@@ -2560,6 +2685,7 @@ final class UsageStore: ObservableObject {
         let nextScope = visibleRuntimeScopes.contains(scope) ? scope : (visibleRuntimeScopes.first ?? scope)
         selectedRuntimeScope = nextScope
         snapshot = multiRuntimeSnapshot.displaySnapshot(for: nextScope)
+        updateLocalLifetimeHighWater()
     }
 
     func requestTaskFocus(scope: RuntimeScope, threadID: String?) {
@@ -2704,6 +2830,7 @@ final class UsageStore: ObservableObject {
         runtimeSnapshots = reconciledRuntimes
         selectedRuntimeScope = nextScope
         snapshot = reconciledSnapshot.displaySnapshot(for: nextScope)
+        updateLocalLifetimeHighWater()
     }
 
     @discardableResult
@@ -2739,8 +2866,33 @@ final class UsageStore: ObservableObject {
 
     private func syncProfiles() {
         profiles = profileStore.profiles
+        officialAccountsLifetimeTokens = Self.persistedHighWater(
+            forKey: Self.officialLifetimeHighWaterKey,
+            observed: Self.observedOfficialLifetimeTokens(in: profiles)
+        )
         selectedMonitorProfileID = profileStore.selectedMonitorProfileID
         selectedLaunchProfileID = profileStore.selectedLaunchProfileID
+    }
+
+    private func updateLocalLifetimeHighWater() {
+        localAllAgentsLifetimeTokens = Self.persistedHighWater(
+            forKey: Self.localLifetimeHighWaterKey,
+            observed: snapshot.local?.allAgentsLifetimeTokens ?? snapshot.local?.lifetimeTokens
+        )
+    }
+
+    private static func observedOfficialLifetimeTokens(in profiles: [CodexProfile]) -> Int64? {
+        let totals = CodexProfile.groupsByRecordedAccount(profiles).compactMap { group in
+            group.compactMap { $0.officialProfile?.lifetimeTokens }.max()
+        }
+        return totals.isEmpty ? nil : totals.reduce(0, +)
+    }
+
+    private static func persistedHighWater(forKey key: String, observed: Int64?) -> Int64? {
+        let stored = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value ?? 0
+        let locked = max(stored, observed ?? 0)
+        if locked > stored { UserDefaults.standard.set(locked, forKey: key) }
+        return locked > 0 ? locked : nil
     }
 
     private func clearDisplayedAccount() {
@@ -6909,7 +7061,8 @@ struct SettingsPanelView: View {
                 }
                 settingsSection(
                     title: language.text("通用", "General"),
-                    detail: language.text("界面偏好", "Interface")
+                    detail: language.text("界面偏好", "Interface"),
+                    symbol: "slider.horizontal.3"
                 ) {
                     SettingsPickerRow(
                         title: language.text("语言", "Language"),
@@ -7009,7 +7162,8 @@ struct SettingsPanelView: View {
 
                 settingsSection(
                     title: "Runtime",
-                    detail: language.text("展示范围", "Display")
+                    detail: language.text("展示范围", "Display"),
+                    symbol: "cpu"
                 ) {
                     SettingsPickerRow(
                         title: language.text("展示 Runtime", "Visible runtimes"),
@@ -7033,7 +7187,8 @@ struct SettingsPanelView: View {
 
                 settingsSection(
                     title: language.text("数据与统计", "Data & Statistics"),
-                    detail: language.text("自然日口径", "Calendar-day basis")
+                    detail: language.text("自然日口径", "Calendar-day basis"),
+                    symbol: "clock"
                 ) {
                     SettingsPickerRow(
                         title: language.text("统计时区", "Statistics time zone"),
@@ -7072,14 +7227,16 @@ struct SettingsPanelView: View {
 
                 settingsSection(
                     title: language.text("状态栏", "Menu Bar"),
-                    detail: language.text("内容与显示密度", "Content and density")
+                    detail: language.text("内容与显示密度", "Content and density"),
+                    symbol: "menubar.rectangle"
                 ) {
                     StatusItemSettingsView(settings: settings, store: store)
                 }
 
                 settingsSection(
                     title: language.text("窗口", "Window"),
-                    detail: language.text("主窗口行为", "Main window")
+                    detail: language.text("主窗口行为", "Main window"),
+                    symbol: "macwindow"
                 ) {
                     SettingsToggleRow(
                         title: language.text("保持主窗口置顶", "Keep main window on top"),
@@ -7148,7 +7305,8 @@ struct SettingsPanelView: View {
 
                 settingsSection(
                     title: language.text("系统", "System"),
-                    detail: language.text("状态与更新", "Status")
+                    detail: language.text("状态与更新", "Status"),
+                    symbol: "gearshape.2"
                 ) {
                     SettingsValueRow(
                         title: language.text("当前 Runtime", "Current runtime"),
@@ -7222,35 +7380,73 @@ struct SettingsPanelView: View {
     }
 
     private var settingsHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 32, height: 32)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .frame(width: 38, height: 38)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(language.text("设置", "Settings"))
-                    .font(.system(size: 18, weight: .semibold, design: .rounded))
-                Text("Codex Control")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                Text(language.text("账号、额度与运行时控制", "Accounts, quotas, and runtimes"))
+                    .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Text("NEXT")
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .tracking(1.2)
+                .foregroundStyle(.tint)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.accentColor.opacity(0.13)))
         }
     }
 
     private func settingsSection<Content: View>(
         title: String,
         detail: String,
+        symbol: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SettingsSectionTitle(title: title, detail: detail)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 27, height: 27)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: settingsSectionTitleFontSize, weight: .semibold))
+                    Text(detail)
+                        .font(.system(size: settingsSectionDetailFontSize, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+                .padding(.leading, 49)
+
             VStack(spacing: 0) {
                 content()
             }
-            .cardBackground(cornerRadius: 10, elevated: true)
+        }
+        .cardBackground(cornerRadius: 12, elevated: true)
+        .overlay(alignment: .leading) {
+            Capsule()
+                .fill(Color.accentColor)
+                .frame(width: 3)
+                .padding(.vertical, 12)
         }
     }
 
@@ -7284,24 +7480,6 @@ struct SettingsPickerRow<Control: View>: View {
     }
 }
 
-private struct SettingsSectionTitle: View {
-    let title: String
-    let detail: String
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title)
-                .font(.system(size: settingsSectionTitleFontSize, weight: .semibold))
-                .lineLimit(1)
-            Spacer(minLength: 12)
-            Text(detail)
-                .font(.system(size: settingsSectionDetailFontSize, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-    }
-}
-
 struct SettingsSegmentOption<Value: Hashable>: Identifiable {
     let value: Value
     let title: String
@@ -7310,53 +7488,20 @@ struct SettingsSegmentOption<Value: Hashable>: Identifiable {
 }
 
 struct SettingsSegmentedControl<Value: Hashable>: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.visualTokens) private var visualTokens
     @Binding var selection: Value
     let options: [SettingsSegmentOption<Value>]
     let width: CGFloat
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
-                Button {
-                    selection = option.value
-                } label: {
-                    Text(option.title)
-                        .font(.system(size: settingsControlFontSize, weight: selection == option.value ? .semibold : .medium))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                        .foregroundStyle(selection == option.value ? Color.white : Color.secondary)
-                        .frame(maxWidth: .infinity, minHeight: settingsSegmentHeight)
-                        .background(
-                            RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous)
-                                .fill(selection == option.value ? visualTokens.accent.primary.color : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(option.title)
-                .accessibilityAddTraits(selection == option.value ? .isSelected : [])
-
-                if index < options.count - 1 {
-                    Rectangle()
-                        .fill(FixedVisualPalette.controlStroke(colorScheme))
-                        .frame(width: 1, height: 16)
-                        .padding(.horizontal, 1)
-                }
+        Picker("", selection: $selection) {
+            ForEach(options) { option in
+                Text(option.title).tag(option.value)
             }
         }
-        .padding(3)
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
         .frame(width: width, height: settingsControlVisualHeight)
-        .background(
-            RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous)
-                .fill(FixedVisualPalette.controlFill(colorScheme))
-                .overlay(
-                    RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous)
-                        .strokeBorder(FixedVisualPalette.controlStroke(colorScheme), lineWidth: 0.8)
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous))
     }
 }
 
@@ -12383,7 +12528,7 @@ private let dashboardHelpBodySize: CGFloat = 10
 private let dashboardListRowSpacing: CGFloat = 6
 private let dashboardRowPadding: CGFloat = 7
 private let dashboardRowCornerRadius: CGFloat = 8
-let settingsAccessoryColumnWidth: CGFloat = 220
+let settingsAccessoryColumnWidth: CGFloat = 184
 let settingsControlCornerRadius: CGFloat = 8
 let settingsSegmentHeight: CGFloat = 30
 let settingsControlVisualHeight: CGFloat = settingsSegmentHeight + 6
@@ -12395,7 +12540,7 @@ let settingsControlFontSize: CGFloat = 11
 private let settingsContentTopInset: CGFloat = 12
 private let settingsSwitchWidth: CGFloat = 56
 private let settingsShortcutControlSpacing: CGFloat = 8
-private let settingsShortcutRecorderWidth: CGFloat = 132
+private let settingsShortcutRecorderWidth: CGFloat = 108
 private let settingsShortcutActionWidth: CGFloat = settingsAccessoryColumnWidth
     - settingsShortcutRecorderWidth
     - settingsShortcutControlSpacing
@@ -14004,6 +14149,13 @@ struct CodexAccountManagerNextMain {
             _ = NSApplication.shared
             let outputURL = URL(fileURLWithPath: CommandLine.arguments[previewIndex + 1], isDirectory: true)
             exit(PalettePreviewRenderer.renderBuiltIns(to: outputURL) ? 0 : 1)
+        }
+
+        if let screenshotIndex = CommandLine.arguments.firstIndex(of: "--render-documentation-settings"),
+           CommandLine.arguments.indices.contains(screenshotIndex + 1) {
+            _ = NSApplication.shared
+            let outputURL = URL(fileURLWithPath: CommandLine.arguments[screenshotIndex + 1])
+            exit(PalettePreviewRenderer.renderDocumentationSettings(to: outputURL) ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-particle-animation") {

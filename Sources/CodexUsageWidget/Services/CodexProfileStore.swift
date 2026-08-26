@@ -108,6 +108,17 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var lastWarmUpAt: Date? = nil
     var lastWarmUpSucceeded: Bool? = nil
     var chromeProfile: ChromeProfileBinding? = nil
+    var automaticSwitchParticipation: Bool? = nil
+    var proTierMultiplier: Int? = nil
+
+    var participatesInAutomaticSwitch: Bool {
+        automaticSwitchParticipation != false
+    }
+
+    var displayedProTierMultiplier: Int? {
+        guard let proTierMultiplier, proTierMultiplier == 5 || proTierMultiplier == 20 else { return nil }
+        return proTierMultiplier
+    }
 
     var codexHomeURL: URL {
         URL(fileURLWithPath: codexHomePath, isDirectory: true)
@@ -130,6 +141,13 @@ struct CodexProfile: Codable, Equatable, Identifiable {
 
     static func groupsByRecordedAccount(_ profiles: [CodexProfile]) -> [[CodexProfile]] {
         Array(Dictionary(grouping: profiles, by: \.recordedAccountKey).values)
+    }
+
+    static func participatesInAutomaticSwitch(_ profileID: String, among profiles: [CodexProfile]) -> Bool {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else { return false }
+        return profiles
+            .filter { $0.recordedAccountKey == profile.recordedAccountKey }
+            .allSatisfy(\.participatesInAutomaticSwitch)
     }
 
     private static func normalizedEmail(_ value: String?) -> String? {
@@ -178,12 +196,25 @@ enum CodexWarmUpWindowKind: String, Equatable {
 enum CodexWarmUpPolicy {
     static let failureRetryInterval: TimeInterval = 30 * 60
     static let resetGrace: TimeInterval = 8
-    static let windowStartRetryInterval: TimeInterval = 45
+    static let fiveHourSuccessInterval: TimeInterval = 5 * 60 * 60
+    static let sevenDaySuccessInterval: TimeInterval = 7 * 24 * 60 * 60
     static let maximumQuotaAge: TimeInterval = 15 * 60
     static let idleUsedPercentThreshold = 0.5
     static let unexpectedResetDrop = 8.0
     static let minimumWeeklyRemaining = 5.0
     static let resetStartTolerance: TimeInterval = 10 * 60
+
+    static func effectiveSelection(
+        _ selection: CodexWarmUpSelection,
+        participatesInAutomaticSwitch: Bool,
+        unexpected: Set<CodexWarmUpWindowKind> = []
+    ) -> CodexWarmUpSelection {
+        CodexWarmUpSelection(
+            fiveHour: selection.fiveHour
+                && (participatesInAutomaticSwitch || unexpected.contains(.fiveHour)),
+            sevenDay: selection.sevenDay
+        )
+    }
 
     static func isWindowIdle(_ window: CodexQuotaWindowSnapshot?, now: Date = Date()) -> Bool {
         guard let window else { return true }
@@ -263,6 +294,7 @@ enum CodexWarmUpPolicy {
                 for: profile.lastSnapshot?.fiveHour,
                 lastWarmUpAt: profile.lastWarmUpAt,
                 lastWarmUpSucceeded: profile.lastWarmUpSucceeded,
+                successfulInterval: fiveHourSuccessInterval,
                 unexpected: unexpected.contains(.fiveHour),
                 now: now
             ) {
@@ -274,6 +306,7 @@ enum CodexWarmUpPolicy {
                 for: profile.lastSnapshot?.sevenDay,
                 lastWarmUpAt: profile.lastWarmUpAt,
                 lastWarmUpSucceeded: profile.lastWarmUpSucceeded,
+                successfulInterval: sevenDaySuccessInterval,
                 unexpected: unexpected.contains(.sevenDay),
                 now: now
             ) {
@@ -334,13 +367,14 @@ enum CodexWarmUpPolicy {
         for window: CodexQuotaWindowSnapshot?,
         lastWarmUpAt: Date?,
         lastWarmUpSucceeded: Bool?,
+        successfulInterval: TimeInterval,
         unexpected: Bool,
         now: Date
     ) -> Date? {
         if unexpected { return now }
         if isWindowIdle(window, now: now) {
             if lastWarmUpSucceeded == true, let lastWarmUpAt {
-                let retryAt = lastWarmUpAt.addingTimeInterval(windowStartRetryInterval)
+                let retryAt = lastWarmUpAt.addingTimeInterval(successfulInterval)
                 if retryAt > now { return retryAt }
             }
             return now
@@ -724,7 +758,9 @@ final class CodexProfileStore {
             officialProfile: system.officialProfile,
             lastWarmUpAt: system.lastWarmUpAt,
             lastWarmUpSucceeded: system.lastWarmUpSucceeded,
-            chromeProfile: system.chromeProfile
+            chromeProfile: system.chromeProfile,
+            automaticSwitchParticipation: system.automaticSwitchParticipation,
+            proTierMultiplier: system.proTierMultiplier
         )
         do {
             try writeAuth(authData, to: home)
@@ -776,6 +812,29 @@ final class CodexProfileStore {
         guard let index = state.profiles.firstIndex(where: { $0.id == id }) else { return }
         guard binding?.isValid != false else { throw CocoaError(.validationMissingMandatoryProperty) }
         state.profiles[index].chromeProfile = binding
+        try save()
+    }
+
+    func setAutomaticSwitchParticipation(_ enabled: Bool, for id: String) throws {
+        guard let profile = state.profiles.first(where: { $0.id == id }) else { return }
+        let accountKey = profile.recordedAccountKey
+        for index in state.profiles.indices
+        where state.profiles[index].recordedAccountKey == accountKey {
+            state.profiles[index].automaticSwitchParticipation = enabled
+        }
+        try save()
+    }
+
+    func setProTierMultiplier(_ multiplier: Int?, for id: String) throws {
+        guard multiplier == nil || multiplier == 5 || multiplier == 20 else {
+            throw CocoaError(.validationMissingMandatoryProperty)
+        }
+        guard let profile = state.profiles.first(where: { $0.id == id }) else { return }
+        let accountKey = profile.recordedAccountKey
+        for index in state.profiles.indices
+        where state.profiles[index].recordedAccountKey == accountKey {
+            state.profiles[index].proTierMultiplier = multiplier
+        }
         try save()
     }
 
@@ -835,13 +894,18 @@ final class CodexProfileStore {
             state.profiles[index].officialProfile = nil
             state.profiles[index].lastWarmUpAt = nil
             state.profiles[index].lastWarmUpSucceeded = nil
+            state.profiles[index].proTierMultiplier = nil
             if state.profiles[index].isSystemProfile {
                 state.profiles[index].remark = nil
-                state.profiles[index].chromeProfile = state.profiles.first {
+                let matchingManagedProfile = state.profiles.first {
                     !$0.isSystemProfile
                         && $0.matchesRecordedAccount(email: snapshot.account?.email)
                         && ($0.lastSnapshot?.accountID == nil || $0.lastSnapshot?.accountID == verifiedAccountID)
-                }?.chromeProfile
+                }
+                state.profiles[index].chromeProfile = matchingManagedProfile?.chromeProfile
+                state.profiles[index].automaticSwitchParticipation =
+                    matchingManagedProfile?.automaticSwitchParticipation
+                state.profiles[index].proTierMultiplier = matchingManagedProfile?.proTierMultiplier
             }
         }
         let record = CodexAccountSnapshot(
@@ -1179,6 +1243,8 @@ enum CodexProfileStoreSelfTest {
                 return false
             }
             try first.setChromeProfile(chromeProfile, for: added.id)
+            try first.setAutomaticSwitchParticipation(false, for: added.id)
+            try first.setProTierMultiplier(20, for: added.id)
             try first.record(managedSnapshot, for: added.id)
             try first.record(firstSnapshot, for: "system")
             try first.record(secondSnapshot, for: "system")
@@ -1239,6 +1305,9 @@ enum CodexProfileStoreSelfTest {
                   restored.profiles.first(where: { $0.id == added.id })?.officialProfile == official,
                   restored.profiles.first(where: { $0.id == added.id })?.lastWarmUpSucceeded == true,
                   restored.profiles.first(where: { $0.id == added.id })?.chromeProfile == chromeProfile,
+                  restored.profiles.first(where: { $0.id == added.id })?.participatesInAutomaticSwitch == false,
+                  restored.profiles.first(where: { $0.id == added.id })?.displayedProTierMultiplier == 20,
+                  !CodexProfile.participatesInAutomaticSwitch(added.id, among: restored.profiles),
                   restored.profiles[0].matchesRecordedAccount(email: "FIRST@example.com"),
                   !restored.profiles[0].matchesRecordedAccount(email: "other@example.com"),
                   CodexProfile.groupsByRecordedAccount([
@@ -1246,6 +1315,35 @@ enum CodexProfileStoreSelfTest {
                   ]).count == 2
             else {
                 print("Codex profile store self-test failed: persistence")
+                return false
+            }
+            let stateURL = support
+                .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
+                .appendingPathComponent("account-manager-next-v1.json")
+            guard var legacyState = try JSONSerialization.jsonObject(
+                with: Data(contentsOf: stateURL)
+            ) as? [String: Any],
+            let legacyProfiles = legacyState["profiles"] as? [[String: Any]]
+            else {
+                print("Codex profile store self-test failed: legacy state fixture")
+                return false
+            }
+            legacyState["profiles"] = legacyProfiles.map { profile in
+                var profile = profile
+                profile.removeValue(forKey: "automaticSwitchParticipation")
+                profile.removeValue(forKey: "proTierMultiplier")
+                return profile
+            }
+            try JSONSerialization.data(withJSONObject: legacyState).write(to: stateURL, options: .atomic)
+            let legacyRestored = CodexProfileStore(
+                fileManager: fileManager,
+                homeDirectory: home,
+                applicationSupportDirectory: support
+            )
+            guard legacyRestored.profiles.allSatisfy(\.participatesInAutomaticSwitch),
+                  legacyRestored.profiles.allSatisfy({ $0.displayedProTierMultiplier == nil })
+            else {
+                print("Codex profile store self-test failed: automatic-switch scope migration")
                 return false
             }
             try restored.moveProfile(added.id, relativeTo: "system", before: true)
@@ -1311,6 +1409,24 @@ enum CodexProfileStoreSelfTest {
             let sevenDayOnly = CodexWarmUpSelection(fiveHour: false, sevenDay: true)
             let fiveHourOnly = CodexWarmUpSelection(fiveHour: true, sevenDay: false)
             let bothWindows = CodexWarmUpSelection(fiveHour: true, sevenDay: true)
+            guard CodexWarmUpPolicy.effectiveSelection(
+                bothWindows,
+                participatesInAutomaticSwitch: false
+            ) == sevenDayOnly,
+            CodexWarmUpPolicy.effectiveSelection(
+                bothWindows,
+                participatesInAutomaticSwitch: false,
+                unexpected: [.fiveHour]
+            ) == bothWindows,
+            CodexWarmUpPolicy.effectiveSelection(
+                sevenDayOnly,
+                participatesInAutomaticSwitch: false,
+                unexpected: [.fiveHour]
+            ) == sevenDayOnly
+            else {
+                print("Codex profile store self-test failed: automatic-switch scope warm-up selection")
+                return false
+            }
             policyProfile.lastSnapshot = CodexAccountSnapshot(
                 accountType: "chatgpt",
                 planType: "plus",
@@ -1512,8 +1628,17 @@ enum CodexProfileStoreSelfTest {
             idleWeek.lastWarmUpAt = Date(timeIntervalSince1970: 980)
             idleWeek.lastWarmUpSucceeded = true
             guard CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: sevenDayOnly, now: now)
-                    == Date(timeIntervalSince1970: 1_025) else {
-                print("Codex profile store self-test failed: window-start retry interval")
+                    == Date(timeIntervalSince1970: 980 + CodexWarmUpPolicy.sevenDaySuccessInterval),
+                  CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: fiveHourOnly, now: now)
+                    == Date(timeIntervalSince1970: 980 + CodexWarmUpPolicy.fiveHourSuccessInterval),
+                  CodexWarmUpPolicy.nextEligibleDate(
+                    for: idleWeek,
+                    selection: fiveHourOnly,
+                    unexpected: [.fiveHour],
+                    now: now
+                  ) == now
+            else {
+                print("Codex profile store self-test failed: successful warm-up interval")
                 return false
             }
             let payload = try JSONSerialization.data(withJSONObject: [

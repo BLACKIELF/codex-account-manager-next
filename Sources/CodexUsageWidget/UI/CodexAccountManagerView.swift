@@ -168,7 +168,7 @@ struct CodexAccountManagerView: View {
     }
 
     private var localAllAgentsTokens: Int64? {
-        store.snapshot.local?.allAgentsLifetimeTokens ?? store.snapshot.local?.lifetimeTokens
+        store.localAllAgentsLifetimeTokens
     }
 
     private var combinedTokensTotal: Int64? {
@@ -364,10 +364,7 @@ struct CodexAccountManagerView: View {
     }
 
     private var officialAccountsTotal: Int64? {
-        let totals = accountGroups.compactMap { group in
-            group.compactMap { $0.officialProfile?.lifetimeTokens }.max()
-        }
-        return totals.isEmpty ? nil : totals.reduce(0, +)
+        store.officialAccountsLifetimeTokens
     }
 
     private var officialAccountsStatsAsOf: Date? {
@@ -397,9 +394,12 @@ struct CodexAccountManagerView: View {
     }
 
     private func isCurrentCodexAccount(_ profile: CodexProfile) -> Bool {
-        guard !profile.isSystemProfile else { return false }
-        return accountGroups.first { $0.contains(where: { $0.id == profile.id }) }?
-            .contains(where: { $0.isSystemProfile }) == true
+        guard let group = accountGroups.first(where: { $0.contains(where: { $0.id == profile.id }) }) else {
+            return false
+        }
+        return profile.isSystemProfile
+            ? !group.contains(where: { !$0.isSystemProfile })
+            : group.contains(where: { $0.isSystemProfile })
     }
 
     private var profilesPanel: some View {
@@ -473,6 +473,7 @@ struct CodexAccountManagerView: View {
                         isDuplicateAccount: isDuplicateAccount(profile),
                         isCurrentCodexAccount: isCurrentCodexAccount(profile),
                         linkedAccountName: linkedProfile.map { AccountDisplay.profileName($0) },
+                        participatesInAutomaticSwitch: store.automaticSwitchParticipation(for: profile),
                         isEditing: isEditingProfiles,
                         isLoggingIn: store.isLoggingIn,
                         isLaunching: store.isLaunchingCodex,
@@ -493,6 +494,10 @@ struct CodexAccountManagerView: View {
                             }
                         },
                         onLaunch: { store.launchCodex(with: profile.id) },
+                        onSetAutomaticSwitchParticipation: {
+                            store.setAutomaticSwitchParticipation($0, for: profile.id)
+                        },
+                        onSetProTierMultiplier: { store.setProTierMultiplier($0, for: profile.id) },
                         onRename: { store.setProfileRemark($0, for: profile.id) },
                         onSetChromeProfile: { store.setChromeProfile($0, for: profile.id) },
                         onMoveUp: {
@@ -545,7 +550,7 @@ struct CodexAccountManagerView: View {
                 HStack(spacing: 8) {
                     Text("安全自动换号")
                         .font(.headline)
-                    Text("<10%")
+                    Text("5h ≤5%")
                         .profileBadge()
                     if store.feishuNotificationsEnabled {
                         Label("飞书已启用", systemImage: "paperplane.fill")
@@ -553,7 +558,7 @@ struct CodexAccountManagerView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                Text("5 小时或 7 天官方额度窗口低于 10%，实时确认无任务、Codex 离开前台且备用账号 ≥30% 后执行")
+                Text("5 小时剩余 ≤5% 或 7 天剩余 <10%，实时确认无任务、Codex 离开前台且备用账号对应窗口 ≥30% 后执行")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -601,16 +606,11 @@ struct CodexAccountManagerView: View {
     }
 
     private var accountPlan: String {
-        let plan = store.selectedMonitorProfile?.officialProfile?.planType
-            ?? store.snapshot.account?.planType
-        guard let plan, !plan.isEmpty else {
-            return "官方服务"
-        }
-        return plan.uppercased()
+        AccountDisplay.planLabel(store.selectedMonitorProfile, fallbackPlan: store.snapshot.account?.planType, empty: "官方服务")
     }
 
     private var accountPlanIcon: String {
-        accountPlan == "PRO" ? "crown.fill" : "plus.circle.fill"
+        accountPlan.hasPrefix("PRO") ? "crown.fill" : "plus.circle.fill"
     }
 
     private var selectedAccountName: String {
@@ -738,13 +738,13 @@ private struct AccountAutomationCenterView: View {
                 Divider()
 
                 HStack(spacing: 10) {
-                    automationMetric(title: "触发", value: "< 10%", icon: "exclamationmark.triangle.fill")
+                    automationMetric(title: "触发", value: "5h ≤5%", icon: "exclamationmark.triangle.fill")
                     automationMetric(title: "备用", value: "≥ 30%", icon: "battery.75percent")
                     automationMetric(title: "冷却", value: "30 分钟", icon: "clock.arrow.circlepath")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    safetyRule("官方 5 小时或 7 天窗口严格低于 10%")
+                    safetyRule("官方 5 小时剩余 ≤5%，或 7 天剩余严格低于 10%")
                     safetyRule("实时任务状态已连接、数据新鲜，且没有运行或等待输入的任务")
                     safetyRule("Codex 已离开前台至少 2 分钟，旧版账号管理器未运行")
                     safetyRule("候选账号实时验证身份一致，对应额度窗口至少剩余 30%")
@@ -1063,8 +1063,16 @@ struct CodexAccountMenuView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(AccountMenuIconButtonStyle())
-                Text(screen == .accounts ? text("账号", "Accounts") : text("设置", "Settings"))
-                    .font(.system(size: 17, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(screen == .accounts ? text("账号", "Accounts") : text("设置", "Settings"))
+                        .font(.system(size: 17, weight: .semibold))
+                    if screen == .settings {
+                        Text("NEXT CONTROL")
+                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
+                            .tracking(1.1)
+                            .foregroundStyle(.tint)
+                    }
+                }
             }
 
             Spacer(minLength: 8)
@@ -1183,7 +1191,7 @@ struct CodexAccountMenuView: View {
     }
 
     private var localAllAgentsTokens: Int64? {
-        store.snapshot.local?.allAgentsLifetimeTokens ?? store.snapshot.local?.lifetimeTokens
+        store.localAllAgentsLifetimeTokens
     }
 
     private var combinedTokensTotal: Int64? {
@@ -1371,6 +1379,7 @@ struct CodexAccountMenuView: View {
 
     private func accountCard(_ profile: CodexProfile) -> some View {
         let remaining = sevenDayRemaining(for: profile)
+        let isCurrent = isCurrentCodexAccount(profile)
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 avatar(for: profile, size: 32)
@@ -1447,11 +1456,11 @@ struct CodexAccountMenuView: View {
                     .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary, compact: true))
                     .disabled(profile.id == store.selectedMonitorProfileID)
 
-                    Button(text("切换并打开", "Switch & Open")) {
+                    Button(isCurrent ? text("当前账号", "Current Account") : text("切换并打开", "Switch & Open")) {
                         store.launchCodex(with: profile.id)
                     }
                     .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
-                    .disabled(store.isLaunchingCodex)
+                    .disabled(store.isLaunchingCodex || isCurrent)
                 }
             }
         }
@@ -1472,10 +1481,21 @@ struct CodexAccountMenuView: View {
             .frame(maxHeight: .infinity)
 
             HStack(spacing: 9) {
-                Button(text("打开完整窗口", "Open Full Window")) { openFullWindow() }
+                Button {
+                    openFullWindow()
+                } label: {
+                    Label(text("打开完整窗口", "Open Full Window"), systemImage: "macwindow")
+                }
                     .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white))
-                Button(text("退出", "Quit")) { quit() }
+                Button {
+                    quit()
+                } label: {
+                    Image(systemName: "power")
+                }
                     .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary))
+                    .frame(width: 44)
+                    .help(text("退出", "Quit"))
+                    .accessibilityLabel(text("退出", "Quit"))
             }
             .padding(14)
             .overlay(alignment: .top) {
@@ -1502,14 +1522,11 @@ struct CodexAccountMenuView: View {
     }
 
     private var planName: String {
-        (selectedProfile?.officialProfile?.planType ?? store.snapshot.account?.planType ?? "PLUS").uppercased()
+        AccountDisplay.planLabel(selectedProfile, fallbackPlan: store.snapshot.account?.planType ?? "PLUS")
     }
 
     private var officialAccountsTotal: Int64? {
-        let totals = CodexProfile.groupsByRecordedAccount(store.profiles).compactMap { group in
-            group.compactMap { $0.officialProfile?.lifetimeTokens }.max()
-        }
-        return totals.isEmpty ? nil : totals.reduce(0, +)
+        store.officialAccountsLifetimeTokens
     }
 
     private var membershipDate: Date? {
@@ -1554,6 +1571,15 @@ struct CodexAccountMenuView: View {
         return CodexProfile.groupsByRecordedAccount(store.profiles)
             .first { $0.contains(where: { $0.id == profile.id }) }?
             .first { !$0.isSystemProfile }
+    }
+
+    private func isCurrentCodexAccount(_ profile: CodexProfile) -> Bool {
+        guard let group = CodexProfile.groupsByRecordedAccount(store.profiles)
+            .first(where: { $0.contains(where: { $0.id == profile.id }) })
+        else { return false }
+        return profile.isSystemProfile
+            ? !group.contains(where: { !$0.isSystemProfile })
+            : group.contains(where: { $0.isSystemProfile })
     }
 
     private func adjacentProfile(to profile: CodexProfile, offset: Int) -> CodexProfile? {
@@ -1831,6 +1857,7 @@ private struct ProfileRow: View {
     let isDuplicateAccount: Bool
     let isCurrentCodexAccount: Bool
     let linkedAccountName: String?
+    let participatesInAutomaticSwitch: Bool
     let isEditing: Bool
     let isLoggingIn: Bool
     let isLaunching: Bool
@@ -1845,6 +1872,8 @@ private struct ProfileRow: View {
     let onMonitor: () -> Void
     let onRelogin: () -> Void
     let onLaunch: () -> Void
+    let onSetAutomaticSwitchParticipation: (Bool) -> Void
+    let onSetProTierMultiplier: (Int?) -> Void
     let onRename: (String) -> Void
     let onSetChromeProfile: (ChromeProfileBinding?) -> Void
     let onMoveUp: () -> Void
@@ -1864,225 +1893,29 @@ private struct ProfileRow: View {
     }()
 
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: profile.isSystemProfile ? "house.fill" : "person.crop.circle")
-                .font(.system(size: 20, weight: .medium))
-                .frame(width: 28)
-                .foregroundStyle(isMonitoring ? Color.accentColor : Color.secondary)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(AccountDisplay.profileName(profile, allProfiles: allProfiles))
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(1)
-                    Label(planBadge.name, systemImage: planBadge.icon)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-                        .accessibilityLabel("\(planBadge.name) 套餐")
-                    if isMonitoring { Text("监控中").profileBadge() }
-                    if isLaunchProfile { Text("启动账号").profileBadge() }
-                    if linkedAccountName != nil {
-                        Text("待独立登录")
-                            .profileBadge()
-                            .help("这张账号卡尚未保存独立登录；当前 Codex 登录不会被修改")
-                    } else if isCurrentCodexAccount {
-                        Text("当前 Codex").profileBadge()
-                    } else if isDuplicateAccount {
-                        Text("同一账号")
-                            .profileBadge()
-                            .help("这个 CODEX_HOME 与列表中的另一个入口登录了同一账号")
-                    }
-                    if isEditing {
-                        Button {
-                            remarkDraft = profile.remark ?? ""
-                            isEditingRemark = true
-                        } label: {
-                            Image(systemName: "pencil")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .help("修改备注")
-                        .accessibilityLabel("修改账号备注")
-                        if !profile.isSystemProfile {
-                            Button {
-                                isConfirmingDelete = true
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(.secondary)
-                            .help("删除账号")
-                            .accessibilityLabel("删除账号")
-                            .disabled(isLaunching)
-                            .alert("删除“\(AccountDisplay.profileName(profile, allProfiles: allProfiles))”？", isPresented: $isConfirmingDelete) {
-                                Button("取消", role: .cancel) {}
-                                Button("删除账号", role: .destructive) { onDelete() }
-                            } message: {
-                                Text("账号及其本机登录资料会移到废纸篓，不会删除你的 OpenAI 账号。")
-                            }
-                        }
-                    }
-                }
-                Text(linkedAccountName.map { "本机 Codex 当前登录 \($0)；此卡尚未独立登录" } ?? profile.lastSnapshot.map {
-                    "更新于 " + $0.fetchedAt.formatted(.dateTime.month().day().hour().minute())
-                } ?? "等待账号验证")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                if linkedAccountName == nil, let official = profile.officialProfile {
-                    Text(officialAccountDetail(official))
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    if let activeUntil = official.subscriptionActiveUntil {
-                        Text(membershipDetail(activeUntil))
-                            .font(.caption2)
-                            .foregroundStyle(membershipRemainingDays(activeUntil) <= 7 ? Color.red : Color.secondary)
-                            .lineLimit(1)
-                    }
-                }
-                if let warmUpStatus {
-                    Text(warmUpStatus)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                profileAvatar
+                identitySummary
+                    .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
+                    .layoutPriority(1)
+                Divider()
+                    .frame(height: 106)
+                    .opacity(0.5)
+                quotaSummary
+                    .frame(width: 206, alignment: .leading)
+                Divider()
+                    .frame(height: 106)
+                    .opacity(0.5)
+                primaryControls
+                    .frame(minWidth: 238, alignment: .trailing)
             }
-            .frame(minWidth: 190, maxWidth: 260, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("7 天剩余")
-                        .font(.caption.weight(.semibold))
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.counterclockwise.circle")
-                        Text("重置 \(resetCount) 次")
-                        if let expiry = resetCardExpiry {
-                            Text("· " + Self.resetExpiryFormatter.string(from: expiry))
-                                .foregroundStyle(expiry <= Date() ? Color.red : Color.secondary.opacity(0.85))
-                        }
-                    }
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(FixedVisualPalette.surfaceTrack))
-                    .help("本地记录：检测到该账号官方提前/随机重置 \(resetCount) 次（自动检测 + 手工校正）；有效期后为重置卡到期时间")
-                    .accessibilityLabel("已被官方重置 \(resetCount) 次")
-                    Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
-                        .font(.caption.weight(.bold).monospacedDigit())
-                }
-                QuotaProgressTrack(percent: remainingPercent)
-                Text(snapshotDetail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity)
-
             if isEditing {
-                if linkedAccountName == nil {
-                    Button(isLoggingIn ? "登录中…" : "重新登录") { onRelogin() }
-                        .buttonStyle(.bordered)
-                        .disabled(isLoggingIn || isLaunching)
-                }
-                Menu {
-                    Button("自动匹配 / 账号专属") { onSetChromeProfile(nil) }
-                    if !chromeProfiles.isEmpty { Divider() }
-                    ForEach(chromeProfiles) { chromeProfile in
-                        Button(chromeProfile.displayName) { onSetChromeProfile(chromeProfile) }
-                    }
-                } label: {
-                    Label(profile.chromeProfile?.displayName ?? "Chrome 专属", systemImage: "person.crop.circle")
-                        .lineLimit(1)
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("首次登录或重新认证时使用；平时切号不会打开浏览器")
-                VStack(spacing: 4) {
-                    Text("重置 \(resetCount)")
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .help("本地记录的重置次数；加减号手动校正")
-                    HStack(spacing: 4) {
-                        Button {
-                            onAdjustResetCount(-1)
-                        } label: {
-                            Image(systemName: "minus")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("重置次数减一")
-                        .accessibilityLabel("重置次数减一")
-                        .disabled(resetCount <= 0)
-                        Button {
-                            onAdjustResetCount(1)
-                        } label: {
-                            Image(systemName: "plus")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("重置次数加一")
-                        .accessibilityLabel("重置次数加一")
-                    }
-                    if let onSetResetCardExpiry {
-                        DatePicker(
-                            "有效期",
-                            selection: Binding(
-                                get: { resetCardExpiry ?? Date() },
-                                set: { onSetResetCardExpiry($0) }
-                            ),
-                            displayedComponents: [.date, .hourAndMinute]
-                        )
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .frame(maxWidth: 132)
-                        .help("重置卡有效期；显示在重置次数后面")
-                        if resetCardExpiry != nil {
-                            Button {
-                                onSetResetCardExpiry(nil)
-                            } label: {
-                                Image(systemName: "xmark.circle")
-                            }
-                            .buttonStyle(.bordered)
-                            .help("清除重置卡有效期")
-                            .accessibilityLabel("清除重置卡有效期")
-                        }
-                    }
-                }
-                Button(action: onMoveUp) {
-                    Image(systemName: "arrow.up")
-                }
-                .buttonStyle(.bordered)
-                .help("上移账号")
-                .accessibilityLabel("上移账号")
-                .disabled(!canMoveUp || isLaunching)
-                Button(action: onMoveDown) {
-                    Image(systemName: "arrow.down")
-                }
-                .buttonStyle(.bordered)
-                .help("下移账号")
-                .accessibilityLabel("下移账号")
-                .disabled(!canMoveDown || isLaunching)
+                Divider().opacity(0.55)
+                editControls
             }
-            if linkedAccountName != nil {
-                Button(isLoggingIn ? "登录中…" : "登录") { onRelogin() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isLoggingIn || isLaunching)
-                    .help("登录为独立账号，不修改当前 Codex 登录")
-            } else {
-                Button(isMonitoring ? "已监控" : "监控") { onMonitor() }
-                    .buttonStyle(.bordered)
-                    .disabled(isMonitoring)
-            }
-            Button("切换并打开") { onLaunch() }
-                .buttonStyle(.borderedProminent)
-                .disabled(isLaunching || linkedAccountName != nil)
         }
-        .padding(13)
+        .padding(15)
         .cardBackground(cornerRadius: 14, elevated: isMonitoring)
         .alert("修改账号备注", isPresented: $isEditingRemark) {
             TextField("例如：工作账号", text: $remarkDraft)
@@ -2091,6 +1924,263 @@ private struct ProfileRow: View {
         } message: {
             Text("最多 40 个字符；留空会恢复脱敏账号名。")
         }
+    }
+
+    private var profileAvatar: some View {
+        Image(systemName: profile.isSystemProfile ? "house.fill" : "person.crop.circle")
+            .font(.system(size: 21, weight: .medium))
+            .frame(width: 30, height: 30)
+            .foregroundStyle(isMonitoring ? Color.accentColor : Color.secondary)
+            .accessibilityHidden(true)
+    }
+
+    private var identitySummary: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(AccountDisplay.profileName(profile, allProfiles: allProfiles))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Label(planBadge.name, systemImage: planBadge.icon)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                    .accessibilityLabel("\(planBadge.name) 套餐")
+                Spacer(minLength: 0)
+                if isEditing { identityEditButtons }
+            }
+            HStack(spacing: 5) {
+                if isMonitoring { Text("监控中").profileBadge() }
+                if isLaunchProfile { Text("启动账号").profileBadge() }
+                if linkedAccountName != nil {
+                    Text("待独立登录")
+                        .profileBadge()
+                        .help("这张账号卡尚未保存独立登录；当前 Codex 登录不会被修改")
+                } else if isCurrentCodexAccount {
+                    Text("当前 Codex").profileBadge()
+                } else if isDuplicateAccount {
+                    Text("同一账号")
+                        .profileBadge()
+                        .help("这个 CODEX_HOME 与列表中的另一个入口登录了同一账号")
+                }
+            }
+            Text(linkedAccountName.map { "本机 Codex 当前登录 \($0)；此卡尚未独立登录" } ?? profile.lastSnapshot.map {
+                "更新于 " + $0.fetchedAt.formatted(.dateTime.month().day().hour().minute())
+            } ?? "等待账号验证")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if linkedAccountName == nil, let official = profile.officialProfile {
+                Text(officialAccountDetail(official))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let activeUntil = official.subscriptionActiveUntil {
+                    Text(membershipDetail(activeUntil))
+                        .font(.caption2)
+                        .foregroundStyle(membershipRemainingDays(activeUntil) <= 7 ? Color.red : Color.secondary)
+                        .lineLimit(1)
+                }
+            }
+            if let warmUpStatus {
+                Text(warmUpStatus)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var identityEditButtons: some View {
+        HStack(spacing: 7) {
+            Button {
+                remarkDraft = profile.remark ?? ""
+                isEditingRemark = true
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("修改备注")
+            .accessibilityLabel("修改账号备注")
+            if !profile.isSystemProfile {
+                Button {
+                    isConfirmingDelete = true
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("删除账号")
+                .accessibilityLabel("删除账号")
+                .disabled(isLaunching)
+                .alert("删除“\(AccountDisplay.profileName(profile, allProfiles: allProfiles))”？", isPresented: $isConfirmingDelete) {
+                    Button("取消", role: .cancel) {}
+                    Button("删除账号", role: .destructive) { onDelete() }
+                } message: {
+                    Text("账号及其本机登录资料会移到废纸篓，不会删除你的 OpenAI 账号。")
+                }
+            }
+        }
+    }
+
+    private var quotaSummary: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("7 天剩余")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
+                    .font(.title3.weight(.bold).monospacedDigit())
+            }
+            QuotaProgressTrack(percent: remainingPercent)
+            Text(snapshotDetail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Label("官方重置 \(resetCount) 次", systemImage: "arrow.counterclockwise.circle")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .help("本地记录：检测到该账号官方提前/随机重置 \(resetCount) 次（自动检测 + 手工校正）")
+                .accessibilityLabel("已被官方重置 \(resetCount) 次")
+            if let expiry = resetCardExpiry {
+                Text("有效期至 " + Self.resetExpiryFormatter.string(from: expiry))
+                    .font(.caption2)
+                    .foregroundStyle(expiry <= Date() ? Color.red : Color.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var primaryControls: some View {
+        VStack(alignment: .trailing, spacing: 9) {
+            Toggle(
+                "参与自动切换",
+                isOn: Binding(
+                    get: { participatesInAutomaticSwitch },
+                    set: onSetAutomaticSwitchParticipation
+                )
+            )
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .fixedSize()
+            .help("关闭后不会被自动切换使用；仍可手动切换，只保留 7 天与官方随机重置暖号。")
+            .accessibilityValue(participatesInAutomaticSwitch ? "已加入" : "已排除")
+
+            HStack(spacing: 8) {
+                if linkedAccountName != nil {
+                    Button(isLoggingIn ? "登录中…" : "登录") { onRelogin() }
+                        .buttonStyle(.bordered)
+                        .disabled(isLoggingIn || isLaunching)
+                        .help("登录为独立账号，不修改当前 Codex 登录")
+                } else {
+                    Button(isMonitoring ? "已监控" : "监控") { onMonitor() }
+                        .buttonStyle(.bordered)
+                        .disabled(isMonitoring)
+                }
+                Button(isCurrentCodexAccount ? "当前账号" : "切换并打开") { onLaunch() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isLaunching || linkedAccountName != nil || isCurrentCodexAccount)
+            }
+            .controlSize(.regular)
+
+            Text(participatesInAutomaticSwitch ? "可供安全自动切换" : "仅 7 天与随机重置暖号")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private var editControls: some View {
+        HStack(spacing: 10) {
+            if linkedAccountName == nil {
+                Button(isLoggingIn ? "登录中…" : "重新登录") { onRelogin() }
+                    .buttonStyle(.bordered)
+                    .disabled(isLoggingIn || isLaunching)
+            }
+            if isProPlan {
+                Picker(
+                    "Pro 档位",
+                    selection: Binding(
+                        get: { profile.displayedProTierMultiplier },
+                        set: onSetProTierMultiplier
+                    )
+                ) {
+                    Text("未指定").tag(Int?.none)
+                    Text("5x").tag(Int?.some(5))
+                    Text("20x").tag(Int?.some(20))
+                }
+                .pickerStyle(.menu)
+                .controlSize(.small)
+                .frame(width: 132)
+                .help("手动标记官方 Pro 档位；只影响显示，不参与额度或切换判断")
+            }
+            Menu {
+                Button("自动匹配 / 账号专属") { onSetChromeProfile(nil) }
+                if !chromeProfiles.isEmpty { Divider() }
+                ForEach(chromeProfiles) { chromeProfile in
+                    Button(chromeProfile.displayName) { onSetChromeProfile(chromeProfile) }
+                }
+            } label: {
+                Label(profile.chromeProfile?.displayName ?? "Chrome 专属", systemImage: "person.crop.circle")
+                    .lineLimit(1)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("首次登录或重新认证时使用；平时切号不会打开浏览器")
+
+            Divider().frame(height: 24)
+            Text("重置记录 \(resetCount)")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+            Button { onAdjustResetCount(-1) } label: { Image(systemName: "minus") }
+                .buttonStyle(.bordered)
+                .help("重置次数减一")
+                .accessibilityLabel("重置次数减一")
+                .disabled(resetCount <= 0)
+            Button { onAdjustResetCount(1) } label: { Image(systemName: "plus") }
+                .buttonStyle(.bordered)
+                .help("重置次数加一")
+                .accessibilityLabel("重置次数加一")
+            if let onSetResetCardExpiry {
+                if resetCardExpiry != nil {
+                    DatePicker(
+                        "有效期",
+                        selection: Binding(
+                            get: { resetCardExpiry ?? resetsAt ?? Date() },
+                            set: { onSetResetCardExpiry($0) }
+                        ),
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .datePickerStyle(.compact)
+                    .labelsHidden()
+                    .frame(width: 138)
+                    .help("重置卡有效期；显示在重置次数后面")
+                    Button { onSetResetCardExpiry(nil) } label: { Image(systemName: "xmark.circle") }
+                        .buttonStyle(.bordered)
+                        .help("清除重置卡有效期")
+                        .accessibilityLabel("清除重置卡有效期")
+                } else {
+                    Button("设置有效期") { onSetResetCardExpiry(resetsAt ?? Date()) }
+                        .buttonStyle(.bordered)
+                }
+            }
+
+            Spacer(minLength: 8)
+            Button(action: onMoveUp) { Image(systemName: "arrow.up") }
+                .buttonStyle(.bordered)
+                .help("上移账号")
+                .accessibilityLabel("上移账号")
+                .disabled(!canMoveUp || isLaunching)
+            Button(action: onMoveDown) { Image(systemName: "arrow.down") }
+                .buttonStyle(.bordered)
+                .help("下移账号")
+                .accessibilityLabel("下移账号")
+                .disabled(!canMoveDown || isLaunching)
+        }
+        .controlSize(.small)
     }
 
     private var snapshotDetail: String {
@@ -2108,9 +2198,13 @@ private struct ProfileRow: View {
         if linkedAccountName != nil {
             return ("未登录", "person.crop.circle.badge.xmark")
         }
-        return (profile.officialProfile?.planType ?? profile.lastSnapshot?.planType)?.lowercased() == "pro"
-            ? ("PRO", "crown.fill")
+        return isProPlan
+            ? (AccountDisplay.planLabel(profile, fallbackPlan: "PRO"), "crown.fill")
             : ("PLUS", "plus.circle.fill")
+    }
+
+    private var isProPlan: Bool {
+        (profile.officialProfile?.planType ?? profile.lastSnapshot?.planType)?.lowercased() == "pro"
     }
 
     private func officialAccountDetail(_ official: CodexOfficialProfileSnapshot) -> String {
@@ -2143,6 +2237,20 @@ private struct ProfileRow: View {
 }
 
 enum AccountDisplay {
+    static func planLabel(
+        _ profile: CodexProfile?,
+        fallbackPlan: String? = nil,
+        empty: String = "PLUS"
+    ) -> String {
+        let plan = profile?.officialProfile?.planType ?? profile?.lastSnapshot?.planType ?? fallbackPlan
+        guard let plan, !plan.isEmpty else { return empty }
+        let normalized = plan.uppercased()
+        guard normalized == "PRO", let multiplier = profile?.displayedProTierMultiplier else {
+            return normalized
+        }
+        return "PRO \(multiplier)x"
+    }
+
     static func profileName(
         _ profile: CodexProfile,
         fallbackRaw: String? = nil,

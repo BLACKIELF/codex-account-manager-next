@@ -303,7 +303,7 @@ final class FeishuWebhookService {
         var lines = [
             "**结果**：\(presentation.result)",
             "**原账号**：`\(notification.sourceAccount.value)`",
-            "**触发阈值**：低于 \(notification.triggerThresholdPercent)%"
+            "**触发规则**：5 小时 ≤ 5%；7 天 < \(notification.triggerThresholdPercent)%"
         ]
         if let target = notification.targetAccount {
             lines.append("**目标账号**：`\(target.value)`")

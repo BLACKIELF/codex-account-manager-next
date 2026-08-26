@@ -31,6 +31,50 @@ enum PalettePreviewRenderer {
             return false
         }
     }
+
+    static func renderDocumentationSettings(to outputURL: URL) -> Bool {
+        let suiteName = "CodexManagerNext.documentation-screenshot.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let catalog = PaletteCatalog.loadFromMainBundle()
+        let settings = AppSettings(defaults: defaults, paletteCatalog: catalog)
+        settings.language = .zh
+        settings.themeMode = .dark
+        let store = UsageStore()
+        let updateStore = AppUpdateStore(settings: settings)
+        let root = CodexAccountMenuView(
+            store: store,
+            settings: settings,
+            updateStore: updateStore,
+            paletteCatalog: catalog,
+            initialScreen: .settings,
+            openFullWindow: {},
+            openPaletteLibrary: {},
+            quit: {}
+        )
+        .frame(width: CodexAccountMenuView.preferredSize.width, height: CodexAccountMenuView.preferredSize.height)
+
+        let host = NSHostingView(rootView: root)
+        host.frame = NSRect(origin: .zero, size: CodexAccountMenuView.preferredSize)
+        host.appearance = NSAppearance(named: .darkAqua)
+        host.layoutSubtreeIfNeeded()
+        guard let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return false }
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        guard let png = bitmap.representation(using: .png, properties: [:]) else { return false }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try png.write(to: outputURL, options: .atomic)
+            return true
+        } catch {
+            print("documentation screenshot render failed: \(error.localizedDescription)")
+            return false
+        }
+    }
 }
 
 private struct PalettePreviewCanvas: View {
