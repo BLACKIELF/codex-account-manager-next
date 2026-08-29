@@ -14,6 +14,11 @@ struct CodexAccountManagerView: View {
     @State private var customSourceTokensDraft = ""
     @State private var isAgentBreakdownExpanded = false
     @State private var isAutomationCenterPresented = false
+    @State private var isHubSettingsPresented = false
+    @State private var showsAllHubTasks = false
+    @State private var showsAllHubThreads = false
+    @State private var showsHubSubagentThreads = false
+    @StateObject private var hubConsole = HubConsoleModel()
 
     static let defaultWidth: CGFloat = 1080
     static let minWidth: CGFloat = 960
@@ -38,6 +43,9 @@ struct CodexAccountManagerView: View {
             )
             .ignoresSafeArea()
         )
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            operationStatusBar
+        }
         .environment(
             \.visualTokens,
             paletteCatalog.resolve(
@@ -48,6 +56,24 @@ struct CodexAccountManagerView: View {
         .preferredColorScheme(settings.themeMode.preferredColorScheme)
         .sheet(isPresented: $isAutomationCenterPresented) {
             AccountAutomationCenterView(store: store)
+        }
+        .alert(
+            store.forcedAccountSwitchProfileID == nil ? "未切换账号" : "强制切换账号？",
+            isPresented: Binding(
+                get: { store.accountSwitchAlertMessage != nil },
+                set: { if !$0 { store.dismissAccountSwitchAlert() } }
+            )
+        ) {
+            if store.forcedAccountSwitchProfileID != nil {
+                Button("强制切换", role: .destructive) {
+                    store.confirmForcedAccountSwitch()
+                }
+            }
+            Button(store.forcedAccountSwitchProfileID == nil ? "知道了" : "取消", role: .cancel) {
+                store.dismissAccountSwitchAlert()
+            }
+        } message: {
+            Text(store.accountSwitchAlertMessage ?? "")
         }
     }
 
@@ -63,18 +89,44 @@ struct CodexAccountManagerView: View {
 
             agentBreakdownPanel
             automationPanel
+            hubConsolePanel
 
             profilesPanel
             safetyFooter
 
-            if let message = store.accountManagerMessage {
-                Label(message, systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel(message)
-            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var operationStatusBar: some View {
+        if store.accountManagerMessage != nil || store.isAwaitingCodexHistoryConfirmation {
+            HStack(spacing: 12) {
+                if let message = store.accountManagerMessage {
+                    Label(message, systemImage: "info.circle")
+                        .font(.caption.weight(.medium))
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel(message)
+                }
+                if store.isAwaitingCodexHistoryConfirmation {
+                    Button("历史完整，完成切换") {
+                        store.confirmRestoredCodexHistory()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    Button("历史不完整，回滚") {
+                        store.rejectRestoredCodexHistory()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+            .background(.regularMaterial)
+            .overlay(alignment: .top) { Divider() }
+            .accessibilityElement(children: .contain)
+        }
     }
 
     private var workspaceHeader: some View {
@@ -476,14 +528,17 @@ struct CodexAccountManagerView: View {
                         participatesInAutomaticSwitch: store.automaticSwitchParticipation(for: profile),
                         isEditing: isEditingProfiles,
                         isLoggingIn: store.isLoggingIn,
-                        isLaunching: store.isLaunchingCodex,
+                        isLaunching: store.isLaunchingCodex || store.isRefreshing,
                         canMoveUp: index > 0,
                         canMoveDown: index < presentedProfiles.count - 1,
+                        fiveHourRemainingPercent: fiveHourRemaining(for: profile),
+                        fiveHourResetsAt: fiveHourReset(for: profile),
                         remainingPercent: sevenDayRemaining(for: profile),
                         resetsAt: sevenDayReset(for: profile),
                         warmUpStatus: linkedProfile == nil ? store.warmUpStatus(for: profile) : nil,
-                        resetCount: store.resetCount(for: profile),
-                        resetCardExpiry: store.resetCardExpiry(for: profile),
+                        availableResetCredits: store.availableResetCredits(for: profile),
+                        resetCreditExpiries: store.resetCreditExpiries(for: profile),
+                        localResetHistoryCount: store.localResetHistoryCount(for: profile),
                         chromeProfiles: store.availableChromeProfiles,
                         onMonitor: { store.selectMonitorProfile(profile.id) },
                         onRelogin: {
@@ -509,8 +564,7 @@ struct CodexAccountManagerView: View {
                             store.moveProfile(profile.id, relativeTo: target.id, before: false)
                         },
                         onDelete: { store.deleteProfile(profile.id) },
-                        onAdjustResetCount: { store.adjustResetCount(for: profile, delta: $0) },
-                        onSetResetCardExpiry: { store.setResetCardExpiry($0, for: profile) }
+                        onAdjustResetCount: { store.adjustResetCount(for: profile, delta: $0) }
                     )
                 }
             }
@@ -558,7 +612,7 @@ struct CodexAccountManagerView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                Text("5 小时剩余 ≤5% 或 7 天剩余 <10%，实时确认无任务、Codex 离开前台且备用账号对应窗口 ≥30% 后执行")
+                Text("5 小时剩余 ≤5% 或 7 天剩余 <10%，实时确认无任务、Codex 已退出且备用账号对应窗口 ≥30% 后执行")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -583,6 +637,229 @@ struct CodexAccountManagerView: View {
         .accessibilityElement(children: .contain)
     }
 
+    private var hubConsolePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.14))
+                    Image(systemName: "rectangle.3.group.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.tint)
+                }
+                .frame(width: 46, height: 46)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text("多 agent 控制台")
+                            .font(.headline)
+                        hubConnectionBadge
+                    }
+                    Text("远程派活的调度台：各账号任务进度、审批请求、Codex 线程验收")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 12)
+
+                Button {
+                    isHubSettingsPresented = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("多 agent 控制台设置")
+
+                Button("立即刷新") {
+                    hubConsole.refreshNow()
+                }
+                .buttonStyle(.bordered)
+                .disabled(hubConsole.isRefreshing || !hubConsole.isEnabled)
+            }
+
+            if hubConsole.isEnabled {
+                hubConsoleContent
+            } else {
+                hubConsoleDisabledHint
+            }
+
+            if let actionMessage = hubConsole.lastActionMessage {
+                Label(actionMessage, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .sectionBackground()
+        .sheet(isPresented: $isHubSettingsPresented) {
+            HubConsoleSettingsSheet(model: hubConsole)
+        }
+        .task {
+            hubConsole.startPolling()
+        }
+        .onDisappear {
+            hubConsole.stopPolling()
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var hubConnectionBadge: some View {
+        switch hubConsole.connectionState {
+        case .online:
+            Label("已连接", systemImage: "checkmark.circle.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.green)
+        case .idle:
+            Label("还没连接", systemImage: "clock")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+        case .offline:
+            Label("连不上 hub", systemImage: "bolt.slash.fill")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private var hubConsoleContent: some View {
+        if !hubConsole.isOnline, hubConsole.tasks.isEmpty, hubConsole.threads.isEmpty {
+            Label(hubConsole.connectionLabel, systemImage: "antenna.radiowaves.left.and.right.slash")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            if let observerLabel = hubConsole.observerLabel {
+                Label(
+                    observerLabel,
+                    systemImage: hubConsole.observerMode == "shared_live" ? "checkmark.seal.fill" : "link"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(hubConsole.observerMode == "shared_live" ? Color.green : Color.secondary)
+            }
+
+            if !hubConsole.projects.isEmpty || !hubConsole.accounts.isEmpty {
+                Text("账号 \(hubConsole.accounts.count) 个 · 项目 \(hubConsole.projects.count) 个")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            hubTaskList
+            hubThreadList
+        }
+    }
+
+    @ViewBuilder
+    private var hubConsoleDisabledHint: some View {
+        HStack(spacing: 12) {
+            Text("多 agent 控制台已关闭")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Button("开启") {
+                hubConsole.updateSettings(
+                    baseURL: hubConsole.baseURL,
+                    token: UserDefaults.standard.string(forKey: HubConsoleModel.tokenKey) ?? "",
+                    enabled: true
+                )
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private var displayedHubTasks: [HubTask] {
+        showsAllHubTasks ? hubConsole.tasks : Array(hubConsole.tasks.prefix(5))
+    }
+
+    private var displayedHubThreads: [HubThread] {
+        hubConsole.threads.filter { $0.isSubagent != true }
+    }
+
+    private func hubSubagentThreads(for parent: HubThread) -> [HubThread] {
+        hubConsole.threads.filter {
+            $0.isSubagent == true && $0.rootPublicRef == parent.publicRef
+        }
+    }
+
+    private var hubTaskList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("任务")
+                    .font(.subheadline.weight(.semibold))
+                if !hubConsole.tasks.isEmpty {
+                    Text("\(hubConsole.tasks.count) 个")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if hubConsole.tasks.isEmpty {
+                Text(hubConsole.isOnline ? "还没有任务，去手机或网页派一个" : hubConsole.connectionLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(displayedHubTasks) { task in
+                    HubConsoleTaskRow(task: task, model: hubConsole)
+                }
+                if hubConsole.tasks.count > 5 {
+                    Button(showsAllHubTasks ? "收起" : "显示全部 \(hubConsole.tasks.count) 个任务") {
+                        showsAllHubTasks.toggle()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var hubThreadList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Codex 线程")
+                    .font(.subheadline.weight(.semibold))
+                if !hubConsole.threads.isEmpty {
+                    Text("\(displayedHubThreads.count) 个")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                let subagentCount = hubConsole.threads.count - displayedHubThreads.count
+                if subagentCount > 0 {
+                    Text(showsHubSubagentThreads
+                        ? "\(subagentCount) 个子 agent 线程"
+                        : "已折叠 \(subagentCount) 个子 agent 线程")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Toggle("显示子任务", isOn: $showsHubSubagentThreads)
+                        .font(.caption)
+                        .toggleStyle(.switch)
+                }
+            }
+            if displayedHubThreads.isEmpty {
+                Text(hubConsole.isOnline ? "Codex 线程还没加载出来" : "连上 hub 后显示 Codex 线程")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(showsAllHubThreads ? displayedHubThreads : Array(displayedHubThreads.prefix(6))) { thread in
+                    HubConsoleThreadRow(thread: thread, model: hubConsole)
+                    if showsHubSubagentThreads {
+                        ForEach(hubSubagentThreads(for: thread)) { subagentThread in
+                            HubConsoleThreadRow(thread: subagentThread, model: hubConsole, isSubagent: true)
+                        }
+                    }
+                }
+                if displayedHubThreads.count > 6 {
+                    Button(showsAllHubThreads ? "收起" : "显示全部 \(displayedHubThreads.count) 个线程") {
+                        showsAllHubThreads.toggle()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
     private var safetyFooter: some View {
         HStack(spacing: 10) {
             Label("保存切换前快照", systemImage: "checkmark.circle.fill")
@@ -595,7 +872,7 @@ struct CodexAccountManagerView: View {
                 .accessibilityHidden(true)
             Label("切换本机登录", systemImage: "arrow.triangle.2.circlepath")
             Spacer()
-            Text("失败时尝试并校验恢复")
+            Text("原对话未恢复则回滚原账号")
                 .foregroundStyle(.secondary)
         }
         .font(.caption)
@@ -625,17 +902,35 @@ struct CodexAccountManagerView: View {
     private func sevenDayRemaining(for profile: CodexProfile) -> Double? {
         guard linkedManagedProfile(for: profile) == nil else { return nil }
         if profile.id == store.selectedMonitorProfileID,
-           let live = store.snapshot.sevenDayQuota?.remainingPercent {
-            return live
+           store.snapshot.quotaReadSucceeded {
+            return store.snapshot.sevenDayQuota?.remainingPercent
         }
         return profile.lastSnapshot?.sevenDay.map { max(0, min(100, 100 - $0.usedPercent)) }
+    }
+
+    private func fiveHourRemaining(for profile: CodexProfile) -> Double? {
+        guard linkedManagedProfile(for: profile) == nil else { return nil }
+        if profile.id == store.selectedMonitorProfileID,
+           store.snapshot.quotaReadSucceeded {
+            return store.snapshot.fiveHourQuota?.remainingPercent
+        }
+        return profile.lastSnapshot?.fiveHour.map { max(0, min(100, 100 - $0.usedPercent)) }
+    }
+
+    private func fiveHourReset(for profile: CodexProfile) -> Date? {
+        guard linkedManagedProfile(for: profile) == nil else { return nil }
+        if profile.id == store.selectedMonitorProfileID,
+           store.snapshot.quotaReadSucceeded {
+            return store.snapshot.fiveHourQuota?.resetsAt
+        }
+        return profile.lastSnapshot?.fiveHour?.resetsAt
     }
 
     private func sevenDayReset(for profile: CodexProfile) -> Date? {
         guard linkedManagedProfile(for: profile) == nil else { return nil }
         if profile.id == store.selectedMonitorProfileID,
-           let live = store.snapshot.sevenDayQuota?.resetsAt {
-            return live
+           store.snapshot.quotaReadSucceeded {
+            return store.snapshot.sevenDayQuota?.resetsAt
         }
         return profile.lastSnapshot?.sevenDay?.resetsAt
     }
@@ -746,7 +1041,7 @@ private struct AccountAutomationCenterView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     safetyRule("官方 5 小时剩余 ≤5%，或 7 天剩余严格低于 10%")
                     safetyRule("实时任务状态已连接、数据新鲜，且没有运行或等待输入的任务")
-                    safetyRule("Codex 已离开前台至少 2 分钟，旧版账号管理器未运行")
+                    safetyRule("Codex 已退出且旧版账号管理器未运行；运行中不自动换号")
                     safetyRule("候选账号实时验证身份一致，对应额度窗口至少剩余 30%")
                     safetyRule("只做优雅退出；退出失败不写凭据，也不会强制结束 Codex")
                 }
@@ -987,6 +1282,28 @@ struct CodexAccountMenuView: View {
             }
         }
         .frame(width: Self.preferredSize.width, height: Self.preferredSize.height)
+        .overlay(alignment: .bottom) {
+            if store.isAwaitingCodexHistoryConfirmation {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(text("请在 Codex 检查旧消息", "Check older messages in Codex"))
+                        .font(.system(size: 11, weight: .semibold))
+                    HStack(spacing: 8) {
+                        Button(text("历史完整", "History Complete")) {
+                            store.confirmRestoredCodexHistory()
+                        }
+                        .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
+                        Button(text("回滚原账号", "Roll Back")) {
+                            store.rejectRestoredCodexHistory()
+                        }
+                        .buttonStyle(AccountGlassButtonStyle(tint: .red, foreground: .white, compact: true))
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(12)
+            }
+        }
         .environment(\.colorScheme, colorScheme)
         .appVisualEnvironment(
             catalog: paletteCatalog,
@@ -994,6 +1311,24 @@ struct CodexAccountMenuView: View {
             appearance: PaletteAppearance(colorScheme)
         )
         .preferredColorScheme(colorScheme)
+        .alert(
+            store.forcedAccountSwitchProfileID == nil ? "未切换账号" : "强制切换账号？",
+            isPresented: Binding(
+                get: { store.accountSwitchAlertMessage != nil },
+                set: { if !$0 { store.dismissAccountSwitchAlert() } }
+            )
+        ) {
+            if store.forcedAccountSwitchProfileID != nil {
+                Button("强制切换", role: .destructive) {
+                    store.confirmForcedAccountSwitch()
+                }
+            }
+            Button(store.forcedAccountSwitchProfileID == nil ? "知道了" : "取消", role: .cancel) {
+                store.dismissAccountSwitchAlert()
+            }
+        } message: {
+            Text(store.accountSwitchAlertMessage ?? "")
+        }
         .alert(item: $profilePendingDeletion) { profile in
             Alert(
                 title: Text(text("删除“\(AccountDisplay.profileName(profile, allProfiles: store.profiles))”？", "Delete \(AccountDisplay.profileName(profile, allProfiles: store.profiles))?")),
@@ -1308,12 +1643,11 @@ struct CodexAccountMenuView: View {
                         Text(AccountDisplay.profileName(profile, allProfiles: store.profiles))
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
-                        let resetCount = store.resetCount(for: profile)
-                        if resetCount > 0 {
-                            Label("\(resetCount)", systemImage: "arrow.counterclockwise")
+                        if let availableResetCredits = store.availableResetCredits(for: profile) {
+                            Label("可用 \(availableResetCredits)", systemImage: "arrow.counterclockwise")
                                 .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.secondary)
-                                .help(text("本地记录：检测到该账号官方提前/随机重置 \(resetCount) 次", "Detected \(resetCount) early/random resets (local record)"))
+                                .help(text("官方返回的当前可用重置卡数量", "Available reset credits returned by Codex"))
                         }
                         if profile.id == store.selectedMonitorProfileID {
                             Circle().fill(Color.green).frame(width: 6, height: 6)
@@ -1388,12 +1722,11 @@ struct CodexAccountMenuView: View {
                         Text(AccountDisplay.profileName(profile, allProfiles: store.profiles))
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
-                        let resetCount = store.resetCount(for: profile)
-                        if resetCount > 0 {
-                            Label("\(resetCount)", systemImage: "arrow.counterclockwise")
+                        if let availableResetCredits = store.availableResetCredits(for: profile) {
+                            Label("可用 \(availableResetCredits)", systemImage: "arrow.counterclockwise")
                                 .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.secondary)
-                                .help(text("本地记录：检测到该账号官方提前/随机重置 \(resetCount) 次", "Detected \(resetCount) early/random resets (local record)"))
+                                .help(text("官方返回的当前可用重置卡数量", "Available reset credits returned by Codex"))
                         }
                         if profile.id == store.selectedMonitorProfileID {
                             Text(text("监控中", "Monitoring"))
@@ -1460,7 +1793,7 @@ struct CodexAccountMenuView: View {
                         store.launchCodex(with: profile.id)
                     }
                     .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
-                    .disabled(store.isLaunchingCodex || isCurrent)
+                    .disabled(store.isLaunchingCodex || store.isRefreshing || isCurrent)
                 }
             }
         }
@@ -1546,11 +1879,11 @@ struct CodexAccountMenuView: View {
         guard let membershipDays else { return "--" }
         return membershipDays >= 0
             ? text("还有 \(membershipDays) 天", "\(membershipDays) days left")
-            : text("已到期", "Expired")
+            : text("日期待刷新", "Date pending refresh")
     }
 
     private var membershipIsLow: Bool {
-        (membershipDays ?? 99) <= 7
+        membershipDays.map { $0 >= 0 && $0 <= 7 } ?? false
     }
 
     private func resetSummary(_ date: Date?) -> String {
@@ -1560,8 +1893,8 @@ struct CodexAccountMenuView: View {
 
     private func sevenDayRemaining(for profile: CodexProfile) -> Double? {
         if profile.id == store.selectedMonitorProfileID,
-           let remaining = store.snapshot.sevenDayQuota?.remainingPercent {
-            return remaining
+           store.snapshot.quotaReadSucceeded {
+            return store.snapshot.sevenDayQuota?.remainingPercent
         }
         return profile.lastSnapshot?.sevenDay.map { max(0, min(100, 100 - $0.usedPercent)) }
     }
@@ -1863,11 +2196,14 @@ private struct ProfileRow: View {
     let isLaunching: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
+    let fiveHourRemainingPercent: Double?
+    let fiveHourResetsAt: Date?
     let remainingPercent: Double?
     let resetsAt: Date?
     let warmUpStatus: String?
-    let resetCount: Int
-    var resetCardExpiry: Date? = nil
+    let availableResetCredits: Int?
+    let resetCreditExpiries: [Date]
+    let localResetHistoryCount: Int
     let chromeProfiles: [ChromeProfileBinding]
     let onMonitor: () -> Void
     let onRelogin: () -> Void
@@ -1880,7 +2216,6 @@ private struct ProfileRow: View {
     let onMoveDown: () -> Void
     let onDelete: () -> Void
     let onAdjustResetCount: (Int) -> Void
-    var onSetResetCardExpiry: ((Date?) -> Void)? = nil
     @State private var isEditingRemark = false
     @State private var isConfirmingDelete = false
     @State private var remarkDraft = ""
@@ -1900,12 +2235,12 @@ private struct ProfileRow: View {
                     .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(1)
                 Divider()
-                    .frame(height: 106)
+                    .frame(height: 142)
                     .opacity(0.5)
                 quotaSummary
                     .frame(width: 206, alignment: .leading)
                 Divider()
-                    .frame(height: 106)
+                    .frame(height: 142)
                     .opacity(0.5)
                 primaryControls
                     .frame(minWidth: 238, alignment: .trailing)
@@ -1979,7 +2314,7 @@ private struct ProfileRow: View {
                 if let activeUntil = official.subscriptionActiveUntil {
                     Text(membershipDetail(activeUntil))
                         .font(.caption2)
-                        .foregroundStyle(membershipRemainingDays(activeUntil) <= 7 ? Color.red : Color.secondary)
+                        .foregroundStyle(membershipTint(activeUntil))
                         .lineLimit(1)
                 }
             }
@@ -2026,31 +2361,56 @@ private struct ProfileRow: View {
     }
 
     private var quotaSummary: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("7 天剩余")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
-                    .font(.title3.weight(.bold).monospacedDigit())
-            }
-            QuotaProgressTrack(percent: remainingPercent)
-            Text(snapshotDetail)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Label("官方重置 \(resetCount) 次", systemImage: "arrow.counterclockwise.circle")
+        VStack(alignment: .leading, spacing: 8) {
+            quotaWindow(
+                title: "5 小时剩余",
+                remainingPercent: fiveHourRemainingPercent,
+                resetsAt: fiveHourResetsAt
+            )
+            quotaWindow(
+                title: "7 天剩余",
+                remainingPercent: remainingPercent,
+                resetsAt: resetsAt
+            )
+            Label(
+                availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置 --",
+                systemImage: "arrow.counterclockwise.circle"
+            )
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .help("本地记录：检测到该账号官方提前/随机重置 \(resetCount) 次（自动检测 + 手工校正）")
-                .accessibilityLabel("已被官方重置 \(resetCount) 次")
-            if let expiry = resetCardExpiry {
-                Text("有效期至 " + Self.resetExpiryFormatter.string(from: expiry))
+                .help("仅显示 Codex 官方返回的当前可用重置卡数量")
+                .accessibilityLabel(availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置次数未知")
+            if (availableResetCredits ?? 0) > 0,
+               let expiry = resetCreditExpiries.first {
+                Text("最近到期 " + Self.resetExpiryFormatter.string(from: expiry))
                     .font(.caption2)
                     .foregroundStyle(expiry <= Date() ? Color.red : Color.secondary)
                     .lineLimit(1)
             }
+        }
+    }
+
+    private func quotaWindow(
+        title: String,
+        remainingPercent: Double?,
+        resetsAt: Date?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
+                    .font(.subheadline.weight(.bold).monospacedDigit())
+            }
+            QuotaProgressTrack(percent: remainingPercent)
+            Text(resetsAt.map {
+                "官方重置 " + $0.formatted(.dateTime.month().day().hour().minute())
+            } ?? "官方重置时间未知")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
@@ -2132,41 +2492,19 @@ private struct ProfileRow: View {
             .help("首次登录或重新认证时使用；平时切号不会打开浏览器")
 
             Divider().frame(height: 24)
-            Text("重置记录 \(resetCount)")
+            Text("本地历史 \(localResetHistoryCount)")
                 .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
+                .help("本机检测与手工校正的历史记录，不代表当前可用重置卡")
             Button { onAdjustResetCount(-1) } label: { Image(systemName: "minus") }
                 .buttonStyle(.bordered)
-                .help("重置次数减一")
-                .accessibilityLabel("重置次数减一")
-                .disabled(resetCount <= 0)
+                .help("本地历史次数减一；不影响官方可用重置")
+                .accessibilityLabel("本地历史次数减一")
+                .disabled(localResetHistoryCount <= 0)
             Button { onAdjustResetCount(1) } label: { Image(systemName: "plus") }
                 .buttonStyle(.bordered)
-                .help("重置次数加一")
-                .accessibilityLabel("重置次数加一")
-            if let onSetResetCardExpiry {
-                if resetCardExpiry != nil {
-                    DatePicker(
-                        "有效期",
-                        selection: Binding(
-                            get: { resetCardExpiry ?? resetsAt ?? Date() },
-                            set: { onSetResetCardExpiry($0) }
-                        ),
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .datePickerStyle(.compact)
-                    .labelsHidden()
-                    .frame(width: 138)
-                    .help("重置卡有效期；显示在重置次数后面")
-                    Button { onSetResetCardExpiry(nil) } label: { Image(systemName: "xmark.circle") }
-                        .buttonStyle(.bordered)
-                        .help("清除重置卡有效期")
-                        .accessibilityLabel("清除重置卡有效期")
-                } else {
-                    Button("设置有效期") { onSetResetCardExpiry(resetsAt ?? Date()) }
-                        .buttonStyle(.bordered)
-                }
-            }
+                .help("本地历史次数加一；不影响官方可用重置")
+                .accessibilityLabel("本地历史次数加一")
 
             Spacer(minLength: 8)
             Button(action: onMoveUp) { Image(systemName: "arrow.up") }
@@ -2181,17 +2519,6 @@ private struct ProfileRow: View {
                 .disabled(!canMoveDown || isLaunching)
         }
         .controlSize(.small)
-    }
-
-    private var snapshotDetail: String {
-        if linkedAccountName != nil { return "未保存独立额度快照" }
-        let reset = resetsAt.map {
-            "重置 " + $0.formatted(.dateTime.month().day().hour().minute())
-        } ?? "重置时间未知"
-        let fetched = profile.lastSnapshot.map {
-            "快照 " + $0.fetchedAt.formatted(.dateTime.month().day().hour().minute())
-        } ?? "尚未保存快照"
-        return "\(reset) · \(fetched)"
     }
 
     private var planBadge: (name: String, icon: String) {
@@ -2223,7 +2550,12 @@ private struct ProfileRow: View {
         let date = activeUntil.formatted(.dateTime.month().day())
         return remainingDays >= 0
             ? "会员有效期还有 \(remainingDays) 天 · 至 \(date)"
-            : "会员有效期已过 · \(date)"
+            : "会员日期待刷新 · 原记录至 \(date)"
+    }
+
+    private func membershipTint(_ activeUntil: Date) -> Color {
+        let remainingDays = membershipRemainingDays(activeUntil)
+        return remainingDays < 0 ? .orange : (remainingDays <= 7 ? .red : .secondary)
     }
 
     private func membershipRemainingDays(_ activeUntil: Date) -> Int {
@@ -2302,5 +2634,352 @@ private extension View {
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
             .background(Capsule().fill(FixedVisualPalette.surfaceTrack))
+    }
+}
+
+private struct HubConsoleTaskRow: View {
+    let task: HubTask
+    @ObservedObject var model: HubConsoleModel
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(HubConsolePresentation.taskColor(task.state))
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(task.project)
+                        .font(.callout.weight(.semibold))
+                        .lineLimit(1)
+                    if let accountAlias = task.accountAlias, !accountAlias.isEmpty {
+                        Text("@\(accountAlias)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                hubDetailText
+                    .font(.caption)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 12)
+            if task.state == "awaiting_approval" {
+                Button("批准") {
+                    model.approveTask(task)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    approvalHasExpired
+                        || task.actionHash == nil
+                        || model.inFlightActions.contains("approve-\(task.id)")
+                )
+                Button("取消") {
+                    model.cancelTask(task)
+                }
+                .buttonStyle(.bordered)
+                .disabled(approvalHasExpired || model.inFlightActions.contains("cancel-\(task.id)"))
+            } else if let reasonCode = task.reasonCode, !reasonCode.isEmpty {
+                Text(HubConsolePresentation.reasonLabel(reasonCode))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .cardBackground(cornerRadius: 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var hubDetailText: Text {
+        var text = Text(HubConsolePresentation.agentLabel(task.agent) + " · ")
+            .foregroundColor(.secondary)
+        text = text + Text(approvalStateLabel)
+            .foregroundColor(approvalHasExpired ? .orange : .secondary)
+        var trailingParts: [String] = []
+        if task.state == "running" {
+            trailingParts.append(HubConsolePresentation.elapsedTime(since: task.createdAt))
+        }
+        trailingParts.append(HubConsolePresentation.relativeTime(task.updatedAt, prefix: "更新于"))
+        text = text + Text(" · " + trailingParts.joined(separator: " · "))
+            .foregroundColor(.secondary)
+        if let resultNote = task.resultNote?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !resultNote.isEmpty {
+            text = text + Text(" · " + resultNote)
+                .foregroundColor(Color.secondary.opacity(0.75))
+        }
+        return text
+    }
+
+    private var approvalHasExpired: Bool {
+        task.state == "awaiting_approval"
+            && task.approvalExpiresAt.map { $0 <= Date() } == true
+    }
+
+    private var approvalStateLabel: String {
+        guard task.state == "awaiting_approval", let expiresAt = task.approvalExpiresAt else {
+            return HubConsolePresentation.taskStateLabel(task.state)
+        }
+        let remaining = expiresAt.timeIntervalSinceNow
+        guard remaining > 0 else { return "审批已过期" }
+        return "等你批准 · 剩 \(max(1, Int(ceil(remaining / 60)))) 分钟"
+    }
+}
+
+private struct HubConsoleThreadRow: View {
+    let thread: HubThread
+    @ObservedObject var model: HubConsoleModel
+    var isSubagent = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(HubConsolePresentation.threadColor(thread))
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(displayTitle)
+                        .font(isSubagent ? .caption.weight(.medium) : .callout.weight(.medium))
+                        .lineLimit(1)
+                    if let sourceLabel = HubConsolePresentation.sourceLabel(thread.sourceKind) {
+                        Text(sourceLabel)
+                            .profileBadge()
+                    }
+                }
+                Text(hubDetailLine)
+                    .font(isSubagent ? .caption2 : .caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 12)
+            Button {
+                model.openThread(thread)
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("在 Codex 里打开")
+            .disabled(model.inFlightActions.contains("open-\(thread.id)"))
+            if thread.reviewState == "unreviewed" || thread.reviewState == nil {
+                Button("通过") {
+                    model.reviewThread(thread, accepted: true)
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+                .disabled(model.inFlightActions.contains("review-\(thread.id)"))
+                Button("有问题") {
+                    model.reviewThread(thread, accepted: false)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .disabled(model.inFlightActions.contains("review-\(thread.id)"))
+            } else {
+                Text(HubConsolePresentation.reviewLabel(thread.reviewState))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(HubConsolePresentation.reviewColor(thread.reviewState))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .cardBackground(cornerRadius: 10)
+        .padding(.leading, isSubagent ? 18 : 0)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var displayTitle: String {
+        let trimmed = thread.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "（无标题）" : trimmed
+    }
+
+    private var hubDetailLine: String {
+        var parts = [HubConsolePresentation.threadStateLabel(thread)]
+        if let projectAlias = thread.projectAlias, !projectAlias.isEmpty {
+            parts.append(projectAlias)
+        }
+        if let updatedAt = thread.updatedAt {
+            parts.append(HubConsolePresentation.relativeTime(updatedAt, prefix: "更新于"))
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
+private struct HubConsoleSettingsSheet: View {
+    @ObservedObject var model: HubConsoleModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var baseURLDraft = ""
+    @State private var tokenDraft = ""
+    @State private var enabledDraft = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 8) {
+                Text("多 agent 控制台设置")
+                    .font(.headline)
+                Spacer()
+            }
+
+            Toggle("启用多 agent 控制台", isOn: $enabledDraft)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("hub 地址")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                TextField("http://127.0.0.1:8787", text: $baseURLDraft)
+                    .textFieldStyle(.roundedBorder)
+                Text("本机 hub 默认地址就是上面这个；手机端走 Tailscale 地址，这里不用改")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("访问令牌")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                SecureField("没开令牌就留空", text: $tokenDraft)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Spacer()
+                Button("取消") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button("保存") {
+                    model.updateSettings(
+                        baseURL: baseURLDraft,
+                        token: tokenDraft,
+                        enabled: enabledDraft
+                    )
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .onAppear {
+            baseURLDraft = model.baseURL
+            tokenDraft = UserDefaults.standard.string(forKey: HubConsoleModel.tokenKey) ?? ""
+            enabledDraft = model.isEnabled
+        }
+    }
+}
+
+private enum HubConsolePresentation {
+    static func agentLabel(_ raw: String) -> String {
+        switch raw.lowercased() {
+        case "codex": "Codex"
+        case "claude": "Claude"
+        default: raw
+        }
+    }
+
+    static func sourceLabel(_ raw: String?) -> String? {
+        switch raw {
+        case "desktop": "桌面"
+        case "cli": "命令行"
+        default: nil
+        }
+    }
+
+    static func taskStateLabel(_ raw: String) -> String {
+        switch raw {
+        case "awaiting_approval": "等你批准"
+        case "starting": "正在启动"
+        case "running": "正在干活"
+        case "cancel_requested": "正在取消"
+        case "succeeded": "已完成"
+        case "failed": "失败了"
+        case "cancelled": "已取消"
+        case "uncertain": "结果未知"
+        case "blocked_configuration": "配置有问题"
+        default: raw
+        }
+    }
+
+    static func taskColor(_ raw: String) -> Color {
+        switch raw {
+        case "awaiting_approval", "cancel_requested", "uncertain": .orange
+        case "starting", "running": .accentColor
+        case "succeeded": .green
+        case "failed", "blocked_configuration": .red
+        default: .secondary
+        }
+    }
+
+    static func reasonLabel(_ raw: String) -> String {
+        switch raw {
+        case "process_exit_zero": "正常退出"
+        case "process_exit_nonzero": "进程异常退出"
+        case "process_signalled": "进程被强制结束"
+        case "blocked_configuration": "配置有问题"
+        case "project_busy": "该项目已有任务在跑"
+        case "account_missing": "账号凭据缺失"
+        case "cancelled": "已取消"
+        default: raw
+        }
+    }
+
+    static func threadStateLabel(_ thread: HubThread) -> String {
+        switch thread.runtimeState {
+        case "working": "正在干活"
+        case "needs_input": "等你回复"
+        case "error": "出错了"
+        case "ready": "空闲"
+        default:
+            switch thread.latestTurnState {
+            case "completed": "上一轮已完成"
+            case "failed": "上一轮失败"
+            case "in_progress": "正在干活"
+            default: "还没加载"
+            }
+        }
+    }
+
+    static func threadColor(_ thread: HubThread) -> Color {
+        switch thread.runtimeState {
+        case "working", "needs_input": .orange
+        case "error": .red
+        case "ready": .green
+        default:
+            switch thread.latestTurnState {
+            case "completed": .green
+            case "failed": .red
+            case "in_progress": .orange
+            default: .secondary
+            }
+        }
+    }
+
+    static func reviewLabel(_ raw: String?) -> String {
+        switch raw {
+        case "accepted": "通过了"
+        case "blocked": "有问题"
+        default: "还没看"
+        }
+    }
+
+    static func reviewColor(_ raw: String?) -> Color {
+        switch raw {
+        case "accepted": .green
+        case "blocked": .red
+        default: .secondary
+        }
+    }
+
+    static func relativeTime(_ date: Date?, prefix: String) -> String {
+        guard let date else { return "" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return prefix + formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    static func elapsedTime(since date: Date) -> String {
+        let minutes = max(0, Int(Date().timeIntervalSince(date) / 60))
+        return "已运行 \(minutes) 分钟"
     }
 }
