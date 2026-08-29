@@ -63,7 +63,9 @@ struct CodexRuntimeProvider: RuntimeUsageProvider {
     let scope: RuntimeScope = .codex
 
     func loadSnapshot(context: RuntimeLoadContext) -> RuntimeUsageSnapshot {
-        let snapshot = CodexUsageReader().load(context: context)
+        let reader = CodexUsageReader()
+        let snapshot = reader.load(context: context)
+            .replacingTaskBoard(reader.loadTaskBoard(context: context))
         let status: RuntimeMenuStatus
         if snapshot.quotaReadSucceeded {
             status = .available
@@ -83,6 +85,6 @@ struct CodexRuntimeProvider: RuntimeUsageProvider {
     }
 
     func loadTaskBoard(context: RuntimeLoadContext) -> TaskBoard? {
-        nil
+        CodexUsageReader().loadTaskBoard(context: context)
     }
 }

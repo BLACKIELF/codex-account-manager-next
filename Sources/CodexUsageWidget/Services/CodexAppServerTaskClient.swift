@@ -86,6 +86,343 @@ enum POSIXPipeReaderSelfTest {
     }
 }
 
+struct CodexThreadHistorySnapshot: Equatable {
+    let threadID: String
+    let turnIDs: [String]
+
+    func matches(_ baseline: CodexThreadHistorySnapshot) -> Bool {
+        threadID == baseline.threadID && turnIDs == baseline.turnIDs
+    }
+}
+
+enum CodexThreadHistoryError: LocalizedError {
+    case invalidThread
+    case unavailable
+    case timedOut
+    case malformedPage
+    case duplicateTurn
+    case repeatedCursor
+    case tooLarge
+    case empty
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidThread: return "任务标识无效"
+        case .unavailable: return "Codex 分页历史接口不可用"
+        case .timedOut: return "Codex 分页历史读取超时"
+        case .malformedPage: return "Codex 分页历史格式异常"
+        case .duplicateTurn: return "Codex 分页历史出现重复轮次"
+        case .repeatedCursor: return "Codex 分页历史游标重复"
+        case .tooLarge: return "Codex 分页历史超过安全校验上限"
+        case .empty: return "Codex 分页历史为空"
+        }
+    }
+}
+
+struct CodexThreadHistoryPageAccumulator {
+    // ponytail: 1,000 turn IDs bound metadata memory; raise only after a real larger history is observed.
+    private static let maximumPages = 4
+    private static let maximumTurns = 1_000
+
+    let threadID: String
+    private(set) var turnIDs: [String] = []
+    private var seenTurnIDs: Set<String> = []
+    private var seenCursors: Set<String> = []
+    private var pageCount = 0
+
+    init(threadID: String) {
+        self.threadID = threadID
+    }
+
+    mutating func append(result: [String: Any]) throws -> String? {
+        guard let turns = result["data"] as? [[String: Any]] else {
+            throw CodexThreadHistoryError.malformedPage
+        }
+        pageCount += 1
+        guard pageCount <= Self.maximumPages,
+              turnIDs.count + turns.count <= Self.maximumTurns else {
+            throw CodexThreadHistoryError.tooLarge
+        }
+        for turn in turns {
+            guard let turnID = turn["id"] as? String,
+                  !turnID.isEmpty else {
+                throw CodexThreadHistoryError.malformedPage
+            }
+            guard seenTurnIDs.insert(turnID).inserted else {
+                throw CodexThreadHistoryError.duplicateTurn
+            }
+            turnIDs.append(turnID)
+        }
+
+        let rawCursor = result["nextCursor"] ?? result["next_cursor"]
+        guard let rawCursor, !(rawCursor is NSNull) else { return nil }
+        guard let cursor = rawCursor as? String, !cursor.isEmpty else {
+            throw CodexThreadHistoryError.malformedPage
+        }
+        guard !turns.isEmpty, seenCursors.insert(cursor).inserted else {
+            throw turns.isEmpty
+                ? CodexThreadHistoryError.malformedPage
+                : CodexThreadHistoryError.repeatedCursor
+        }
+        return cursor
+    }
+
+    func snapshot() throws -> CodexThreadHistorySnapshot {
+        guard !turnIDs.isEmpty else { throw CodexThreadHistoryError.empty }
+        return CodexThreadHistorySnapshot(threadID: threadID, turnIDs: turnIDs)
+    }
+}
+
+enum CodexThreadHistoryProbeSelfTest {
+    static func run() -> Bool {
+        var accumulator = CodexThreadHistoryPageAccumulator(threadID: "thread")
+        do {
+            guard try accumulator.append(result: [
+                "data": [["id": "new"], ["id": "middle"]],
+                "nextCursor": "older-page"
+            ]) == "older-page",
+            try accumulator.append(result: [
+                "data": [["id": "old"]],
+                "nextCursor": NSNull()
+            ]) == nil else {
+                print("Codex thread history probe self-test failed: pagination")
+                return false
+            }
+            let snapshot = try accumulator.snapshot()
+            guard snapshot.turnIDs == ["new", "middle", "old"],
+                  snapshot.matches(snapshot),
+                  !snapshot.matches(CodexThreadHistorySnapshot(
+                    threadID: "thread",
+                    turnIDs: ["new", "old"]
+                  )) else {
+                print("Codex thread history probe self-test failed: fingerprint")
+                return false
+            }
+        } catch {
+            print("Codex thread history probe self-test failed: \(error.localizedDescription)")
+            return false
+        }
+
+        var duplicate = CodexThreadHistoryPageAccumulator(threadID: "thread")
+        do {
+            _ = try duplicate.append(result: ["data": [["id": "same"]], "nextCursor": "next"])
+            _ = try duplicate.append(result: ["data": [["id": "same"]], "nextCursor": NSNull()])
+            print("Codex thread history probe self-test failed: duplicate accepted")
+            return false
+        } catch CodexThreadHistoryError.duplicateTurn {
+            print("Codex thread history probe self-test passed")
+            return true
+        } catch {
+            print("Codex thread history probe self-test failed: wrong duplicate error")
+            return false
+        }
+    }
+}
+
+enum CodexThreadHistoryProbe {
+    private static let maximumOutputBufferBytes = 2 * 1_024 * 1_024
+    private static let pageSize = 250
+
+    /// Reads only turn IDs and cursors. `itemsView=notLoaded` keeps message bodies out of this process.
+    static func capture(
+        threadID: String,
+        timeout: TimeInterval = 15
+    ) -> Result<CodexThreadHistorySnapshot, CodexThreadHistoryError> {
+        guard !Thread.isMainThread else { return .failure(.unavailable) }
+        guard CodexSessionLink.url(threadID: threadID) != nil else { return .failure(.invalidThread) }
+        guard let executable = CodexExecutable.path() else { return .failure(.unavailable) }
+
+        CodexCredentialAccessGate.lock.lock()
+        defer { CodexCredentialAccessGate.lock.unlock() }
+
+        let process = Process()
+        let input = Pipe()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["app-server"]
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+        } catch {
+            return .failure(.unavailable)
+        }
+
+        let inputHandle = input.fileHandleForWriting
+        let outputHandle = output.fileHandleForReading
+        guard let outputDescriptor = try? POSIXPipeReader.duplicateDescriptor(for: outputHandle) else {
+            try? inputHandle.close()
+            if process.isRunning { process.terminate() }
+            try? outputHandle.close()
+            return .failure(.unavailable)
+        }
+
+        let writeLock = NSLock()
+        var acceptsWrites = true
+        @discardableResult
+        func writeMessage(_ request: [String: Any]) -> Bool {
+            guard let data = try? JSONSerialization.data(withJSONObject: request) else { return false }
+            writeLock.lock()
+            defer { writeLock.unlock() }
+            guard acceptsWrites else { return false }
+            do {
+                try inputHandle.write(contentsOf: data)
+                try inputHandle.write(contentsOf: Data("\n".utf8))
+                return true
+            } catch {
+                acceptsWrites = false
+                return false
+            }
+        }
+
+        let resultLock = NSLock()
+        let completed = DispatchSemaphore(value: 0)
+        var finalResult: Result<CodexThreadHistorySnapshot, CodexThreadHistoryError>?
+        func finish(_ result: Result<CodexThreadHistorySnapshot, CodexThreadHistoryError>) {
+            resultLock.lock()
+            let shouldSignal = finalResult == nil
+            if shouldSignal { finalResult = result }
+            resultLock.unlock()
+            if shouldSignal { completed.signal() }
+        }
+
+        let readerFinished = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            defer {
+                Darwin.close(outputDescriptor)
+                finish(.failure(.unavailable))
+                readerFinished.signal()
+            }
+            var buffer = Data()
+            var accumulator = CodexThreadHistoryPageAccumulator(threadID: threadID)
+            var historyRequestID: Int64 = 2
+
+            func sendHistoryPage(cursor: String?) {
+                var params: [String: Any] = [
+                    "threadId": threadID,
+                    "limit": pageSize,
+                    "sortDirection": "desc",
+                    "itemsView": "notLoaded"
+                ]
+                if let cursor { params["cursor"] = cursor }
+                guard writeMessage([
+                    "id": historyRequestID,
+                    "method": "thread/turns/list",
+                    "params": params
+                ]) else {
+                    finish(.failure(.unavailable))
+                    return
+                }
+            }
+
+            func responseID(_ value: Any?) -> Int64? {
+                if let value = value as? Int { return Int64(value) }
+                if let value = value as? Int64 { return value }
+                if let value = value as? NSNumber { return value.int64Value }
+                return nil
+            }
+
+            func parseLine(_ line: Data) {
+                guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+                      let requestID = responseID(object["id"]) else { return }
+                if requestID == 1 {
+                    guard object["error"] == nil,
+                          writeMessage(["method": "initialized"]) else {
+                        finish(.failure(.unavailable))
+                        return
+                    }
+                    sendHistoryPage(cursor: nil)
+                    return
+                }
+                guard requestID == historyRequestID else { return }
+                guard object["error"] == nil,
+                      let result = object["result"] as? [String: Any] else {
+                    finish(.failure(.unavailable))
+                    return
+                }
+                do {
+                    if let nextCursor = try accumulator.append(result: result) {
+                        historyRequestID &+= 1
+                        sendHistoryPage(cursor: nextCursor)
+                    } else {
+                        finish(.success(try accumulator.snapshot()))
+                    }
+                } catch let error as CodexThreadHistoryError {
+                    finish(.failure(error))
+                } catch {
+                    finish(.failure(.malformedPage))
+                }
+            }
+
+            while true {
+                let data: Data
+                do {
+                    guard let next = try POSIXPipeReader.readChunk(
+                        from: outputDescriptor,
+                        maximumBytes: 64 * 1_024
+                    ) else { return }
+                    data = next
+                } catch {
+                    return
+                }
+                buffer.append(data)
+                guard buffer.count <= maximumOutputBufferBytes else {
+                    finish(.failure(.tooLarge))
+                    return
+                }
+                while let newline = buffer.firstIndex(of: 10) {
+                    let line = buffer.subdata(in: buffer.startIndex..<newline)
+                    buffer.removeSubrange(buffer.startIndex...newline)
+                    if !line.isEmpty { parseLine(line) }
+                    resultLock.lock()
+                    let isComplete = finalResult != nil
+                    resultLock.unlock()
+                    if isComplete { return }
+                }
+            }
+        }
+
+        if !writeMessage([
+            "id": 1,
+            "method": "initialize",
+            "params": [
+                "clientInfo": [
+                    "name": "codex-account-manager-next",
+                    "title": "Codex Account Manager Next",
+                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                ],
+                "capabilities": [
+                    "experimentalApi": true,
+                    "optOutNotificationMethods": []
+                ]
+            ]
+        ]) {
+            finish(.failure(.unavailable))
+        }
+
+        if completed.wait(timeout: .now() + timeout) == .timedOut {
+            finish(.failure(.timedOut))
+        }
+        writeLock.lock()
+        acceptsWrites = false
+        try? inputHandle.close()
+        writeLock.unlock()
+        if process.isRunning { process.terminate() }
+        try? outputHandle.close()
+        _ = readerFinished.wait(timeout: .now() + 1)
+        if process.isRunning {
+            Darwin.kill(process.processIdentifier, SIGKILL)
+            process.waitUntilExit()
+        }
+
+        resultLock.lock()
+        let result = finalResult ?? .failure(.unavailable)
+        resultLock.unlock()
+        return result
+    }
+}
+
 final class CodexAppServerTaskClient: CodexTaskEventClient {
     var onSnapshot: ((CodexTaskLiveSnapshot) -> Void)?
 

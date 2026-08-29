@@ -790,8 +790,11 @@ final class UsageStore: ObservableObject {
             }
         }
     }
+    @Published private(set) var accountSwitchAlertMessage: String?
+    @Published private(set) var forcedAccountSwitchProfileID: String?
     @Published private(set) var isLoggingIn = false
     @Published private(set) var isLaunchingCodex = false
+    @Published private(set) var isAwaitingCodexHistoryConfirmation = false
     @Published private(set) var warmingProfileID: String?
     @Published private(set) var warmUpSelection = CodexWarmUpSelection.load()
     @Published private(set) var automaticAccountSwitchEnabled = UserDefaults.standard.bool(
@@ -809,13 +812,17 @@ final class UsageStore: ObservableObject {
     private var fullTimer: Timer?
     private var statisticsRolloverTimer: Timer?
     private var warmUpTimer: Timer?
+    private var warmUpMaintenanceTimer: Timer?
     private var systemTimeZoneObserver: NSObjectProtocol?
     private var powerStateObserver: NSObjectProtocol?
     private var thermalStateObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var codexActivationObserver: NSObjectProtocol?
     private var codexInactiveSince: Date?
+    private var isCodexFrontmost = false
+    private var foregroundCodexThread: (id: String, capturedAt: Date)?
     private var isRefreshingWarmUpProfiles = false
+    private var warmUpRefreshStartedAt: Date?
     private var unexpectedWarmUpKindsByAccount: [String: Set<CodexWarmUpWindowKind>] = [:]
     private var shouldWarmUpAfterManualRefresh = false
     private var refreshGeneration: UInt64 = 0
@@ -832,13 +839,16 @@ final class UsageStore: ObservableObject {
     private var isEvaluatingAutomaticAccountSwitch = false
     private var automaticSwitchTargetID: String?
     private var automaticSwitchContext: AutomaticSwitchContext?
+    private var codexHistoryConfirmationSuccess: (() -> Void)?
+    private var codexHistoryConfirmationFailure: ((String) -> Void)?
+    private var codexHistoryConfirmationTimeout: DispatchWorkItem?
     private var hasStarted = false
     private var isMainWindowActive = false
     private var lastFullRefreshCompletedAt: Date?
     private let statisticsSnapshotCacheLimit = 4
     private let statisticsSnapshotCacheTTL: TimeInterval = 3 * 60
-    private let foregroundFullRefreshInterval: TimeInterval = 5 * 60
-    private let backgroundFullRefreshInterval: TimeInterval = 15 * 60
+    private let foregroundFullRefreshInterval: TimeInterval = 3 * 60
+    private let backgroundFullRefreshInterval: TimeInterval = 5 * 60
     private let profileStore: CodexProfileStore
     private let accountActions = CodexAccountActions()
     private let taskClient = CodexAppServerTaskClient()
@@ -1012,24 +1022,22 @@ final class UsageStore: ObservableObject {
         accountManagerMessage = message
     }
 
-    func resetCount(for profile: CodexProfile) -> Int {
+    func localResetHistoryCount(for profile: CodexProfile) -> Int {
         profileStore.resetCounter(accountKey: profile.recordedAccountKey).total
     }
 
-    func resetCardExpiry(for profile: CodexProfile) -> Date? {
-        profileStore.resetCounter(accountKey: profile.recordedAccountKey).cardExpiresAt
+    func availableResetCredits(for profile: CodexProfile) -> Int? {
+        if profile.id == selectedMonitorProfileID {
+            return snapshot.credits?.resetCredits
+        }
+        return profile.lastSnapshot?.availableResetCredits
     }
 
-    func setResetCardExpiry(_ date: Date?, for profile: CodexProfile) {
-        do {
-            try profileStore.setResetCardExpiry(
-                accountKey: profile.recordedAccountKey,
-                date: date
-            )
-            syncProfiles()
-        } catch {
-            accountManagerMessage = "重置卡有效期保存失败：\(error.localizedDescription)"
+    func resetCreditExpiries(for profile: CodexProfile) -> [Date] {
+        if profile.id == selectedMonitorProfileID {
+            return snapshot.credits?.resetCreditDetails?.compactMap(\.expiresAt).sorted() ?? []
         }
+        return profile.lastSnapshot?.resetCreditExpiries ?? []
     }
 
     func adjustResetCount(for profile: CodexProfile, delta: Int) {
@@ -1037,7 +1045,7 @@ final class UsageStore: ObservableObject {
             try profileStore.adjustResetManualOffset(
                 accountKey: profile.recordedAccountKey,
                 delta: delta,
-                fallbackExpiry: profile.lastSnapshot?.sevenDay?.resetsAt
+                fallbackExpiry: nil
             )
             syncProfiles()
         } catch {
@@ -1247,13 +1255,43 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    func launchCodex(with profileID: String) {
+    func dismissAccountSwitchAlert() {
+        accountSwitchAlertMessage = nil
+        forcedAccountSwitchProfileID = nil
+    }
+
+    func confirmForcedAccountSwitch() {
+        guard let profileID = forcedAccountSwitchProfileID else { return }
+        dismissAccountSwitchAlert()
+        launchCodex(with: profileID, forceWithoutSessionRestore: true)
+    }
+
+    func launchCodex(with profileID: String, forceWithoutSessionRestore: Bool = false) {
+        let isAutomaticSwitch = automaticSwitchTargetID == profileID
+        let isForcedManualSwitch = CodexManualAccountSwitchPolicy.isForcedManualSwitch(
+            isAutomaticSwitch: isAutomaticSwitch,
+            userConfirmedForce: forceWithoutSessionRestore
+        )
+        if !isAutomaticSwitch { dismissAccountSwitchAlert() }
         guard !isLoggingIn,
               !isLaunchingCodex,
-              captureCurrentProfile(),
+              !isRefreshing,
+              !isRefreshingWarmUpProfiles
+        else {
+            presentAccountSwitchBlock("账号数据仍在读取；完成后再切换", isAutomatic: isAutomaticSwitch)
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .validationFailed,
+                detail: "账号数据读取尚未完成"
+            )
+            return
+        }
+        guard captureCurrentProfile(),
               let profile = profiles.first(where: { $0.id == profileID }),
               let systemProfile = profiles.first(where: \.isSystemProfile)
         else {
+            presentAccountSwitchBlock("启动前置校验未通过；请刷新后再试", isAutomatic: isAutomaticSwitch)
             finishAutomaticSwitchAttempt(
                 for: profileID,
                 succeeded: false,
@@ -1265,7 +1303,56 @@ final class UsageStore: ObservableObject {
         let legacyManagerRunning = !NSRunningApplication
             .runningApplications(withBundleIdentifier: "local.codex.account-manager")
             .isEmpty
-        let isAutomaticSwitch = automaticSwitchTargetID == profileID
+        let taskBoardForRestore = snapshot.taskBoard
+        let codexWasRunning = !NSRunningApplication
+            .runningApplications(withBundleIdentifier: "com.openai.codex")
+            .isEmpty
+        if CodexManualAccountSwitchPolicy.requiresForceConfirmation(
+            codexWasRunning: codexWasRunning,
+            isAutomaticSwitch: isAutomaticSwitch,
+            isForcedManualSwitch: isForcedManualSwitch
+        ) {
+            forcedAccountSwitchProfileID = profileID
+            presentAccountSwitchBlock(
+                "请先确认所有 Codex 对话都已关闭、没有任务正在运行。强制切换将不恢复当前对话，是否继续？",
+                isAutomatic: false
+            )
+            return
+        }
+        let threadIDToRestore: String?
+        if codexWasRunning, !isForcedManualSwitch {
+            threadIDToRestore = CodexSessionOpener.visibleThreadID(in: taskBoardForRestore)
+                ?? recentForegroundCodexThreadID(in: taskBoardForRestore)
+        } else {
+            threadIDToRestore = nil
+        }
+        guard isForcedManualSwitch || !codexWasRunning || threadIDToRestore != nil else {
+            let message: String
+            if isAutomaticSwitch {
+                message = "自动切换已暂停：无法确认当前对话，Codex 保持原账号"
+            } else {
+                forcedAccountSwitchProfileID = profileID
+                message = "无法确认当前 Codex 对话。请先确认所有 Codex 对话都已关闭、没有任务正在运行。强制切换将不恢复当前对话，是否继续？"
+            }
+            presentAccountSwitchBlock(message, isAutomatic: isAutomaticSwitch)
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .validationFailed,
+                detail: "当前可见对话无法精确识别"
+            )
+            return
+        }
+        guard !isAutomaticSwitch || !codexWasRunning else {
+            accountManagerMessage = "自动切换已暂停：Codex 仍在运行，界面历史需要人工确认"
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .appBusy,
+                detail: "Codex 仍在运行，无法自动确认界面历史"
+            )
+            return
+        }
         let isWithinAutomaticSwitchScope = automaticSwitchParticipation(for: profileID)
             && automaticSwitchContext.map {
                 automaticSwitchParticipation(for: $0.sourceProfileID)
@@ -1301,6 +1388,9 @@ final class UsageStore: ObservableObject {
             : "正在验证 \(AccountDisplay.profileName(profile))…"
         let preference = statisticsPreference
         DispatchQueue.global(qos: .utility).async {
+            let historyBaselineResult = threadIDToRestore.map {
+                CodexThreadHistoryProbe.capture(threadID: $0)
+            }
             let context = RuntimeLoadContext.live(
                 statisticsPreference: preference,
                 codexHomeDirectory: targetCredentialHome
@@ -1320,6 +1410,23 @@ final class UsageStore: ObservableObject {
                 codexHomeURL: systemProfile.codexHomeURL
             )
             DispatchQueue.main.async {
+                var historyBaseline: CodexThreadHistorySnapshot?
+                if let historyBaselineResult {
+                    switch historyBaselineResult {
+                    case let .success(snapshot):
+                        historyBaseline = snapshot
+                    case let .failure(error):
+                        self.isLaunchingCodex = false
+                        self.accountManagerMessage = "分页历史预检失败；没有切换账号：\(error.localizedDescription)"
+                        self.finishAutomaticSwitchAttempt(
+                            for: profileID,
+                            succeeded: false,
+                            failureReason: .validationFailed,
+                            detail: "分页历史预检失败"
+                        )
+                        return
+                    }
+                }
                 guard let verifiedAccount = verifiedSnapshot.account,
                       let verifiedEmail = verifiedAccount.email?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1446,12 +1553,18 @@ final class UsageStore: ObservableObject {
                 let legacyManagerRunning = !NSRunningApplication
                     .runningApplications(withBundleIdentifier: "local.codex.account-manager")
                     .isEmpty
-                guard !isAutomaticSwitch || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+                let requiresCodexRestart = targetCredentialIdentity != currentSystemCredentialIdentity
+                guard isForcedManualSwitch
+                        || !requiresCodexRestart
+                        || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
                     self.codexLiveTasks,
                     legacyManagerRunning: legacyManagerRunning
                 ) else {
                     self.isLaunchingCodex = false
-                    self.accountManagerMessage = "自动切换已取消：写入前检测到活跃或无法确认的任务"
+                    let message = isAutomaticSwitch
+                        ? "自动切换已取消：写入前检测到活跃或无法确认的任务"
+                        : "没有切换：当前对话仍在执行，请等待本轮完成后再点“切换并打开”"
+                    self.presentAccountSwitchBlock(message, isAutomatic: isAutomaticSwitch)
                     self.finishAutomaticSwitchAttempt(
                         for: profileID,
                         succeeded: false,
@@ -1493,12 +1606,15 @@ final class UsageStore: ObservableObject {
                         ? self.automaticSwitchContext.map {
                             CodexCredentialIdentity(email: $0.sourceIdentityKey, accountID: $0.sourceAccountID)
                         }
-                        : nil
+                        : nil,
+                    retainRecoveryJournal: !isAutomaticSwitch
+                        && requiresCodexRestart
+                        && historyBaseline != nil
                 ) { [weak self] error in
                     guard let self else { return }
-                    self.isAccountSwitchTransactionActive = false
+                    self.taskClient.start(reason: .startup)
+                    self.taskClient.refreshThreads()
                     self.configureAuthMonitoring()
-                    self.isLaunchingCodex = false
                     if let error {
                         do {
                             try self.profileStore.selectLaunch(systemProfile.id)
@@ -1514,46 +1630,388 @@ final class UsageStore: ObservableObject {
                             detail: error.localizedDescription
                         )
                         self.synchronizeMonitorWithCurrentCodex(announce: true)
-                    } else {
-                        do {
-                            try self.profileStore.record(
-                                verifiedSnapshot,
-                                for: systemProfile.id,
-                                allowAccountOnly: true,
-                                allowSystemAccountChange: true
-                            )
-                            if let verifiedOfficialProfile {
-                                try self.profileStore.recordOfficialProfile(verifiedOfficialProfile, for: systemProfile.id)
-                            }
-                            try self.profileStore.syncSystemAuthToMatchingManagedProfiles()
-                            try self.profileStore.selectLaunch(profile.id)
-                            try self.profileStore.selectMonitor(profile.id)
-                            self.syncProfiles()
-                            self.configureAuthMonitoring()
-                            self.clearDisplayedAccount()
-                            self.accountManagerMessage = isAutomaticSwitch
-                                ? "安全自动切换已完成，Codex 已重新打开"
-                                : "已切换账号并重新打开 Codex"
-                            self.finishAutomaticSwitchAttempt(
-                                for: profileID,
-                                succeeded: true,
-                                detail: "登录凭据、Codex 重启与账号状态均已确认"
-                            )
-                            self.refresh(queueIfBusy: true)
-                        } catch {
-                            self.accountManagerMessage = isAutomaticSwitch
-                                ? "安全自动切换已完成，但账号状态保存失败：\(error.localizedDescription)"
-                                : "Codex 已打开，但账号状态保存失败：\(error.localizedDescription)"
-                            self.finishAutomaticSwitchAttempt(
-                                for: profileID,
-                                succeeded: true,
-                                detail: "Codex 已切换，但本地账号状态保存失败"
-                            )
+                        guard let threadIDToRestore, let historyBaseline else {
+                            self.isAccountSwitchTransactionActive = false
+                            self.isLaunchingCodex = false
+                            return
                         }
+                        let failureMessage = self.accountManagerMessage ?? "账号切换失败，原账号已恢复"
+                        self.verifyRestoredTaskMetadata(
+                            threadID: threadIDToRestore,
+                            baseline: historyBaseline
+                        ) { [weak self] verified in
+                            self?.isAccountSwitchTransactionActive = false
+                            self?.isLaunchingCodex = false
+                            self?.accountManagerMessage = verified
+                                ? "\(failureMessage)；原任务深链已请求，分页数据已确认"
+                                : "\(failureMessage)；原任务仍在本机，但深链或分页数据未确认"
+                        }
+                        return
                     }
+
+                    do {
+                        try self.profileStore.record(
+                            verifiedSnapshot,
+                            for: systemProfile.id,
+                            allowAccountOnly: true,
+                            allowSystemAccountChange: true
+                        )
+                        if let verifiedOfficialProfile {
+                            try self.profileStore.recordOfficialProfile(verifiedOfficialProfile, for: systemProfile.id)
+                        }
+                        try self.profileStore.syncSystemAuthToMatchingManagedProfiles()
+                        try self.profileStore.selectLaunch(profile.id)
+                        try self.profileStore.selectMonitor(profile.id)
+                        self.syncProfiles()
+                        self.configureAuthMonitoring()
+                        self.clearDisplayedAccount()
+                    } catch {
+                        self.rollbackManualSwitch(
+                            reason: "账号状态保存失败：\(error.localizedDescription)",
+                            attemptedProfileID: profileID,
+                            targetProfile: launchProfile,
+                            rollbackProfile: sourceBackupProfile,
+                            systemProfile: systemProfile,
+                            originalSnapshot: currentSystemSnapshot,
+                            originalOfficialProfile: currentSystemOfficialProfile,
+                            threadID: threadIDToRestore,
+                            taskBoard: taskBoardForRestore,
+                            historyBaseline: historyBaseline,
+                            recoverPendingSwitch: requiresCodexRestart && historyBaseline != nil
+                        )
+                        return
+                    }
+
+                    guard requiresCodexRestart,
+                          let threadIDToRestore,
+                          let historyBaseline else {
+                        self.isAccountSwitchTransactionActive = false
+                        self.isLaunchingCodex = false
+                        self.accountManagerMessage = isAutomaticSwitch
+                            ? "安全自动切换已完成，Codex 已重新打开"
+                            : "已切换账号并重新打开 Codex"
+                        self.finishAutomaticSwitchAttempt(
+                            for: profileID,
+                            succeeded: true,
+                            detail: "登录凭据、Codex 重启与账号状态均已确认"
+                        )
+                        self.refresh(queueIfBusy: true)
+                        return
+                    }
+
+                    self.accountManagerMessage = "已切换账号，正在验证原任务恢复"
+                    self.restoreManualTaskOrRollback(
+                        threadID: threadIDToRestore,
+                        taskBoard: taskBoardForRestore,
+                        historyBaseline: historyBaseline,
+                        attemptedProfileID: profileID,
+                        targetProfile: launchProfile,
+                        rollbackProfile: sourceBackupProfile,
+                        systemProfile: systemProfile,
+                        originalSnapshot: currentSystemSnapshot,
+                        originalOfficialProfile: currentSystemOfficialProfile
+                    )
                 }
             }
         }
+    }
+
+    private func restoreManualTaskOrRollback(
+        threadID: String,
+        taskBoard: TaskBoard?,
+        historyBaseline: CodexThreadHistorySnapshot,
+        attemptedProfileID: String,
+        targetProfile: CodexProfile,
+        rollbackProfile: CodexProfile?,
+        systemProfile: CodexProfile,
+        originalSnapshot: UsageSnapshot,
+        originalOfficialProfile: CodexOfficialProfileSnapshot?
+    ) {
+        verifyRestoredTaskMetadata(
+            threadID: threadID,
+            baseline: historyBaseline
+        ) { [weak self] verified in
+            guard let self else { return }
+            guard verified else {
+                self.rollbackManualSwitch(
+                    reason: "未能请求打开原任务或确认分页历史",
+                    attemptedProfileID: attemptedProfileID,
+                    targetProfile: targetProfile,
+                    rollbackProfile: rollbackProfile,
+                    systemProfile: systemProfile,
+                    originalSnapshot: originalSnapshot,
+                    originalOfficialProfile: originalOfficialProfile,
+                    threadID: threadID,
+                    taskBoard: taskBoard,
+                    historyBaseline: historyBaseline,
+                    recoverPendingSwitch: true
+                )
+                return
+            }
+
+            self.beginCodexHistoryConfirmation(
+                onSuccess: { [weak self] in
+                    guard let self else { return }
+                    self.accountManagerMessage = "界面历史已确认，正在提交账号切换"
+                    self.accountActions.commitPendingSwitch { [weak self] error in
+                        guard let self else { return }
+                        if let error {
+                            self.rollbackManualSwitch(
+                                reason: "账号切换提交失败：\(error.localizedDescription)",
+                                attemptedProfileID: attemptedProfileID,
+                                targetProfile: targetProfile,
+                                rollbackProfile: rollbackProfile,
+                                systemProfile: systemProfile,
+                                originalSnapshot: originalSnapshot,
+                                originalOfficialProfile: originalOfficialProfile,
+                                threadID: threadID,
+                                taskBoard: taskBoard,
+                                historyBaseline: historyBaseline,
+                                recoverPendingSwitch: true
+                            )
+                            return
+                        }
+                        self.isAccountSwitchTransactionActive = false
+                        self.isLaunchingCodex = false
+                        self.accountManagerMessage = "已切换账号；原任务窗口、分页数据和界面历史均已确认"
+                        self.finishAutomaticSwitchAttempt(
+                            for: attemptedProfileID,
+                            succeeded: true,
+                            detail: "登录凭据、Codex 重启、账号状态、分页数据与界面历史均已确认"
+                        )
+                        self.refresh(queueIfBusy: true)
+                    }
+                },
+                onFailure: { [weak self] reason in
+                    self?.rollbackManualSwitch(
+                        reason: reason,
+                        attemptedProfileID: attemptedProfileID,
+                        targetProfile: targetProfile,
+                        rollbackProfile: rollbackProfile,
+                        systemProfile: systemProfile,
+                        originalSnapshot: originalSnapshot,
+                        originalOfficialProfile: originalOfficialProfile,
+                        threadID: threadID,
+                        taskBoard: taskBoard,
+                        historyBaseline: historyBaseline,
+                        recoverPendingSwitch: true
+                    )
+                }
+            )
+        }
+    }
+
+    private func verifyRestoredTaskMetadata(
+        threadID: String,
+        baseline: CodexThreadHistorySnapshot,
+        completion: @escaping (Bool) -> Void
+    ) {
+        CodexSessionOpener.requestRestore(threadID: threadID) { routed in
+            guard routed else {
+                completion(false)
+                return
+            }
+            DispatchQueue.global(qos: .utility).async {
+                let verified: Bool
+                switch CodexThreadHistoryProbe.capture(threadID: threadID) {
+                case let .success(current): verified = current.matches(baseline)
+                case .failure: verified = false
+                }
+                DispatchQueue.main.async { completion(verified) }
+            }
+        }
+    }
+
+    private func beginCodexHistoryConfirmation(
+        onSuccess: @escaping () -> Void,
+        onFailure: @escaping (String) -> Void
+    ) {
+        clearCodexHistoryConfirmation()
+        codexHistoryConfirmationSuccess = onSuccess
+        codexHistoryConfirmationFailure = onFailure
+        isAwaitingCodexHistoryConfirmation = true
+        accountManagerMessage = "分页数据一致；请在 Codex 检查旧消息，再于 90 秒内确认"
+        let timeout = DispatchWorkItem { [weak self] in
+            self?.resolveCodexHistoryConfirmation(
+                succeeded: false,
+                reason: "90 秒内未确认界面历史完整"
+            )
+        }
+        codexHistoryConfirmationTimeout = timeout
+        DispatchQueue.main.asyncAfter(deadline: .now() + 90, execute: timeout)
+    }
+
+    func confirmRestoredCodexHistory() {
+        resolveCodexHistoryConfirmation(succeeded: true, reason: "")
+    }
+
+    func rejectRestoredCodexHistory() {
+        resolveCodexHistoryConfirmation(succeeded: false, reason: "用户确认界面历史不完整")
+    }
+
+    private func resolveCodexHistoryConfirmation(succeeded: Bool, reason: String) {
+        guard isAwaitingCodexHistoryConfirmation else { return }
+        let success = codexHistoryConfirmationSuccess
+        let failure = codexHistoryConfirmationFailure
+        clearCodexHistoryConfirmation()
+        succeeded ? success?() : failure?(reason)
+    }
+
+    private func clearCodexHistoryConfirmation() {
+        codexHistoryConfirmationTimeout?.cancel()
+        codexHistoryConfirmationTimeout = nil
+        codexHistoryConfirmationSuccess = nil
+        codexHistoryConfirmationFailure = nil
+        isAwaitingCodexHistoryConfirmation = false
+    }
+
+    private func rollbackManualSwitch(
+        reason: String,
+        attemptedProfileID: String,
+        targetProfile: CodexProfile,
+        rollbackProfile: CodexProfile?,
+        systemProfile: CodexProfile,
+        originalSnapshot: UsageSnapshot,
+        originalOfficialProfile: CodexOfficialProfileSnapshot?,
+        threadID: String?,
+        taskBoard: TaskBoard?,
+        historyBaseline: CodexThreadHistorySnapshot?,
+        recoverPendingSwitch: Bool
+    ) {
+        guard let rollbackProfile else {
+            isAccountSwitchTransactionActive = false
+            isLaunchingCodex = false
+            accountManagerMessage = "严重：\(reason)，且没有可验证的原账号备份"
+            finishAutomaticSwitchAttempt(
+                for: attemptedProfileID,
+                succeeded: false,
+                failureReason: .restartFailed,
+                detail: "\(reason)；缺少原账号备份"
+            )
+            return
+        }
+
+        accountManagerMessage = "\(reason)，正在安全回滚原账号"
+        let liveTargetProfile = profiles.first(where: { $0.id == targetProfile.id }) ?? targetProfile
+        let liveRollbackProfile = profiles.first(where: { $0.id == rollbackProfile.id }) ?? rollbackProfile
+
+        let finishRuntimeRollback: (Error?) -> Void = { [weak self] rollbackError in
+            guard let self else { return }
+            if let rollbackError {
+                self.isAccountSwitchTransactionActive = false
+                self.isLaunchingCodex = false
+                self.accountManagerMessage = "严重：原任务未恢复，原账号回滚也失败：\(rollbackError.localizedDescription)"
+                self.finishAutomaticSwitchAttempt(
+                    for: attemptedProfileID,
+                    succeeded: false,
+                    failureReason: .restartFailed,
+                    detail: "任务恢复失败且账号回滚失败"
+                )
+                self.synchronizeMonitorWithCurrentCodex(announce: true)
+                return
+            }
+
+            var stateSaveError: Error?
+            do {
+                try self.profileStore.record(
+                    originalSnapshot,
+                    for: systemProfile.id,
+                    allowAccountOnly: true,
+                    allowSystemAccountChange: true
+                )
+                if let originalOfficialProfile {
+                    try self.profileStore.recordOfficialProfile(originalOfficialProfile, for: systemProfile.id)
+                }
+                try self.profileStore.syncSystemAuthToMatchingManagedProfiles()
+                try self.profileStore.selectLaunch(liveRollbackProfile.id)
+                try self.profileStore.selectMonitor(liveRollbackProfile.id)
+                self.syncProfiles()
+                self.configureAuthMonitoring()
+                self.clearDisplayedAccount()
+            } catch {
+                stateSaveError = error
+            }
+
+            self.taskClient.start(reason: .startup)
+            self.taskClient.refreshThreads()
+            guard let threadID else {
+                self.finishManualRollback(
+                    attemptedProfileID: attemptedProfileID,
+                    taskMetadataVerified: true,
+                    stateSaveError: stateSaveError
+                )
+                return
+            }
+            self.accountManagerMessage = "已回滚原账号，正在恢复原任务"
+            guard let historyBaseline else {
+                self.finishManualRollback(
+                    attemptedProfileID: attemptedProfileID,
+                    taskMetadataVerified: false,
+                    stateSaveError: stateSaveError
+                )
+                return
+            }
+            self.verifyRestoredTaskMetadata(
+                threadID: threadID,
+                baseline: historyBaseline
+            ) { [weak self] verified in
+                self?.finishManualRollback(
+                    attemptedProfileID: attemptedProfileID,
+                    taskMetadataVerified: verified,
+                    stateSaveError: stateSaveError
+                )
+            }
+        }
+
+        if recoverPendingSwitch {
+            accountActions.recoverPendingSwitchIfNeeded { outcome in
+                switch outcome {
+                case .success(.restoredOriginalAuth), .success(.originalAuthAlreadyPresent):
+                    finishRuntimeRollback(nil)
+                case .success(.noPendingSwitch), .success(.preservedExternalAuth):
+                    finishRuntimeRollback(NSError(
+                        domain: "CodexAccountManagerNext.Switch",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "恢复记录不可用于安全回滚"]
+                    ))
+                case let .failure(error):
+                    finishRuntimeRollback(error)
+                }
+            }
+        } else {
+            accountActions.launchCodex(
+                profile: liveRollbackProfile,
+                sourceBackupProfile: liveTargetProfile,
+                completion: finishRuntimeRollback
+            )
+        }
+    }
+
+    private func finishManualRollback(
+        attemptedProfileID: String,
+        taskMetadataVerified: Bool,
+        stateSaveError: Error?
+    ) {
+        isAccountSwitchTransactionActive = false
+        isLaunchingCodex = false
+        if let stateSaveError {
+            accountManagerMessage = taskMetadataVerified
+                ? "已回滚原账号并确认原任务分页数据，但账号状态保存失败：\(stateSaveError.localizedDescription)"
+                : "已回滚原账号，但原任务深链或分页数据未确认且状态保存失败：\(stateSaveError.localizedDescription)"
+        } else {
+            accountManagerMessage = taskMetadataVerified
+                ? "切换未通过，已安全回滚原账号并确认原任务分页数据"
+                : "已安全回滚原账号；原任务仍在本机，但深链或分页数据未确认"
+        }
+        finishAutomaticSwitchAttempt(
+            for: attemptedProfileID,
+            succeeded: false,
+            failureReason: .restartFailed,
+            detail: taskMetadataVerified
+                ? "切换未通过，已回滚原账号并确认任务分页数据"
+                : "已回滚原账号，但任务窗口或分页数据未确认"
+        )
+        refresh(queueIfBusy: true)
     }
 
     func setAutomaticAccountSwitchEnabled(_ enabled: Bool) {
@@ -1568,8 +2026,6 @@ final class UsageStore: ObservableObject {
             accountManagerMessage = "安全自动切换已开启；5 小时剩余 ≤5% 或 7 天剩余 <10% 时评估"
             refresh(queueIfBusy: true)
         } else {
-            taskClient.stop()
-            codexLiveTasks = .disconnected
             accountManagerMessage = "安全自动切换已关闭"
         }
     }
@@ -1674,7 +2130,6 @@ final class UsageStore: ObservableObject {
                 && profile.lastSnapshot?.accountID != sourceAccountID
                 && profile.lastSnapshot?.email?.isEmpty == false
                 && profile.lastSnapshot?.accountID?.isEmpty == false
-                && (profile.officialProfile?.subscriptionActiveUntil.map { $0 > now } ?? true)
                 && FileManager.default.fileExists(
                     atPath: profile.codexHomeURL.appendingPathComponent("auth.json").path
                 )
@@ -1685,7 +2140,7 @@ final class UsageStore: ObservableObject {
                 sourceProfile: sourceProfile,
                 quota: sourceQuota,
                 reason: .noEligibleAccount,
-                detail: "没有已登录且会员有效的备用账号"
+                detail: "没有已登录且额度可实时验证的备用账号"
             )
             return
         }
@@ -1874,7 +2329,7 @@ final class UsageStore: ObservableObject {
             )
         }
         taskClient.stop()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+        DispatchQueue.main.async { [weak self] in
             guard let self, self.hasStarted, self.automaticAccountSwitchEnabled else { return }
             self.taskClient.start(reason: .startup)
             self.taskClient.refreshThreads()
@@ -2015,10 +2470,45 @@ final class UsageStore: ObservableObject {
         if !warmUpSelection.isEnabled {
             warmUpTimer?.invalidate()
             warmUpTimer = nil
+            warmUpMaintenanceTimer?.invalidate()
+            warmUpMaintenanceTimer = nil
             unexpectedWarmUpKindsByAccount.removeAll()
             return
         }
         refreshWarmUpProfilesThenSchedule()
+    }
+
+    /// 暖号证据只认 15 分钟内的快照；监控刷新只覆盖当前账号。
+    /// 用固定周期全量刷新，保证每个账号都能按自己的重置时间被暖号，
+    /// 也让读取失败的账号及时把失败状态暴露给用户。
+    private func scheduleWarmUpMaintenanceTimer() {
+        warmUpMaintenanceTimer?.invalidate()
+        warmUpMaintenanceTimer = nil
+        guard warmUpSelection.isEnabled, hasStarted else { return }
+        let timer = Timer(
+            fire: Date().addingTimeInterval(10 * 60),
+            interval: 10 * 60,
+            repeats: true
+        ) { [weak self] _ in
+            guard let self,
+                  self.warmUpSelection.isEnabled,
+                  self.hasStarted
+            else { return }
+            if self.isRefreshingWarmUpProfiles {
+                // 看门狗：上一轮全量刷新卡死超过 12 分钟时强制复位，
+                // 避免额度证据无限过期、暖号与失败标记全部静默停摆。
+                guard let startedAt = self.warmUpRefreshStartedAt,
+                      Date().timeIntervalSince(startedAt) > 12 * 60
+                else { return }
+                self.isRefreshingWarmUpProfiles = false
+                self.warmUpRefreshStartedAt = nil
+                self.accountManagerMessage = "检测到上一轮账号刷新卡住，已自动恢复"
+            }
+            self.refreshWarmUpProfilesThenSchedule()
+        }
+        timer.tolerance = 30
+        RunLoop.main.add(timer, forMode: .common)
+        warmUpMaintenanceTimer = timer
     }
 
     private func effectiveWarmUpSelection(
@@ -2036,19 +2526,22 @@ final class UsageStore: ObservableObject {
         if warmingProfileID == profile.id {
             return "正在发送最小请求，以开始已开启的额度窗口…"
         }
-        guard warmUpSelection.isEnabled || profile.lastWarmUpAt != nil else { return nil }
-        if profile.officialProfile?.subscriptionActiveUntil.map({ $0 <= Date() }) == true {
-            return "智能暖号已暂停 · 会员已到期"
-        }
+        guard warmUpSelection.isEnabled || profile.lastWarmUpAt != nil || profile.lastQuotaReadFailureAt != nil else { return nil }
         let last = profile.lastWarmUpAt.map { date in
             let state = profile.lastWarmUpSucceeded == true ? "上次成功" : "上次失败"
             return "\(state) " + date.formatted(.dateTime.month().day().hour().minute())
         }
         guard warmUpSelection.isEnabled else {
-            return last.map { "智能暖号已关闭 · \($0)" }
+            let failure = profile.lastQuotaReadFailureAt.map { date in
+                "额度读取失败 " + date.formatted(.dateTime.month().day().hour().minute()) + "；旧额度仅供参考，如持续出现请对该账号重新登录"
+            }
+            return failure ?? last.map { "智能暖号已关闭 · \($0)" }
         }
         let selection = effectiveWarmUpSelection(for: profile)
         var parts = [last].compactMap { $0 }
+        if let failureAt = profile.lastQuotaReadFailureAt {
+            parts.append("额度读取失败 " + failureAt.formatted(.dateTime.month().day().hour().minute()) + "；旧额度仅供参考")
+        }
         if warmUpSelection.fiveHour, !selection.fiveHour {
             parts.append("5 小时已排除 · 官方随机重置仍会暖号")
         } else if selection.fiveHour {
@@ -2112,8 +2605,7 @@ final class UsageStore: ObservableObject {
                 profile,
                 selection: effectiveWarmUpSelection(for: profile, unexpected: unexpected),
                 unexpected: unexpected
-              ),
-              profile.officialProfile?.subscriptionActiveUntil.map({ $0 > Date() }) ?? true
+              )
         else { return }
         warmingProfileID = profile.id
         accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 发送最小请求…"
@@ -2159,6 +2651,7 @@ final class UsageStore: ObservableObject {
     private func scheduleWarmUpTimer() {
         warmUpTimer?.invalidate()
         warmUpTimer = nil
+        scheduleWarmUpMaintenanceTimer()
         guard warmUpSelection.isEnabled, hasStarted, warmingProfileID == nil else { return }
         if let profile = nextDueWarmUpProfile() {
             performWarmUp(profile)
@@ -2296,6 +2789,7 @@ final class UsageStore: ObservableObject {
         let profiles = profiles
         let preference = statisticsPreference
         isRefreshingWarmUpProfiles = true
+        warmUpRefreshStartedAt = Date()
         DispatchQueue.global(qos: .utility).async {
             let snapshots = profiles.map { profile in
                 let context = RuntimeLoadContext.live(
@@ -2306,6 +2800,7 @@ final class UsageStore: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.isRefreshingWarmUpProfiles = false
+                self.warmUpRefreshStartedAt = nil
                 guard self.hasStarted else { return }
                 for (profileID, snapshot) in snapshots {
                     if snapshot.quotaReadSucceeded,
@@ -2364,19 +2859,23 @@ final class UsageStore: ObservableObject {
             ) { [weak self] notification in
                 let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 self?.updateCodexForegroundState(frontmostBundleID: application?.bundleIdentifier)
+                if application?.bundleIdentifier == "com.openai.codex" {
+                    self?.taskClient.start(reason: .startup)
+                    self?.taskClient.refreshThreads()
+                }
             }
         }
         taskClient.onSnapshot = { [weak self] snapshot in
             guard let self else { return }
             self.codexLiveTasks = snapshot
+            self.rememberForegroundCodexThread(from: snapshot)
             self.evaluateAutomaticAccountSwitch()
         }
-        if automaticAccountSwitchEnabled {
-            taskClient.start(reason: .startup)
-        }
+        taskClient.start(reason: .startup)
         configureAuthMonitoring()
         synchronizeMonitorWithCurrentCodex(announce: false)
         refreshStaleOfficialProfiles()
+        refreshWarmUpProfilesThenSchedule()
         systemTimeZoneObserver = NotificationCenter.default.addObserver(
             forName: .NSSystemTimeZoneDidChange,
             object: nil,
@@ -2449,6 +2948,9 @@ final class UsageStore: ObservableObject {
         statisticsFeedbackTimer?.invalidate()
         warmUpTimer?.invalidate()
         warmUpTimer = nil
+        warmUpMaintenanceTimer?.invalidate()
+        warmUpMaintenanceTimer = nil
+        warmUpRefreshStartedAt = nil
         isRefreshingWarmUpProfiles = false
         accountActions.cancelLogin()
         stopAuthMonitoring()
@@ -2461,6 +2963,8 @@ final class UsageStore: ObservableObject {
             self.codexActivationObserver = nil
         }
         codexInactiveSince = nil
+        isCodexFrontmost = false
+        foregroundCodexThread = nil
         if let systemTimeZoneObserver {
             NotificationCenter.default.removeObserver(systemTimeZoneObserver)
             self.systemTimeZoneObserver = nil
@@ -2568,10 +3072,8 @@ final class UsageStore: ObservableObject {
                     self.hasPendingRefresh = false
                     self.refresh()
                 } else {
-                    if self.automaticAccountSwitchEnabled {
-                        self.taskClient.start(reason: .startup)
-                        self.taskClient.refreshThreads()
-                    }
+                    self.taskClient.start(reason: .startup)
+                    self.taskClient.refreshThreads()
                     self.evaluateAutomaticAccountSwitch()
                 }
             }
@@ -2585,11 +3087,44 @@ final class UsageStore: ObservableObject {
 
     private func updateCodexForegroundState(frontmostBundleID: String? = nil) {
         let bundleID = frontmostBundleID ?? NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        if bundleID == "com.openai.codex" {
+        let codexIsFrontmost = bundleID == "com.openai.codex"
+        if codexIsFrontmost, !isCodexFrontmost {
+            foregroundCodexThread = nil
+        }
+        isCodexFrontmost = codexIsFrontmost
+        if codexIsFrontmost {
             codexInactiveSince = nil
+            rememberForegroundCodexThread(from: codexLiveTasks)
         } else if codexInactiveSince == nil {
             codexInactiveSince = Date()
         }
+    }
+
+    private func rememberForegroundCodexThread(
+        from snapshot: CodexTaskLiveSnapshot,
+        now: Date = Date()
+    ) {
+        guard isCodexFrontmost,
+              let threadID = CodexSessionOpener.uniqueActiveThreadID(in: snapshot, now: now)
+        else { return }
+        foregroundCodexThread = (threadID, now)
+    }
+
+    private func recentForegroundCodexThreadID(
+        in taskBoard: TaskBoard?,
+        now: Date = Date()
+    ) -> String? {
+        guard let capture = foregroundCodexThread,
+              now.timeIntervalSince(capture.capturedAt) >= 0,
+              now.timeIntervalSince(capture.capturedAt) <= 15 * 60,
+              CodexSessionOpener.containsThread(capture.id, in: taskBoard)
+        else { return nil }
+        return capture.id
+    }
+
+    private func presentAccountSwitchBlock(_ message: String, isAutomatic: Bool) {
+        accountManagerMessage = message
+        if !isAutomatic { accountSwitchAlertMessage = message }
     }
 
     func updateStatisticsTimeZone(_ preference: StatisticsTimeZonePreference) {
@@ -2966,7 +3501,7 @@ final class UsageStore: ObservableObject {
             self?.synchronizeMonitorWithCurrentCodex(announce: true)
         }
         authRefreshWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: workItem)
+        DispatchQueue.main.async(execute: workItem)
         configureAuthMonitoring()
     }
 
@@ -3011,7 +3546,7 @@ final class UsageStore: ObservableObject {
                     if previousMonitorID != self.selectedMonitorProfileID {
                         self.clearDisplayedAccount()
                     }
-                    if announce {
+                    if announce && !self.isLoggingIn && !self.isAccountSwitchTransactionActive {
                         self.accountManagerMessage = systemSnapshot.account?.email?.isEmpty == false
                             ? "已同步当前 Codex 登录账号与剩余额度"
                             : (authExists ? "正在核对当前 Codex 登录账号" : "当前 Codex 尚未登录")
@@ -4961,7 +5496,7 @@ final class CodexUsageReader {
             "/opt/homebrew/share/android-commandlinetools/platform-tools/sqlite3"
         ]) {
             let todayThreadsQuery = """
-            SELECT id, title, preview, cwd, tokens_used AS tokens, updated_at AS updatedAt, recency_at AS recencyAt, model
+            SELECT id, name, title, preview, cwd, tokens_used AS tokens, updated_at AS updatedAt, recency_at AS recencyAt, model
             FROM threads
             WHERE archived = 0
               AND COALESCE(thread_source, '') <> 'subagent'
@@ -4985,7 +5520,9 @@ final class CodexUsageReader {
 
             let todayThreads = runSQLiteJSON(sqlitePath: sqlitePath, dbPath: dbPath, query: todayThreadsQuery)
             for object in todayThreads {
-                let updatedAt = dateFromEpoch(object["recencyAt"]) ?? dateFromEpoch(object["updatedAt"])
+                let updatedAt = [dateFromEpoch(object["recencyAt"]), dateFromEpoch(object["updatedAt"])]
+                    .compactMap { $0 }
+                    .max()
                 let classification = TaskSourceClassifier.codexThread(updatedAt: updatedAt, now: now)
                 let item = makeThreadTaskItem(
                     object: object,
@@ -5032,7 +5569,10 @@ final class CodexUsageReader {
         displayState: TaskDisplayState
     ) -> TaskItem {
         let rawId = object["id"] as? String ?? UUID().uuidString
-        let title = normalizedTitle(object["title"] as? String, fallback: object["preview"] as? String)
+        let title = normalizedTitle(
+            object["name"] as? String,
+            fallback: object["title"] as? String ?? object["preview"] as? String
+        )
         let cwd = object["cwd"] as? String ?? ""
         let tokens = int64Value(object["tokens"]).flatMap { $0 > 0 ? $0 : nil }
         let compactId = rawId.replacingOccurrences(of: "-", with: "")
@@ -13201,8 +13741,10 @@ private func fourCharCode(_ value: String) -> OSType {
     }
 }
 
-private func debugLog(_ message: String) {
-    guard ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1" else { return }
+func debugLog(_ message: String) {
+    guard message.hasPrefix("switch timing:")
+            || ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1"
+    else { return }
 
     let formatter = ISO8601DateFormatter()
     let line = "\(formatter.string(from: Date())) \(message)\n"
@@ -13361,7 +13903,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         if let argumentIndex = CommandLine.arguments.firstIndex(of: "--switch-profile-id"),
            CommandLine.arguments.indices.contains(argumentIndex + 1) {
             let profileID = CommandLine.arguments[argumentIndex + 1]
-            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            DispatchQueue.main.async { [weak self] in
                 self?.store.launchCodex(with: profileID)
             }
         }
@@ -14191,7 +14733,37 @@ struct CodexAccountManagerNextMain {
         }
 
         if CommandLine.arguments.contains("--self-test-app-server-pipe") {
-            exit(POSIXPipeReaderSelfTest.run() && CodexAccountLoginProtocolSelfTest.run() ? 0 : 1)
+            exit(
+                POSIXPipeReaderSelfTest.run()
+                    && CodexThreadHistoryProbeSelfTest.run()
+                    && CodexAccountLoginProtocolSelfTest.run()
+                    ? 0 : 1
+            )
+        }
+
+        if let probeIndex = CommandLine.arguments.firstIndex(of: "--probe-thread-history-id"),
+           CommandLine.arguments.indices.contains(probeIndex + 1) {
+            let completed = DispatchSemaphore(value: 0)
+            var result: Result<CodexThreadHistorySnapshot, CodexThreadHistoryError>?
+            DispatchQueue.global(qos: .utility).async {
+                result = CodexThreadHistoryProbe.capture(
+                    threadID: CommandLine.arguments[probeIndex + 1]
+                )
+                completed.signal()
+            }
+            guard completed.wait(timeout: .now() + 20) == .success,
+                  let result else {
+                print("Codex thread history metadata probe timed out")
+                exit(1)
+            }
+            switch result {
+            case let .success(snapshot):
+                print("Codex thread history metadata probe passed: \(snapshot.turnIDs.count) turns")
+                exit(0)
+            case let .failure(error):
+                print("Codex thread history metadata probe failed: \(error.localizedDescription)")
+                exit(1)
+            }
         }
 
         if CommandLine.arguments.contains("--self-test-cc-switch") {
@@ -14204,6 +14776,10 @@ struct CodexAccountManagerNextMain {
 
         if CommandLine.arguments.contains("--self-test-automatic-account-switch") {
             exit(CodexAutomaticSwitchPolicySelfTest.run() ? 0 : 1)
+        }
+
+        if CommandLine.arguments.contains("--self-test-warm-up-policy") {
+            exit(CodexWarmUpPolicySelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-feishu-webhook") {
