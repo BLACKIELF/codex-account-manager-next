@@ -66,12 +66,12 @@ fi
 
 require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
   'private let maximumOutputBufferBytes' 'app-server 流缺少明确的缓冲区上限'
-require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
-  'POSIXPipeReader.readChunk(' 'app-server 长连接没有使用可返回部分数据的 POSIX 分块读取'
-require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
-  'maximumBytes: self.maximumReadChunkBytes' 'app-server 长连接读取没有使用受控分块上限'
-require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
-  'Darwin.read(descriptor' 'app-server pipe reader 没有使用 POSIX read 语义'
+require_literal Sources/CodexUsageWidget/Services/AFUnixWebSocket.swift \
+  'maximumMessageBytes' '共享 daemon WebSocket 缺少明确的消息上限'
+require_literal Sources/CodexUsageWidget/Services/AFUnixWebSocket.swift \
+  'payloadLength == 127' '共享 daemon WebSocket 缺少 64 位帧长度处理'
+require_literal Sources/CodexUsageWidget/Services/AFUnixWebSocket.swift \
+  'SecRandomCopyBytes' '共享 daemon WebSocket 客户端帧缺少安全随机掩码'
 require_literal Sources/CodexUsageWidget/main.swift \
   'POSIXPipeReader.readChunk(' '一次性额度读取没有使用可返回部分数据的 POSIX 分块读取'
 require_literal Sources/CodexUsageWidget/main.swift \
@@ -81,7 +81,7 @@ require_literal Sources/CodexUsageWidget/main.swift \
 require_literal scripts/build-release-artifacts.sh \
   '--self-test-app-server-pipe' '发布包装没有执行 app-server 部分响应读取回归测试'
 require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
-  'pendingThreadListIDs.isEmpty' 'thread/list 缺少单一在途请求约束'
+  'pendingThreadListIDs.first' 'thread/list 缺少单一在途请求约束'
 require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
   'threadListTimeoutSeconds' 'thread/list 缺少超时回收'
 require_literal Sources/CodexUsageWidget/main.swift \

@@ -1,4 +1,3 @@
-import AppKit
 import Darwin
 import Foundation
 
@@ -14,6 +13,7 @@ protocol CodexTaskEventClient: AnyObject {
     func stopIfIdle()
     func stop()
     func refreshThreads()
+    func awaitSnapshot(timeout: TimeInterval) -> CodexTaskLiveSnapshot?
 }
 
 enum POSIXPipeReaderError: Error {
@@ -427,13 +427,10 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
     var onSnapshot: ((CodexTaskLiveSnapshot) -> Void)?
 
     private let queue = DispatchQueue(label: "com.blackielf.codex-account-manager-next.task-app-server", qos: .utility)
-    private let readerQueue = DispatchQueue(label: "com.blackielf.codex-account-manager-next.task-app-server.reader", qos: .utility)
     private let fileManager: FileManager
     private let homeDirectory: URL
-    private var process: Process?
-    private var inputHandle: FileHandle?
-    private var outputHandle: FileHandle?
-    private var outputBuffer = Data()
+    private var webSocket: AFUnixWebSocket?
+    private var isConnected = false
     private var reducer = TaskRuntimeReducer()
     private var connectionMode: TaskConnectionMode = .disconnected
     private var activeReasons: Set<TaskConnectionReason> = []
@@ -441,13 +438,15 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
     private var pendingThreadListIDs: Set<Int64> = []
     private var pendingThreadListSpans: [Int64: PerformanceSpan] = [:]
     private var pendingThreadListTimeouts: [Int64: DispatchWorkItem] = [:]
+    private var pendingThreadListCompletions: [Int64: [(CodexTaskLiveSnapshot?) -> Void]] = [:]
     private var initializeTimeout: DispatchWorkItem?
+    private var reconnectWorkItem: DispatchWorkItem?
+    private var hasRetriedConnection = false
     private var isStopping = false
     private var connectionGeneration: UInt64 = 0
 
     private let initializeRequestID: Int64 = 1
     private let maximumOutputBufferBytes = 1 * 1_024 * 1_024
-    private let maximumReadChunkBytes = 64 * 1_024
     private let maximumThreadListCount = 1_000
     private let threadListTimeoutSeconds: TimeInterval = 10
 
@@ -463,13 +462,14 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         queue.async { [weak self] in
             guard let self else { return }
             self.activeReasons.insert(reason)
-            if self.process?.isRunning == true {
+            if self.isConnected || self.webSocket != nil {
                 if reason != .startup { self.requestThreadList() }
                 return
             }
 
             let sharedDaemonAvailable = self.fileManager.fileExists(atPath: self.defaultDaemonSocket.path)
             guard sharedDaemonAvailable else { return }
+            self.hasRetriedConnection = false
             self.launch(mode: .sharedDaemon)
         }
     }
@@ -498,6 +498,23 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         }
     }
 
+    func awaitSnapshot(timeout: TimeInterval = 8) -> CodexTaskLiveSnapshot? {
+        let semaphore = DispatchSemaphore(value: 0)
+        var refreshedSnapshot: CodexTaskLiveSnapshot?
+        queue.async { [weak self] in
+            guard let self else {
+                semaphore.signal()
+                return
+            }
+            self.requestThreadList { snapshot in
+                refreshedSnapshot = snapshot
+                semaphore.signal()
+            }
+        }
+        guard semaphore.wait(timeout: .now() + timeout) == .success else { return nil }
+        return refreshedSnapshot
+    }
+
     private var defaultDaemonSocket: URL {
         homeDirectory
             .appendingPathComponent(".codex", isDirectory: true)
@@ -506,139 +523,65 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
     }
 
     private func launch(mode: TaskConnectionMode) {
-        guard let codexURL = resolveCodexExecutableURL() else {
-            reducer.disconnect()
-            publishSnapshot()
-            return
-        }
-
         isStopping = false
-        outputBuffer.removeAll(keepingCapacity: true)
         pendingThreadListIDs.removeAll()
         pendingThreadListSpans.removeAll()
         pendingThreadListTimeouts.values.forEach { $0.cancel() }
         pendingThreadListTimeouts.removeAll()
+        pendingThreadListCompletions.removeAll()
         connectionGeneration &+= 1
         let generation = connectionGeneration
-        connectionMode = mode
-
-        let process = Process()
-        process.executableURL = codexURL
-        process.arguments = mode == .sharedDaemon
-            ? ["app-server", "proxy"]
-            : ["app-server"]
-
-        let input = Pipe()
-        let output = Pipe()
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        process.terminationHandler = { [weak self] _ in
-            self?.queue.async {
+        connectionMode = .disconnected
+        isConnected = false
+        let webSocket = AFUnixWebSocket(
+            socketPath: defaultDaemonSocket.path,
+            maximumMessageBytes: maximumOutputBufferBytes,
+            callbackQueue: queue
+        )
+        self.webSocket = webSocket
+        webSocket.start(
+            onReady: { [weak self, weak webSocket] in
+                guard let self, let webSocket,
+                      self.connectionGeneration == generation,
+                      self.webSocket === webSocket else { return }
+                self.isConnected = true
+                self.connectionMode = mode
+                guard self.writeJSONObject([
+                    "id": self.initializeRequestID,
+                    "method": "initialize",
+                    "params": [
+                        "clientInfo": [
+                            "name": "codex-account-manager-next",
+                            "title": "Codex Account Manager Next",
+                            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                        ],
+                        "capabilities": [
+                            "experimentalApi": false,
+                            "optOutNotificationMethods": []
+                        ]
+                    ]
+                ]) else {
+                    self.handleDisconnect(generation: generation)
+                    return
+                }
+                let timeout = DispatchWorkItem { [weak self] in
+                    guard let self, self.connectionGeneration == generation,
+                          self.initializeTimeout != nil else { return }
+                    self.handleDisconnect(generation: generation)
+                }
+                self.initializeTimeout = timeout
+                self.queue.asyncAfter(deadline: .now() + 8, execute: timeout)
+            },
+            onMessage: { [weak self] data in
+                guard let self, self.connectionGeneration == generation,
+                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                else { return }
+                self.handle(object)
+            },
+            onDisconnect: { [weak self] in
                 self?.handleDisconnect(generation: generation)
             }
-        }
-
-        do {
-            try process.run()
-        } catch {
-            connectionMode = .disconnected
-            reducer.disconnect()
-            publishSnapshot()
-            return
-        }
-
-        self.process = process
-        inputHandle = input.fileHandleForWriting
-        outputHandle = output.fileHandleForReading
-        guard startReadLoop(handle: output.fileHandleForReading, generation: generation) else {
-            stopProcess()
-            return
-        }
-
-        guard writeJSONObject([
-            "id": initializeRequestID,
-            "method": "initialize",
-            "params": [
-                "clientInfo": [
-                    "name": "codex-account-manager-next",
-                    "title": "Codex Account Manager Next",
-                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
-                ],
-                "capabilities": [
-                    "experimentalApi": false,
-                    "optOutNotificationMethods": []
-                ]
-            ]
-        ]) else {
-            stopProcess()
-            return
-        }
-
-        let timeout = DispatchWorkItem { [weak self] in
-            guard let self, self.process?.isRunning == true else { return }
-            self.stopProcess()
-        }
-        initializeTimeout = timeout
-        queue.asyncAfter(deadline: .now() + 8, execute: timeout)
-    }
-
-    private func startReadLoop(handle: FileHandle, generation: UInt64) -> Bool {
-        guard let descriptor = try? POSIXPipeReader.duplicateDescriptor(for: handle) else {
-            return false
-        }
-        readerQueue.async { [weak self] in
-            defer { Darwin.close(descriptor) }
-            while let self {
-                let data: Data
-                do {
-                    guard let next = try POSIXPipeReader.readChunk(
-                        from: descriptor,
-                        maximumBytes: self.maximumReadChunkBytes
-                    ) else { break }
-                    data = next
-                } catch {
-                    break
-                }
-
-                var accepted = false
-                self.queue.sync {
-                    guard self.connectionGeneration == generation,
-                          self.process != nil else { return }
-                    accepted = self.consume(data)
-                }
-                if !accepted { break }
-            }
-
-            self?.queue.async { [weak self] in
-                self?.handleDisconnect(generation: generation)
-            }
-        }
-        return true
-    }
-
-    @discardableResult
-    private func consume(_ data: Data) -> Bool {
-        guard !data.isEmpty else { return false }
-        guard data.count <= maximumOutputBufferBytes,
-              outputBuffer.count <= maximumOutputBufferBytes - data.count else {
-            stopProcess()
-            return false
-        }
-        outputBuffer.append(data)
-        while let newline = outputBuffer.firstIndex(of: 10) {
-            let line = outputBuffer.subdata(in: outputBuffer.startIndex..<newline)
-            outputBuffer.removeSubrange(outputBuffer.startIndex...newline)
-            guard !line.isEmpty,
-                  let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any]
-            else { continue }
-            handle(object)
-        }
-        if outputBuffer.count > maximumOutputBufferBytes {
-            stopProcess()
-            return false
-        }
-        return true
+        )
     }
 
     private func handle(_ object: [String: Any]) {
@@ -656,7 +599,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
             initializeTimeout?.cancel()
             initializeTimeout = nil
             guard object["error"] == nil else {
-                stopProcess()
+                handleDisconnect()
                 return
             }
             _ = writeJSONObject(["method": "initialized"])
@@ -666,6 +609,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
 
         guard pendingThreadListIDs.remove(responseID) != nil else { return }
         pendingThreadListTimeouts.removeValue(forKey: responseID)?.cancel()
+        let completions = pendingThreadListCompletions.removeValue(forKey: responseID) ?? []
         let span = pendingThreadListSpans.removeValue(forKey: responseID)
         guard let result = object["result"] as? [String: Any],
               let threads = result["data"] as? [[String: Any]]
@@ -673,6 +617,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
             if let span {
                 PerformanceMonitor.shared.end(span, success: false)
             }
+            completions.forEach { $0(nil) }
             return
         }
 
@@ -686,27 +631,42 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         else {
             reducer.disconnect()
             publishSnapshot()
+            completions.forEach { $0(nil) }
             return
         }
         reducer.replaceThreads(threads, connectionMode: connectionMode)
-        publishSnapshot()
+        let snapshot = reducer.snapshot()
+        publishSnapshot(snapshot)
+        completions.forEach { $0(snapshot) }
     }
 
-    private func requestThreadList() {
-        guard process?.isRunning == true,
-              initializeTimeout == nil,
-              pendingThreadListIDs.isEmpty else { return }
+    private func requestThreadList(completion: ((CodexTaskLiveSnapshot?) -> Void)? = nil) {
+        guard isConnected, webSocket != nil, initializeTimeout == nil else {
+            completion?(nil)
+            return
+        }
+        if let pendingID = pendingThreadListIDs.first {
+            if let completion {
+                pendingThreadListCompletions[pendingID, default: []].append(completion)
+            }
+            return
+        }
         let requestID = nextRequestID
         nextRequestID &+= 1
         pendingThreadListIDs.insert(requestID)
+        if let completion {
+            pendingThreadListCompletions[requestID] = [completion]
+        }
         pendingThreadListSpans[requestID] = PerformanceMonitor.shared.begin(.appServerTasks)
         let timeout = DispatchWorkItem { [weak self] in
             guard let self,
                   self.pendingThreadListIDs.remove(requestID) != nil else { return }
             self.pendingThreadListTimeouts.removeValue(forKey: requestID)
+            let completions = self.pendingThreadListCompletions.removeValue(forKey: requestID) ?? []
             if let span = self.pendingThreadListSpans.removeValue(forKey: requestID) {
                 PerformanceMonitor.shared.end(span, success: false)
             }
+            completions.forEach { $0(nil) }
         }
         pendingThreadListTimeouts[requestID] = timeout
         queue.asyncAfter(deadline: .now() + threadListTimeoutSeconds, execute: timeout)
@@ -723,28 +683,24 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         if !wrote {
             pendingThreadListIDs.remove(requestID)
             pendingThreadListTimeouts.removeValue(forKey: requestID)?.cancel()
+            let completions = pendingThreadListCompletions.removeValue(forKey: requestID) ?? []
             if let span = pendingThreadListSpans.removeValue(forKey: requestID) {
                 PerformanceMonitor.shared.end(span, success: false)
             }
+            completions.forEach { $0(nil) }
             handleDisconnect()
         }
     }
 
     private func writeJSONObject(_ object: [String: Any]) -> Bool {
-        guard let handle = inputHandle,
+        guard let webSocket,
               let data = try? JSONSerialization.data(withJSONObject: object)
         else { return false }
-        do {
-            try handle.write(contentsOf: data)
-            try handle.write(contentsOf: Data("\n".utf8))
-            return true
-        } catch {
-            return false
-        }
+        return webSocket.sendText(data)
     }
 
-    private func publishSnapshot() {
-        let snapshot = reducer.snapshot()
+    private func publishSnapshot(_ snapshot: CodexTaskLiveSnapshot? = nil) {
+        let snapshot = snapshot ?? reducer.snapshot()
         DispatchQueue.main.async { [weak self] in
             self?.onSnapshot?(snapshot)
         }
@@ -752,19 +708,18 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
 
     private func handleDisconnect(generation: UInt64? = nil) {
         if let generation, generation != connectionGeneration { return }
-        guard connectionMode != .disconnected || process != nil else { return }
+        guard connectionMode != .disconnected || webSocket != nil else { return }
         initializeTimeout?.cancel()
         initializeTimeout = nil
-        try? inputHandle?.close()
-        try? outputHandle?.close()
-        let disconnectedProcess = process
-        inputHandle = nil
-        outputHandle = nil
-        process = nil
-        outputBuffer.removeAll(keepingCapacity: false)
+        let disconnectedSocket = webSocket
+        webSocket = nil
+        isConnected = false
         pendingThreadListIDs.removeAll()
         pendingThreadListTimeouts.values.forEach { $0.cancel() }
         pendingThreadListTimeouts.removeAll()
+        let pendingCompletions = pendingThreadListCompletions.values.flatMap { $0 }
+        pendingThreadListCompletions.removeAll()
+        pendingCompletions.forEach { $0(nil) }
         for span in pendingThreadListSpans.values {
             PerformanceMonitor.shared.end(span, success: false)
         }
@@ -772,39 +727,35 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         connectionMode = .disconnected
         reducer.disconnect()
         publishSnapshot()
-        if let disconnectedProcess, disconnectedProcess.isRunning {
-            let pid = disconnectedProcess.processIdentifier
-            disconnectedProcess.terminate()
-            queue.asyncAfter(deadline: .now() + 1) {
-                if disconnectedProcess.isRunning { Darwin.kill(pid, SIGKILL) }
-            }
-        }
+        disconnectedSocket?.close()
+        scheduleReconnectIfNeeded()
     }
 
     private func stopProcess() {
         guard !isStopping else { return }
         isStopping = true
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
         initializeTimeout?.cancel()
         initializeTimeout = nil
-        try? inputHandle?.close()
-        try? outputHandle?.close()
         handleDisconnect()
         isStopping = false
     }
 
-    private func resolveCodexExecutableURL() -> URL? {
-        var candidates: [URL] = []
-        if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-            candidates.append(appURL.appendingPathComponent("Contents/Resources/codex"))
+    private func scheduleReconnectIfNeeded() {
+        guard !isStopping, !activeReasons.isEmpty, !hasRetriedConnection,
+              reconnectWorkItem == nil else { return }
+        hasRetriedConnection = true
+        let retry = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.reconnectWorkItem = nil
+            guard !self.activeReasons.isEmpty,
+                  self.fileManager.fileExists(atPath: self.defaultDaemonSocket.path),
+                  self.webSocket == nil else { return }
+            self.launch(mode: .sharedDaemon)
         }
-        candidates.append(contentsOf: [
-            URL(fileURLWithPath: "/Applications/ChatGPT.app/Contents/Resources/codex"),
-            URL(fileURLWithPath: "/Applications/Codex.app/Contents/Resources/codex"),
-            URL(fileURLWithPath: "/opt/homebrew/bin/codex"),
-            URL(fileURLWithPath: "/usr/local/bin/codex"),
-            URL(fileURLWithPath: "/usr/bin/codex")
-        ])
-        return candidates.first { fileManager.isExecutableFile(atPath: $0.path) }
+        reconnectWorkItem = retry
+        queue.asyncAfter(deadline: .now() + 30, execute: retry)
     }
 
     private static func integerID(_ value: Any?) -> Int64? {

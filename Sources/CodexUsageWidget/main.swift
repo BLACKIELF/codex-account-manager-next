@@ -843,6 +843,7 @@ final class UsageStore: ObservableObject {
     private var codexHistoryConfirmationFailure: ((String) -> Void)?
     private var codexHistoryConfirmationTimeout: DispatchWorkItem?
     private var hasStarted = false
+    private var pendingLaunchProfileID: String?
     private var isMainWindowActive = false
     private var lastFullRefreshCompletedAt: Date?
     private let statisticsSnapshotCacheLimit = 4
@@ -1266,6 +1267,12 @@ final class UsageStore: ObservableObject {
         launchCodex(with: profileID, forceWithoutSessionRestore: true)
     }
 
+    private func refreshTaskSnapshotIfStale(now: Date = Date()) {
+        guard now.timeIntervalSince(codexLiveTasks.refreshedAt) > 20 else { return }
+        guard let refreshedSnapshot = taskClient.awaitSnapshot(timeout: 8) else { return }
+        codexLiveTasks = refreshedSnapshot
+    }
+
     func launchCodex(with profileID: String, forceWithoutSessionRestore: Bool = false) {
         let isAutomaticSwitch = automaticSwitchTargetID == profileID
         let isForcedManualSwitch = CodexManualAccountSwitchPolicy.isForcedManualSwitch(
@@ -1367,6 +1374,7 @@ final class UsageStore: ObservableObject {
             )
             return
         }
+        if isAutomaticSwitch { refreshTaskSnapshotIfStale() }
         guard !isAutomaticSwitch || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
             codexLiveTasks,
             legacyManagerRunning: legacyManagerRunning
@@ -1462,6 +1470,7 @@ final class UsageStore: ObservableObject {
                     return
                 }
                 if isAutomaticSwitch {
+                    self.refreshTaskSnapshotIfStale()
                     let preflightNow = Date()
                     let currentEmail = currentSystemSnapshot.account?.email?
                         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1554,6 +1563,21 @@ final class UsageStore: ObservableObject {
                     .runningApplications(withBundleIdentifier: "local.codex.account-manager")
                     .isEmpty
                 let requiresCodexRestart = targetCredentialIdentity != currentSystemCredentialIdentity
+                if !isForcedManualSwitch, requiresCodexRestart {
+                    self.refreshTaskSnapshotIfStale()
+                }
+                do {
+                    let activeRecords = self.codexLiveTasks.records.values.filter {
+                        $0.state == .running || $0.state == .waitingInput
+                            || $0.state == .recorded || $0.state == .disconnected
+                    }
+                    debugLog(
+                        "switch timing: guard mode=\(self.codexLiveTasks.connectionMode) "
+                            + "age=\(Int(Date().timeIntervalSince(self.codexLiveTasks.refreshedAt)))s "
+                            + "active=\(activeRecords.count) "
+                            + activeRecords.map { "\($0.threadID)=\($0.state)" }.joined(separator: ",")
+                    )
+                }
                 guard isForcedManualSwitch
                         || !requiresCodexRestart
                         || CodexAutomaticSwitchPolicy.hasNoActiveTasks(
@@ -2191,6 +2215,7 @@ final class UsageStore: ObservableObject {
                     self.accountManagerMessage = "安全自动切换已关闭"
                     return
                 }
+                self.refreshTaskSnapshotIfStale()
                 guard CodexAutomaticSwitchPolicy.hasSafeTaskState(
                     self.codexLiveTasks,
                     codexInactiveSince: self.codexInactiveSince,
@@ -2817,6 +2842,28 @@ final class UsageStore: ObservableObject {
         }
     }
 
+    func stageLaunchProfileID(_ profileID: String) {
+        guard !hasStarted, pendingLaunchProfileID == nil else { return }
+        pendingLaunchProfileID = profileID
+    }
+
+    private func launchPendingProfileAfterInitialRefresh(deadline: Date = Date().addingTimeInterval(20)) {
+        guard let profileID = pendingLaunchProfileID else { return }
+        guard isRefreshing else {
+            pendingLaunchProfileID = nil
+            launchCodex(with: profileID)
+            return
+        }
+        guard Date() < deadline else {
+            pendingLaunchProfileID = nil
+            debugLog("switch timing: launch argument abandoned because the initial quota refresh exceeded 20 seconds")
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.launchPendingProfileAfterInitialRefresh(deadline: deadline)
+        }
+    }
+
     func start() {
         guard !hasStarted else { return }
         hasStarted = true
@@ -2844,6 +2891,7 @@ final class UsageStore: ObservableObject {
                 UserDefaults.standard.set(false, forKey: CodexAutomaticSwitchPolicy.enabledDefaultsKey)
                 self.accountManagerMessage = "未完成切换恢复失败；自动切换已关闭：\(error.localizedDescription)"
             }
+            self.launchPendingProfileAfterInitialRefresh()
             self.startAfterPendingSwitchRecovery()
         }
     }
@@ -13898,15 +13946,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         } else if settings.globalShortcut == nil {
             _ = installGlobalHotKeyHandler()
         }
-        store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
-        store.start()
         if let argumentIndex = CommandLine.arguments.firstIndex(of: "--switch-profile-id"),
            CommandLine.arguments.indices.contains(argumentIndex + 1) {
-            let profileID = CommandLine.arguments[argumentIndex + 1]
-            DispatchQueue.main.async { [weak self] in
-                self?.store.launchCodex(with: profileID)
-            }
+            store.stageLaunchProfileID(CommandLine.arguments[argumentIndex + 1])
         }
+        store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
+        store.start()
         PerformanceMonitor.shared.end(startupPerformanceSpan)
     }
 
