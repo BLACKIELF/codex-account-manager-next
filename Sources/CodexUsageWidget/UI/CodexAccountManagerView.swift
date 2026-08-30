@@ -15,6 +15,7 @@ struct CodexAccountManagerView: View {
     @State private var isAgentBreakdownExpanded = false
     @State private var isAutomationCenterPresented = false
     @State private var isHubSettingsPresented = false
+    @State private var isHubConsoleExpanded = false
     @State private var showsAllHubTasks = false
     @State private var showsAllHubThreads = false
     @State private var showsHubSubagentThreads = false
@@ -34,7 +35,8 @@ struct CodexAccountManagerView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             workspace
-                .padding(22)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
         }
         .background(
             FixedVisualPalette.windowScrim(
@@ -78,7 +80,7 @@ struct CodexAccountManagerView: View {
     }
 
     private var workspace: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             workspaceHeader
 
             HStack(alignment: .top, spacing: 14) {
@@ -130,30 +132,22 @@ struct CodexAccountManagerView: View {
     }
 
     private var workspaceHeader: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("账号工作台")
-                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                Text("查看额度、保存快照，并切换当前 Codex 登录账号")
-                    .font(.subheadline)
+                    .font(.system(size: 27, weight: .semibold))
+                Text("额度、账号与调度")
+                    .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(.secondary)
             }
             Spacer(minLength: 16)
             Button {
-                store.snapshotCurrentProfile()
-            } label: {
-                Label("保存快照", systemImage: "camera")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-
-            Button {
-                store.refreshQuotaAndWarmUp()
+                store.refreshQuotas()
             } label: {
                 Label(store.isRefreshing ? "读取中…" : "刷新额度", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .controlSize(.regular)
             .disabled(store.isRefreshing)
         }
     }
@@ -215,7 +209,7 @@ struct CodexAccountManagerView: View {
             }
         }
         .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 224, maxHeight: 224, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 208, maxHeight: 208, alignment: .topLeading)
         .sectionBackground()
     }
 
@@ -301,7 +295,7 @@ struct CodexAccountManagerView: View {
 
         }
         .padding(18)
-        .frame(minHeight: 224, maxHeight: 224, alignment: .topLeading)
+        .frame(minHeight: 208, maxHeight: 208, alignment: .topLeading)
         .sectionBackground()
         .accessibilityElement(children: .combine)
     }
@@ -394,7 +388,8 @@ struct CodexAccountManagerView: View {
                 }
             }
         }
-        .padding(18)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
         .sectionBackground()
     }
 
@@ -520,6 +515,7 @@ struct CodexAccountManagerView: View {
                     ProfileRow(
                         profile: profile,
                         allProfiles: store.profiles,
+                        dispatchCode: DispatchCodeCatalog.code(for: profile.id),
                         isMonitoring: profile.id == store.selectedMonitorProfileID,
                         isLaunchProfile: profile.id == store.selectedLaunchProfileID,
                         isDuplicateAccount: isDuplicateAccount(profile),
@@ -529,6 +525,8 @@ struct CodexAccountManagerView: View {
                         isEditing: isEditingProfiles,
                         isLoggingIn: store.isLoggingIn,
                         isLaunching: store.isLaunchingCodex || store.isRefreshing,
+                        isRefreshingProfile: store.refreshingProfileIDs.contains(profile.id),
+                        isWarmingProfile: store.warmingProfileID == profile.id,
                         canMoveUp: index > 0,
                         canMoveDown: index < presentedProfiles.count - 1,
                         fiveHourRemainingPercent: fiveHourRemaining(for: profile),
@@ -541,6 +539,8 @@ struct CodexAccountManagerView: View {
                         localResetHistoryCount: store.localResetHistoryCount(for: profile),
                         chromeProfiles: store.availableChromeProfiles,
                         onMonitor: { store.selectMonitorProfile(profile.id) },
+                        onRefresh: { store.refreshProfile(profile.id) },
+                        onWarmUp: { store.warmUpProfile(profile.id) },
                         onRelogin: {
                             if linkedProfile != nil {
                                 store.loginProfileIndependently(profile.id)
@@ -549,6 +549,8 @@ struct CodexAccountManagerView: View {
                             }
                         },
                         onLaunch: { store.launchCodex(with: profile.id) },
+                        onOpenTerminal: { store.openTerminal(for: profile.id, workingDirectory: $0) },
+                        onCopyTerminalCommand: { store.copyTerminalCommand(for: profile.id) },
                         onSetAutomaticSwitchParticipation: {
                             store.setAutomaticSwitchParticipation($0, for: profile.id)
                         },
@@ -584,26 +586,22 @@ struct CodexAccountManagerView: View {
                 .buttonStyle(.bordered)
             }
         }
-        .padding(18)
-        .sectionBackground()
+        .padding(.vertical, 4)
     }
 
     private var automationPanel: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.14))
-                Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.tint)
-            }
-            .frame(width: 46, height: 46)
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.tint)
+                .frame(width: 30, height: 30)
+                .background(Color.accentColor.opacity(0.10), in: Circle())
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     Text("安全自动换号")
-                        .font(.headline)
+                        .font(.subheadline.weight(.semibold))
                     Text("5h ≤5%")
                         .profileBadge()
                     if store.feishuNotificationsEnabled {
@@ -612,10 +610,10 @@ struct CodexAccountManagerView: View {
                             .foregroundStyle(.green)
                     }
                 }
-                Text("5 小时剩余 ≤5% 或 7 天剩余 <10%，实时确认无任务、Codex 已退出且备用账号对应窗口 ≥30% 后执行")
+                Text("低额度时提醒并推荐可用账号，不改写当前 Codex 身份")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(1)
             }
 
             Spacer(minLength: 12)
@@ -632,7 +630,8 @@ struct CodexAccountManagerView: View {
             }
             .buttonStyle(.borderedProminent)
         }
-        .padding(18)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
         .sectionBackground()
         .accessibilityElement(children: .contain)
     }
@@ -640,26 +639,23 @@ struct CodexAccountManagerView: View {
     private var hubConsolePanel: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.14))
-                    Image(systemName: "rectangle.3.group.fill")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.tint)
-                }
-                .frame(width: 46, height: 46)
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 30, height: 30)
+                    .background(Color.accentColor.opacity(0.10), in: Circle())
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 8) {
                         Text("多 agent 控制台")
-                            .font(.headline)
+                            .font(.subheadline.weight(.semibold))
                         hubConnectionBadge
                     }
-                    Text("远程派活的调度台：各账号任务进度、审批请求、Codex 线程验收")
+                    Text("任务、审批与 Codex 线程")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                 }
 
                 Spacer(minLength: 12)
@@ -677,21 +673,35 @@ struct CodexAccountManagerView: View {
                 }
                 .buttonStyle(.bordered)
                 .disabled(hubConsole.isRefreshing || !hubConsole.isEnabled)
+
+                Button {
+                    isHubConsoleExpanded.toggle()
+                } label: {
+                    Label(
+                        isHubConsoleExpanded ? "收起" : "展开",
+                        systemImage: isHubConsoleExpanded ? "chevron.up" : "chevron.down"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel(isHubConsoleExpanded ? "收起多 agent 控制台" : "展开多 agent 控制台")
             }
 
-            if hubConsole.isEnabled {
-                hubConsoleContent
-            } else {
-                hubConsoleDisabledHint
-            }
+            if isHubConsoleExpanded {
+                if hubConsole.isEnabled {
+                    hubConsoleContent
+                } else {
+                    hubConsoleDisabledHint
+                }
 
-            if let actionMessage = hubConsole.lastActionMessage {
-                Label(actionMessage, systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if let actionMessage = hubConsole.lastActionMessage {
+                    Label(actionMessage, systemImage: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
-        .padding(18)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 13)
         .sectionBackground()
         .sheet(isPresented: $isHubSettingsPresented) {
             HubConsoleSettingsSheet(model: hubConsole)
@@ -945,21 +955,18 @@ private struct AccountAutomationCenterView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.14))
-                    Image(systemName: "shield.lefthalf.filled")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(.tint)
-                }
-                .frame(width: 44, height: 44)
+            HStack(spacing: 11) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 34, height: 34)
+                    .background(Color.accentColor.opacity(0.10), in: Circle())
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("自动化中心")
-                        .font(.title2.weight(.bold))
-                    Text("安全换号、飞书通知与本机审计")
+                        .font(.title2.weight(.semibold))
+                    Text("提醒、通知与审计")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -967,12 +974,13 @@ private struct AccountAutomationCenterView: View {
                 Button("完成") { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
-            .padding(20)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
 
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     automaticSwitchGroup
                     feishuGroup
                     auditGroup
@@ -980,18 +988,18 @@ private struct AccountAutomationCenterView: View {
                 .padding(20)
             }
         }
-        .frame(width: 620, height: 700)
+        .frame(width: 600, height: 680)
         .confirmationDialog(
-            "启用真实账号自动切换？",
+            "启用低额度提醒？",
             isPresented: $isConfirmingAutomaticSwitch,
             titleVisibility: .visible
         ) {
-            Button("启用自动切换", role: .destructive) {
+            Button("启用低额度提醒") {
                 store.setAutomaticAccountSwitchEnabled(true)
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("触发后会替换真实 ~/.codex/auth.json，并在安全退出后重新打开 Codex。")
+            Text("额度低于阈值时通知并推荐可用账号，可一键在终端中使用；不会改写 ~/.codex 身份。")
         }
         .alert("移除飞书 Webhook？", isPresented: $isConfirmingWebhookRemoval) {
             Button("移除", role: .destructive) {
@@ -1009,14 +1017,14 @@ private struct AccountAutomationCenterView: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("低额度自动换号")
+                        Text("低额度提醒")
                             .font(.headline)
-                        Text("默认关闭；所有安全条件同时满足后才执行")
+                        Text("默认关闭；额度低于阈值时通知并推荐可用账号")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Toggle("低额度自动换号", isOn: Binding(
+                    Toggle("低额度提醒", isOn: Binding(
                         get: { store.automaticAccountSwitchEnabled },
                         set: { enabled in
                             if enabled {
@@ -1041,13 +1049,12 @@ private struct AccountAutomationCenterView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     safetyRule("官方 5 小时剩余 ≤5%，或 7 天剩余严格低于 10%")
                     safetyRule("实时任务状态已连接、数据新鲜，且没有运行或等待输入的任务")
-                    safetyRule("Codex 已退出且旧版账号管理器未运行；运行中不自动换号")
-                    safetyRule("候选账号实时验证身份一致，对应额度窗口至少剩余 30%")
-                    safetyRule("只做优雅退出；退出失败不写凭据，也不会强制结束 Codex")
+                    safetyRule("推荐参与提醒且对应额度窗口至少剩余 30% 的账号")
+                    safetyRule("可一键在终端中使用推荐账号，各账号环境互不干扰")
                 }
 
                 Label(
-                    "执行时会修改真实 ~/.codex/auth.json 并重新打开 Codex；失败会恢复原凭据。",
+                    "只发送低额度提醒与账号推荐；不再自动改写 ~/.codex 身份。",
                     systemImage: "info.circle"
                 )
                 .font(.caption)
@@ -1055,7 +1062,7 @@ private struct AccountAutomationCenterView: View {
             }
             .padding(4)
         } label: {
-            Label("切换策略", systemImage: "arrow.triangle.2.circlepath")
+            Label("提醒策略", systemImage: "bell.badge")
                 .font(.headline)
         }
     }
@@ -1176,7 +1183,7 @@ private struct AccountAutomationCenterView: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func safetyRule(_ text: String) -> some View {
@@ -1346,18 +1353,10 @@ struct CodexAccountMenuView: View {
             Rectangle().fill(.ultraThinMaterial)
             LinearGradient(
                 colors: colorScheme == .dark
-                    ? [Color(red: 0.08, green: 0.10, blue: 0.13).opacity(backdropOpacity + 0.16),
-                       Color(red: 0.12, green: 0.13, blue: 0.16).opacity(backdropOpacity)]
-                    : [Color.white.opacity(backdropOpacity + 0.22),
-                       Color(red: 0.87, green: 0.91, blue: 0.93).opacity(backdropOpacity + 0.08)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            RadialGradient(
-                colors: [Color.accentColor.opacity(0.11), .clear],
-                center: .topTrailing,
-                startRadius: 4,
-                endRadius: 250
+                    ? [Color.black.opacity(backdropOpacity + 0.18), Color.black.opacity(backdropOpacity)]
+                    : [Color.white.opacity(backdropOpacity + 0.24), Color.white.opacity(backdropOpacity + 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
             )
         }
         .ignoresSafeArea()
@@ -1414,7 +1413,7 @@ struct CodexAccountMenuView: View {
 
             if screen == .home {
                 Button {
-                    store.refreshQuotaAndWarmUp()
+                    store.refreshQuotas()
                 } label: {
                     Image(systemName: store.isRefreshing ? "hourglass" : "arrow.clockwise")
                 }
@@ -1456,14 +1455,14 @@ struct CodexAccountMenuView: View {
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: 66)
+        .frame(height: 60)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 0.5)
         }
     }
 
     private var home: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 10) {
             tokenHero
             HStack(spacing: 10) {
                 statTile(
@@ -1510,19 +1509,14 @@ struct CodexAccountMenuView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            HStack(spacing: 9) {
-                Button(text("管理账号", "Manage Accounts")) {
-                    changeScreen(.accounts)
-                }
-                .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary))
-
+            HStack {
                 Button(text("打开完整窗口", "Open Full Window")) {
                     openFullWindow()
                 }
                 .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white))
             }
         }
-        .padding(14)
+        .padding(12)
     }
 
     private var localAllAgentsTokens: Int64? {
@@ -1631,15 +1625,19 @@ struct CodexAccountMenuView: View {
 
     private func homeProfileRow(_ profile: CodexProfile) -> some View {
         let remaining = sevenDayRemaining(for: profile)
-        return Button {
-            if profile.id != store.selectedMonitorProfileID {
-                store.selectMonitorProfile(profile.id)
-            }
-        } label: {
-            HStack(spacing: 10) {
+        return HStack(spacing: 6) {
+            Button {
+                if profile.id != store.selectedMonitorProfileID {
+                    store.selectMonitorProfile(profile.id)
+                }
+            } label: {
+                HStack(spacing: 10) {
                 avatar(for: profile, size: 30)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 5) {
+                        if let dispatchCode = DispatchCodeCatalog.code(for: profile.id) {
+                            DispatchCodeBadge(code: dispatchCode)
+                        }
                         Text(AccountDisplay.profileName(profile, allProfiles: store.profiles))
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
@@ -1659,14 +1657,26 @@ struct CodexAccountMenuView: View {
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 10)
+                .frame(height: 48)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 10)
-            .frame(height: 48)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(text("切换监控账号到 \(AccountDisplay.profileName(profile, allProfiles: store.profiles))", "Monitor \(AccountDisplay.profileName(profile, allProfiles: store.profiles))"))
+
+            Button {
+                store.openTerminal(for: profile.id, workingDirectory: nil)
+            } label: {
+                Image(systemName: "terminal")
+            }
+            .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
+            .disabled(profile.isSystemProfile || profile.lastSnapshot == nil)
+            .help(text("在终端中使用", "Use in Terminal"))
+            .accessibilityLabel(text("在终端中使用", "Use in Terminal"))
+            .padding(.trailing, 7)
         }
-        .buttonStyle(.plain)
         .accountMenuCard(highlighted: profile.id == store.selectedMonitorProfileID)
-        .accessibilityLabel(text("切换监控账号到 \(AccountDisplay.profileName(profile, allProfiles: store.profiles))", "Monitor \(AccountDisplay.profileName(profile, allProfiles: store.profiles))"))
     }
 
     private var accounts: some View {
@@ -1696,14 +1706,12 @@ struct CodexAccountMenuView: View {
             }
 
             HStack(spacing: 9) {
-                Button(store.isLoggingIn ? text("取消登录", "Cancel Login") : text("添加账号", "Add Account")) {
-                    if store.isLoggingIn {
+                if store.isLoggingIn {
+                    Button(text("取消登录", "Cancel Login")) {
                         store.cancelLogin()
-                    } else {
-                        store.addProfile()
                     }
-                }
                     .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary))
+                }
                 Button(text("打开完整窗口", "Open Full Window")) { openFullWindow() }
                     .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white))
             }
@@ -1719,6 +1727,9 @@ struct CodexAccountMenuView: View {
                 avatar(for: profile, size: 32)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
+                        if let dispatchCode = DispatchCodeCatalog.code(for: profile.id) {
+                            DispatchCodeBadge(code: dispatchCode)
+                        }
                         Text(AccountDisplay.profileName(profile, allProfiles: store.profiles))
                             .font(.system(size: 12, weight: .semibold))
                             .lineLimit(1)
@@ -1789,7 +1800,7 @@ struct CodexAccountMenuView: View {
                     .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary, compact: true))
                     .disabled(profile.id == store.selectedMonitorProfileID)
 
-                    Button(isCurrent ? text("当前账号", "Current Account") : text("切换并打开", "Switch & Open")) {
+                    Button(isCurrent ? text("当前账号", "Current Account") : text("切换 Desktop 到此账号…", "Switch Desktop to Account…")) {
                         store.launchCodex(with: profile.id)
                     }
                     .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
@@ -1986,14 +1997,16 @@ private struct AccountGlassButtonStyle: ButtonStyle {
             .frame(minWidth: compact ? 52 : 0, minHeight: compact ? 26 : 34)
             .padding(.horizontal, compact ? 8 : 10)
             .foregroundStyle(foreground)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: compact ? 8 : 10, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: compact ? 8 : 10, style: .continuous)
-                    .fill(tint.opacity(tint == .clear ? 0 : 0.78))
+                    .fill(tint == .clear ? Color.primary.opacity(0.06) : tint.opacity(0.88))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: compact ? 8 : 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(tint == .clear ? 0.18 : 0.30), lineWidth: 0.75)
+                    .strokeBorder(
+                        tint == .clear ? Color.primary.opacity(0.12) : Color.white.opacity(0.16),
+                        lineWidth: 0.7
+                    )
             )
             .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
@@ -2007,17 +2020,17 @@ private struct AccountMenuCardModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
                 .fill(
                     colorScheme == .dark
-                        ? Color.white.opacity(reduceTransparency ? 0.13 : (highlighted ? 0.10 : 0.065))
-                        : Color.white.opacity(reduceTransparency ? 0.92 : (highlighted ? 0.62 : 0.46))
+                        ? Color.white.opacity(reduceTransparency ? 0.12 : (highlighted ? 0.09 : 0.045))
+                        : Color.white.opacity(reduceTransparency ? 0.92 : (highlighted ? 0.68 : 0.42))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
                         .strokeBorder(
-                            highlighted ? Color.accentColor.opacity(0.45) : Color.primary.opacity(contrast == .increased ? 0.28 : 0.14),
-                            lineWidth: highlighted ? 1 : 0.75
+                            highlighted ? Color.accentColor.opacity(0.38) : Color.primary.opacity(contrast == .increased ? 0.24 : 0.10),
+                            lineWidth: highlighted ? 1 : 0.6
                         )
                 )
         )
@@ -2185,6 +2198,7 @@ private struct QuotaProgressTrack: View {
 private struct ProfileRow: View {
     let profile: CodexProfile
     let allProfiles: [CodexProfile]
+    let dispatchCode: String?
     let isMonitoring: Bool
     let isLaunchProfile: Bool
     let isDuplicateAccount: Bool
@@ -2194,6 +2208,8 @@ private struct ProfileRow: View {
     let isEditing: Bool
     let isLoggingIn: Bool
     let isLaunching: Bool
+    let isRefreshingProfile: Bool
+    let isWarmingProfile: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
     let fiveHourRemainingPercent: Double?
@@ -2206,8 +2222,12 @@ private struct ProfileRow: View {
     let localResetHistoryCount: Int
     let chromeProfiles: [ChromeProfileBinding]
     let onMonitor: () -> Void
+    let onRefresh: () -> Void
+    let onWarmUp: () -> Void
     let onRelogin: () -> Void
     let onLaunch: () -> Void
+    let onOpenTerminal: (URL?) -> Void
+    let onCopyTerminalCommand: () -> Void
     let onSetAutomaticSwitchParticipation: (Bool) -> Void
     let onSetProTierMultiplier: (Int?) -> Void
     let onRename: (String) -> Void
@@ -2223,7 +2243,8 @@ private struct ProfileRow: View {
     private static let resetExpiryFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "dd/MM/yy HH:mm"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "dd/MM/yy HH:mm 'UTC'"
         return formatter
     }()
 
@@ -2235,15 +2256,13 @@ private struct ProfileRow: View {
                     .frame(minWidth: 220, maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(1)
                 Divider()
-                    .frame(height: 142)
                     .opacity(0.5)
                 quotaSummary
                     .frame(width: 206, alignment: .leading)
                 Divider()
-                    .frame(height: 142)
                     .opacity(0.5)
                 primaryControls
-                    .frame(minWidth: 238, alignment: .trailing)
+                    .frame(width: 260, alignment: .trailing)
             }
             if isEditing {
                 Divider().opacity(0.55)
@@ -2251,7 +2270,7 @@ private struct ProfileRow: View {
             }
         }
         .padding(15)
-        .cardBackground(cornerRadius: 14, elevated: isMonitoring)
+        .cardBackground(cornerRadius: 12, elevated: isMonitoring)
         .alert("修改账号备注", isPresented: $isEditingRemark) {
             TextField("例如：工作账号", text: $remarkDraft)
             Button("取消", role: .cancel) {}
@@ -2272,6 +2291,9 @@ private struct ProfileRow: View {
     private var identitySummary: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
+                if let dispatchCode {
+                    DispatchCodeBadge(code: dispatchCode)
+                }
                 Text(AccountDisplay.profileName(profile, allProfiles: allProfiles))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
@@ -2301,7 +2323,7 @@ private struct ProfileRow: View {
                 }
             }
             Text(linkedAccountName.map { "本机 Codex 当前登录 \($0)；此卡尚未独立登录" } ?? profile.lastSnapshot.map {
-                "更新于 " + $0.fetchedAt.formatted(.dateTime.month().day().hour().minute())
+                "更新于 " + Self.resetExpiryFormatter.string(from: $0.fetchedAt)
             } ?? "等待账号验证")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -2373,7 +2395,7 @@ private struct ProfileRow: View {
                 resetsAt: resetsAt
             )
             Label(
-                availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置 --",
+                availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置 暂无",
                 systemImage: "arrow.counterclockwise.circle"
             )
                 .font(.caption2.weight(.semibold))
@@ -2401,12 +2423,12 @@ private struct ProfileRow: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                 Spacer()
-                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "--")
+                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "暂无")
                     .font(.subheadline.weight(.bold).monospacedDigit())
             }
             QuotaProgressTrack(percent: remainingPercent)
             Text(resetsAt.map {
-                "官方重置 " + $0.formatted(.dateTime.month().day().hour().minute())
+                "官方重置 " + Self.resetExpiryFormatter.string(from: $0)
             } ?? "官方重置时间未知")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -2415,42 +2437,113 @@ private struct ProfileRow: View {
     }
 
     private var primaryControls: some View {
-        VStack(alignment: .trailing, spacing: 9) {
-            Toggle(
-                "参与自动切换",
-                isOn: Binding(
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Button(action: onRefresh) {
+                    HStack(spacing: 4) {
+                        if isRefreshingProfile {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
+                        Text("刷新")
+                    }
+                    .frame(minWidth: 50)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRefreshingProfile || isWarmingProfile || isLoggingIn || isLaunching)
+                .help("只刷新这个账号的额度、重置时间和快照")
+                .accessibilityLabel(isRefreshingProfile ? "正在刷新此账号" : "刷新此账号")
+
+                Button(action: onWarmUp) {
+                    HStack(spacing: 4) {
+                        if isWarmingProfile {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "bolt")
+                        }
+                        Text("暖号")
+                    }
+                    .frame(minWidth: 50)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isRefreshingProfile || isWarmingProfile || isLoggingIn || isLaunching)
+                .help("只为这个账号发送一次最小请求，完成后刷新额度")
+                .accessibilityLabel(isWarmingProfile ? "正在暖号此账号" : "暖号此账号")
+
+                Spacer(minLength: 2)
+
+                Toggle(isOn: Binding(
                     get: { participatesInAutomaticSwitch },
                     set: onSetAutomaticSwitchParticipation
-                )
-            )
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .fixedSize()
-            .help("关闭后不会被自动切换使用；仍可手动切换，只保留 7 天与官方随机重置暖号。")
-            .accessibilityValue(participatesInAutomaticSwitch ? "已加入" : "已排除")
+                )) {
+                    Text("参与调度")
+                        .font(.caption.weight(.medium))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .accessibilityValue(participatesInAutomaticSwitch ? "已加入" : "已排除")
+                .help("开启后可参与 Next 的安全自动换号；关闭后仍可手动刷新和暖号")
+            }
+
+            HStack(spacing: 8) {
+                Button { onOpenTerminal(nil) } label: {
+                    Label("在终端中使用", systemImage: "terminal")
+                        .frame(maxWidth: .infinity)
+                }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(linkedAccountName != nil || profile.isSystemProfile)
+                Menu {
+                    Button("以该账号打开 CLI（选择目录…）") { chooseDirectoryAndOpenTerminal() }
+                    Button("复制一句话 CLI 调用命令") { onCopyTerminalCommand() }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .controlSize(.small)
+                .disabled(profile.isSystemProfile)
+            }
 
             HStack(spacing: 8) {
                 if linkedAccountName != nil {
-                    Button(isLoggingIn ? "登录中…" : "登录") { onRelogin() }
-                        .buttonStyle(.bordered)
-                        .disabled(isLoggingIn || isLaunching)
-                        .help("登录为独立账号，不修改当前 Codex 登录")
+                    Button { onRelogin() } label: {
+                        Label(isLoggingIn ? "登录中…" : "登录", systemImage: "person.badge.key")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isLoggingIn || isLaunching)
+                    .help("登录为独立账号，不修改当前 Codex 登录")
                 } else {
-                    Button(isMonitoring ? "已监控" : "监控") { onMonitor() }
-                        .buttonStyle(.bordered)
-                        .disabled(isMonitoring)
+                    Button { onMonitor() } label: {
+                        Label(isMonitoring ? "已监控" : "监控", systemImage: isMonitoring ? "checkmark.circle.fill" : "eye")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isMonitoring)
                 }
-                Button(isCurrentCodexAccount ? "当前账号" : "切换并打开") { onLaunch() }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isLaunching || linkedAccountName != nil || isCurrentCodexAccount)
-            }
-            .controlSize(.regular)
 
-            Text(participatesInAutomaticSwitch ? "可供安全自动切换" : "仅 7 天与随机重置暖号")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                Button { onLaunch() } label: {
+                    Label(isCurrentCodexAccount ? "当前账号" : "切换桌面", systemImage: "macwindow")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isLaunching || linkedAccountName != nil || isCurrentCodexAccount)
+                .help("切换 Desktop 到此账号")
+            }
         }
+        .controlSize(.regular)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chooseDirectoryAndOpenTerminal() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "选择"
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        onOpenTerminal(directory)
     }
 
     private var editControls: some View {
@@ -2565,6 +2658,63 @@ private struct ProfileRow: View {
             from: calendar.startOfDay(for: Date()),
             to: calendar.startOfDay(for: activeUntil)
         ).day ?? 0
+    }
+}
+
+private enum DispatchCodeCatalog {
+    private static let codes = load()
+
+    private struct Payload: Decodable {
+        let schemaVersion: Int
+        let accounts: [Account]
+    }
+
+    private struct Account: Decodable {
+        let code: String
+        let profileId: String
+    }
+
+    static func code(for profileID: String) -> String? {
+        codes[profileID]
+    }
+
+    private static func load(fileManager: FileManager = .default) -> [String: String] {
+        guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
+              let data = try? Data(contentsOf: support
+                .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
+                .appendingPathComponent("dispatch-codes-v1.json")),
+              let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              payload.schemaVersion == 1
+        else { return [:] }
+
+        var codes: [String: String] = [:]
+        var claimedCodes = Set<String>()
+        for account in payload.accounts {
+            let profileID = account.profileId.trimmingCharacters(in: .whitespacesAndNewlines)
+            let code = account.code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            guard !profileID.isEmpty,
+                  codes[profileID] == nil,
+                  code.unicodeScalars.count == 1,
+                  code.unicodeScalars.allSatisfy({ (65...90).contains(Int($0.value)) }),
+                  claimedCodes.insert(code).inserted
+            else { continue }
+            codes[profileID] = code
+        }
+        return codes
+    }
+}
+
+private struct DispatchCodeBadge: View {
+    let code: String
+
+    var body: some View {
+        Text(code)
+            .font(.caption2.weight(.black))
+            .foregroundStyle(Color.accentColor)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            .accessibilityLabel("调度编号 \(code)")
     }
 }
 
@@ -2813,54 +2963,83 @@ private struct HubConsoleSettingsSheet: View {
     @State private var enabledDraft = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 8) {
-                Text("多 agent 控制台设置")
-                    .font(.headline)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "rectangle.3.group")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.tint)
+                    .frame(width: 32, height: 32)
+                    .background(Color.accentColor.opacity(0.10), in: Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("多 agent 控制台")
+                        .font(.title3.weight(.semibold))
+                    Text("连接与访问设置")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
+            .padding(20)
 
-            Toggle("启用多 agent 控制台", isOn: $enabledDraft)
+            Divider()
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("hub 地址")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextField("http://127.0.0.1:8787", text: $baseURLDraft)
-                    .textFieldStyle(.roundedBorder)
-                Text("本机 hub 默认地址就是上面这个；手机端走 Tailscale 地址，这里不用改")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("访问令牌")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                SecureField("没开令牌就留空", text: $tokenDraft)
-                    .textFieldStyle(.roundedBorder)
-            }
-
-            HStack {
-                Spacer()
-                Button("取消") {
-                    dismiss()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("启用控制台")
+                            .font(.subheadline.weight(.semibold))
+                        Text("显示远程任务、审批和线程状态")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("启用多 agent 控制台", isOn: $enabledDraft)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                 }
-                .keyboardShortcut(.cancelAction)
-                Button("保存") {
-                    model.updateSettings(
-                        baseURL: baseURLDraft,
-                        token: tokenDraft,
-                        enabled: enabledDraft
-                    )
-                    dismiss()
+
+                GroupBox("连接") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("Hub 地址")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            TextField("http://127.0.0.1:8787", text: $baseURLDraft)
+                                .textFieldStyle(.roundedBorder)
+                            Text("本机默认无需修改")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("访问令牌")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            SecureField("未启用令牌可留空", text: $tokenDraft)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    .padding(.top, 4)
                 }
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
+
+                HStack {
+                    Spacer()
+                    Button("取消") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                    Button("保存") {
+                        model.updateSettings(
+                            baseURL: baseURLDraft,
+                            token: tokenDraft,
+                            enabled: enabledDraft
+                        )
+                        dismiss()
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                }
             }
+            .padding(20)
         }
-        .padding(24)
-        .frame(width: 420)
+        .frame(width: 440)
         .onAppear {
             baseURLDraft = model.baseURL
             tokenDraft = UserDefaults.standard.string(forKey: HubConsoleModel.tokenKey) ?? ""

@@ -579,6 +579,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
                 self.handle(object)
             },
             onDisconnect: { [weak self] in
+                debugLog("AFUnixWebSocket: onDisconnect received generation=\(generation)")
                 self?.handleDisconnect(generation: generation)
             }
         )
@@ -746,12 +747,14 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         guard !isStopping, !activeReasons.isEmpty, !hasRetriedConnection,
               reconnectWorkItem == nil else { return }
         hasRetriedConnection = true
+        debugLog("AFUnixWebSocket: scheduling reconnect in 30 seconds")
         let retry = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.reconnectWorkItem = nil
             guard !self.activeReasons.isEmpty,
                   self.fileManager.fileExists(atPath: self.defaultDaemonSocket.path),
                   self.webSocket == nil else { return }
+            debugLog("AFUnixWebSocket: starting 30-second reconnect attempt")
             self.launch(mode: .sharedDaemon)
         }
         reconnectWorkItem = retry

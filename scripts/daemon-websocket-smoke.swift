@@ -1,5 +1,10 @@
 import Foundation
 
+func debugLog(_ message: String) {
+    guard ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1" else { return }
+    print(message)
+}
+
 @main
 enum DaemonWebSocketSmoke {
     static func main() {

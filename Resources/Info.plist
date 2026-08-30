@@ -30,5 +30,7 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>用于在终端中以各账号环境打开 Codex CLI。</string>
 </dict>
 </plist>

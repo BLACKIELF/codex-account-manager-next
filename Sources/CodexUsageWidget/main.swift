@@ -745,12 +745,6 @@ final class UsageStore: ObservableObject {
         let fileNumber: UInt64?
     }
 
-    private struct AutomaticSwitchVerification {
-        let profileID: String
-        let snapshot: UsageSnapshot
-        let quota: AutomaticSwitchQuotaState
-    }
-
     private struct AutomaticSwitchContext {
         let sourceProfileID: String
         let sourceIdentityKey: String
@@ -765,6 +759,9 @@ final class UsageStore: ObservableObject {
     private static let feishuNotificationsEnabledKey = "CodexManagerNext.feishuNotifications.enabled"
     private static let officialLifetimeHighWaterKey = "CodexManagerNext.tokens.officialLifetimeHighWater"
     private static let localLifetimeHighWaterKey = "CodexManagerNext.tokens.localLifetimeHighWater"
+    private static let dispatchQuotaRefreshNotification = Notification.Name(
+        "local.codex.account-manager-next.refresh-dispatch-quotas"
+    )
 
     @Published var snapshot: UsageSnapshot = .empty
     @Published var multiRuntimeSnapshot: MultiRuntimeUsageSnapshot = .empty
@@ -796,6 +793,7 @@ final class UsageStore: ObservableObject {
     @Published private(set) var isLaunchingCodex = false
     @Published private(set) var isAwaitingCodexHistoryConfirmation = false
     @Published private(set) var warmingProfileID: String?
+    @Published private(set) var refreshingProfileIDs: Set<String> = []
     @Published private(set) var warmUpSelection = CodexWarmUpSelection.load()
     @Published private(set) var automaticAccountSwitchEnabled = UserDefaults.standard.bool(
         forKey: CodexAutomaticSwitchPolicy.enabledDefaultsKey
@@ -818,13 +816,14 @@ final class UsageStore: ObservableObject {
     private var thermalStateObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
     private var codexActivationObserver: NSObjectProtocol?
+    private var dispatchQuotaRefreshObserver: NSObjectProtocol?
     private var codexInactiveSince: Date?
     private var isCodexFrontmost = false
     private var foregroundCodexThread: (id: String, capturedAt: Date)?
     private var isRefreshingWarmUpProfiles = false
+    private var hasPendingDispatchQuotaRefresh = false
     private var warmUpRefreshStartedAt: Date?
     private var unexpectedWarmUpKindsByAccount: [String: Set<CodexWarmUpWindowKind>] = [:]
-    private var shouldWarmUpAfterManualRefresh = false
     private var refreshGeneration: UInt64 = 0
     private var hasPendingRefresh = false
     private var statisticsSnapshotCache: [String: StatisticsSnapshotCacheEntry] = [:]
@@ -836,7 +835,6 @@ final class UsageStore: ObservableObject {
     private var monitoredAuthState: AuthFileState?
     private var ignoresAuthChangesUntil: Date?
     private var isAccountSwitchTransactionActive = false
-    private var isEvaluatingAutomaticAccountSwitch = false
     private var automaticSwitchTargetID: String?
     private var automaticSwitchContext: AutomaticSwitchContext?
     private var codexHistoryConfirmationSuccess: (() -> Void)?
@@ -855,6 +853,7 @@ final class UsageStore: ObservableObject {
     private let taskClient = CodexAppServerTaskClient()
     private let feishuWebhookService = FeishuWebhookService()
     private let automationAuditStore = AccountAutomationAuditStore()
+    private let terminalLauncher = TerminalAppLauncher()
 
     init() {
         let profileStore = CodexProfileStore()
@@ -904,6 +903,48 @@ final class UsageStore: ObservableObject {
 
     var availableChromeProfiles: [ChromeProfileBinding] {
         ChromeProfileBrowser.availableProfiles()
+    }
+
+    func openTerminal(for profileID: String, workingDirectory: URL? = nil) {
+        guard let profile = profiles.first(where: { $0.id == profileID }), !profile.isSystemProfile else {
+            accountManagerMessage = "请选择已隔离的账号环境；不会使用或写入 ~/.codex"
+            return
+        }
+        let accountName = AccountDisplay.profileName(profile, allProfiles: profiles)
+        Task { @MainActor in
+            do {
+                try await terminalLauncher.launch(
+                    codexHome: profile.codexHomeURL,
+                    workingDirectory: workingDirectory,
+                    accountName: accountName
+                )
+                let socketLength = TerminalAppLauncher.socketPathUTF8Length(codexHome: profile.codexHomeURL)
+                accountManagerMessage = socketLength > 100
+                    ? "已在终端中打开 \(accountName)；警告：控制套接字路径为 \(socketLength) 字节，超过 100 字节"
+                    : "已在终端中打开 \(accountName)"
+            } catch {
+                accountManagerMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func copyTerminalCommand(for profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }), !profile.isSystemProfile else {
+            accountManagerMessage = "请选择已隔离的账号环境；不会生成指向 ~/.codex 的启动命令"
+            return
+        }
+        do {
+            let command = try terminalLauncher.launchCommand(
+                codexHome: profile.codexHomeURL,
+                workingDirectory: nil,
+                accountName: AccountDisplay.profileName(profile, allProfiles: profiles)
+            )
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(command, forType: .string)
+            accountManagerMessage = "启动命令已复制"
+        } catch {
+            accountManagerMessage = error.localizedDescription
+        }
     }
 
     func totalTodayTokens(for scopes: [RuntimeScope]) -> Int64 {
@@ -1163,11 +1204,6 @@ final class UsageStore: ObservableObject {
         } catch {
             accountManagerMessage = "删除账号失败：\(error.localizedDescription)"
         }
-    }
-
-    func snapshotCurrentProfile() {
-        captureCurrentProfile()
-        accountManagerMessage = snapshot.quotaReadSucceeded ? "账号与额度快照已保存" : "当前额度不可用，未覆盖旧快照"
     }
 
     func loginSelectedMonitorProfile() {
@@ -2047,10 +2083,10 @@ final class UsageStore: ObservableObject {
             updateCodexForegroundState()
             taskClient.start(reason: .startup)
             taskClient.refreshThreads()
-            accountManagerMessage = "安全自动切换已开启；5 小时剩余 ≤5% 或 7 天剩余 <10% 时评估"
+            accountManagerMessage = "低额度提醒已开启；5 小时剩余 ≤5% 或 7 天剩余 <10% 时推荐可用账号"
             refresh(queueIfBusy: true)
         } else {
-            accountManagerMessage = "安全自动切换已关闭"
+            accountManagerMessage = "低额度提醒已关闭"
         }
     }
 
@@ -2061,7 +2097,7 @@ final class UsageStore: ObservableObject {
         }
         feishuNotificationsEnabled = enabled
         UserDefaults.standard.set(enabled, forKey: Self.feishuNotificationsEnabledKey)
-        feishuNotificationMessage = enabled ? "自动切换结果将推送到飞书" : "飞书推送已关闭"
+        feishuNotificationMessage = enabled ? "低额度提醒将推送到飞书" : "飞书推送已关闭"
     }
 
     @discardableResult
@@ -2112,7 +2148,6 @@ final class UsageStore: ObservableObject {
               !isLoggingIn,
               !isLaunchingCodex,
               !isRefreshing,
-              !isEvaluatingAutomaticAccountSwitch,
               warmingProfileID == nil,
               let sourceSnapshot = runtimeSnapshot(for: .codex)?.snapshot,
               sourceSnapshot.quotaReadSucceeded,
@@ -2158,159 +2193,45 @@ final class UsageStore: ObservableObject {
                     atPath: profile.codexHomeURL.appendingPathComponent("auth.json").path
                 )
         }
-        guard !candidates.isEmpty else {
-            accountManagerMessage = "自动切换未执行：没有可验证的备用账号"
-            reportAutomaticSwitchFailure(
-                sourceProfile: sourceProfile,
-                quota: sourceQuota,
-                reason: .noEligibleAccount,
-                detail: "没有已登录且额度可实时验证的备用账号"
-            )
-            return
-        }
-
-        isEvaluatingAutomaticAccountSwitch = true
-        isLaunchingCodex = true
-        accountManagerMessage = "安全自动切换：正在实时核验备用账号…"
-        let preference = statisticsPreference
-        DispatchQueue.global(qos: .utility).async {
-            let verified = candidates.compactMap { profile -> AutomaticSwitchVerification? in
-                let context = RuntimeLoadContext.live(
-                    statisticsPreference: preference,
-                    codexHomeDirectory: profile.codexHomeURL
-                )
-                let snapshot = CodexUsageReader().load(context: context)
-                let identity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: profile.codexHomeURL)
-                guard snapshot.quotaReadSucceeded,
-                      let email = snapshot.account?.email,
-                      !email.isEmpty,
-                      profile.matchesRecordedAccount(email: email),
-                      identity?.email == email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-                      identity?.accountID == profile.lastSnapshot?.accountID
-                else { return nil }
-                return AutomaticSwitchVerification(
+        let triggeredWindows = sourceQuota.triggeredWindows()
+        let preferred = CodexAutomaticSwitchPolicy.preferredCandidate(
+            candidates.compactMap { profile in
+                guard let snapshot = profile.lastSnapshot else { return nil }
+                return .init(
                     profileID: profile.id,
-                    snapshot: snapshot,
-                    quota: AutomaticSwitchQuotaState(snapshot: snapshot)
+                    quota: AutomaticSwitchQuotaState(
+                        fiveHourRemaining: snapshot.fiveHour.map { 100 - $0.usedPercent },
+                        sevenDayRemaining: snapshot.sevenDay.map { 100 - $0.usedPercent }
+                    )
                 )
-            }
-            let refreshedSourceSnapshot = CodexUsageReader().load(
-                context: RuntimeLoadContext.live(
-                    statisticsPreference: preference,
-                    codexHomeDirectory: systemProfile.codexHomeURL
-                )
-            )
-            let refreshedSourceIdentity = CodexOfficialProfileReader.credentialIdentity(
-                codexHomeURL: systemProfile.codexHomeURL
-            )
-            DispatchQueue.main.async {
-                self.isEvaluatingAutomaticAccountSwitch = false
-                self.isLaunchingCodex = false
-                for result in verified {
-                    try? self.profileStore.record(result.snapshot, for: result.profileID)
-                }
-                if !verified.isEmpty { self.syncProfiles() }
-
-                guard self.automaticAccountSwitchEnabled else {
-                    self.accountManagerMessage = "安全自动切换已关闭"
-                    return
-                }
-                self.refreshTaskSnapshotIfStale()
-                guard CodexAutomaticSwitchPolicy.hasSafeTaskState(
-                    self.codexLiveTasks,
-                    codexInactiveSince: self.codexInactiveSince,
-                    legacyManagerRunning: !NSRunningApplication
-                        .runningApplications(withBundleIdentifier: "local.codex.account-manager")
-                        .isEmpty
-                ) else {
-                    self.accountManagerMessage = "自动切换已暂停：实时任务状态、前台空闲或旧版管理器条件不满足"
-                    return
-                }
-                let verificationNow = Date()
-                let refreshedSourceEmail = refreshedSourceSnapshot.account?.email?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                    .lowercased()
-                let sourceSnapshotAge = verificationNow.timeIntervalSince(refreshedSourceSnapshot.refreshedAt)
-                guard self.selectedMonitorProfileID == sourceProfile.id,
-                      refreshedSourceSnapshot.quotaReadSucceeded,
-                      sourceSnapshotAge >= -5,
-                      sourceSnapshotAge <= CodexAutomaticSwitchPolicy.quotaSnapshotMaximumAge,
-                      refreshedSourceEmail == sourceEmail,
-                      refreshedSourceIdentity?.email == sourceEmail,
-                      refreshedSourceIdentity?.accountID == sourceAccountID
-                else {
-                    self.accountManagerMessage = "自动切换已取消：触发账号身份或额度快照已经变化"
-                    return
-                }
-                let currentQuota = AutomaticSwitchQuotaState(snapshot: refreshedSourceSnapshot)
-                let triggeredWindows = currentQuota.triggeredWindows()
-                guard !triggeredWindows.isEmpty else {
-                    self.accountManagerMessage = "自动切换已取消：当前账号额度已高于触发线"
-                    return
-                }
-                guard let preferred = CodexAutomaticSwitchPolicy.preferredCandidate(
-                    verified.map {
-                        .init(profileID: $0.profileID, quota: $0.quota)
-                    },
-                    for: triggeredWindows
-                ) else {
-                    self.accountManagerMessage = "自动切换未执行：备用账号对应窗口剩余额度均未达到 30%"
-                    self.reportAutomaticSwitchFailure(
-                        sourceProfile: sourceProfile,
-                        quota: currentQuota,
-                        reason: .noEligibleAccount,
-                        detail: "已实时验证备用账号，但对应窗口均低于 30%"
-                    )
-                    return
-                }
-                guard self.automaticSwitchParticipation(for: sourceProfile.id),
-                      self.automaticSwitchParticipation(for: preferred.profileID),
-                      let targetProfile = self.profiles.first(where: { $0.id == preferred.profileID }),
-                      targetProfile.lastSnapshot?.accountID?.isEmpty == false,
-                      let sourceAccount = self.maskedAccount(for: sourceProfile),
-                      let targetAccount = self.maskedAccount(for: targetProfile)
-                else {
-                    self.accountManagerMessage = "自动切换未执行：无法生成安全审计标识"
-                    return
-                }
-                let sourceAuthFingerprint: Data
-                do {
-                    sourceAuthFingerprint = try self.accountActions.currentSystemAuthFingerprint(
-                        expectedEmail: sourceEmail,
-                        expectedAccountID: sourceAccountID
-                    )
-                } catch {
-                    self.accountManagerMessage = "自动切换已取消：当前登录凭据无法绑定到触发账号"
-                    self.reportAutomaticSwitchFailure(
-                        sourceProfile: sourceProfile,
-                        quota: currentQuota,
-                        reason: .validationFailed,
-                        detail: "触发账号凭据身份或指纹校验失败"
-                    )
-                    return
-                }
-                let eventID = UUID()
-                self.automaticSwitchContext = AutomaticSwitchContext(
-                    sourceProfileID: sourceProfile.id,
-                    sourceIdentityKey: sourceEmail,
-                    sourceAccountID: sourceAccountID,
-                    sourceAuthFingerprint: sourceAuthFingerprint,
-                    sourceAccount: sourceAccount,
-                    targetAccount: targetAccount,
-                    sourceQuota: currentQuota,
-                    eventID: eventID
-                )
-                if let trigger = CodexAutomaticSwitchPolicy.lowestTrigger(in: currentQuota) {
-                    self.recordAutomationEvent(
-                        level: .warning,
-                        title: "检测到低额度",
-                        detail: "\(sourceAccount.value) · \(trigger.window.displayName) 剩余 \(Int(trigger.remaining.rounded()))%"
-                    )
-                }
-                self.automaticSwitchTargetID = preferred.profileID
-                self.launchCodex(with: preferred.profileID)
-            }
+            },
+            for: triggeredWindows
+        )
+        let recommendedProfile = preferred.flatMap { candidate in
+            candidates.first(where: { $0.id == candidate.profileID })
         }
+        let recommendedName = recommendedProfile.map {
+            AccountDisplay.profileName($0, allProfiles: profiles)
+        } ?? "暂无满足 30% 额度要求的候选账号"
+        let detail = "额度低于阈值；推荐账号：\(recommendedName)。请一键在终端中使用"
+        accountManagerMessage = detail
+        reportAutomaticSwitchFailure(
+            sourceProfile: sourceProfile,
+            quota: sourceQuota,
+            reason: .noEligibleAccount,
+            detail: detail
+        )
+        if let source = maskedAccount(for: sourceProfile) {
+            sendFeishuNotification(
+                event: .lowQuotaDetected,
+                source: source,
+                target: recommendedProfile.flatMap(maskedAccount(for:)),
+                quota: sourceQuota,
+                eventID: UUID()
+            )
+        }
+        recordAutomationEvent(level: .warning, title: "低额度提醒", detail: detail)
+        return
     }
 
     private func finishAutomaticSwitchAttempt(
@@ -2491,6 +2412,43 @@ final class UsageStore: ObservableObject {
         if !enabled { setWarmUpFiveHourEnabled(false) }
     }
 
+    func refreshProfile(_ profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
+        guard hasStarted,
+              !isRefreshingWarmUpProfiles,
+              !isLoggingIn,
+              !isLaunchingCodex,
+              !isAccountSwitchTransactionActive
+        else {
+            accountManagerMessage = "账号操作正在进行，请稍后再刷新"
+            return
+        }
+        let name = AccountDisplay.profileName(profile)
+        accountManagerMessage = "正在刷新 \(name) 的额度…"
+        refreshWarmUpProfilesThenSchedule(
+            performWarmUpAfterRefresh: false,
+            profileIDs: [profileID]
+        ) { [weak self] succeeded in
+            self?.accountManagerMessage = succeeded
+                ? "\(name) 的额度已刷新"
+                : "\(name) 的额度刷新失败；已保留旧快照"
+        }
+    }
+
+    func warmUpProfile(_ profileID: String) {
+        guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
+        guard warmingProfileID == nil,
+              !isRefreshingWarmUpProfiles,
+              !isLoggingIn,
+              !isLaunchingCodex,
+              !isAccountSwitchTransactionActive
+        else {
+            accountManagerMessage = "账号操作正在进行，请稍后再暖号"
+            return
+        }
+        performWarmUp(profile, manual: true)
+    }
+
     private func handleWarmUpSelectionChanged() {
         if !warmUpSelection.isEnabled {
             warmUpTimer?.invalidate()
@@ -2503,9 +2461,9 @@ final class UsageStore: ObservableObject {
         refreshWarmUpProfilesThenSchedule()
     }
 
-    /// 暖号证据只认 15 分钟内的快照；监控刷新只覆盖当前账号。
-    /// 用固定周期全量刷新，保证每个账号都能按自己的重置时间被暖号，
-    /// 也让读取失败的账号及时把失败状态暴露给用户。
+    /// 监控刷新只覆盖当前账号；用固定周期全量刷新所有账号的官方额度，
+    /// 同时为已开启的暖号提供 15 分钟内的证据。额度读取不能依赖暖号成功，
+    /// 否则一次暖号失败会让非当前账号的卡片永久停在旧快照。
     private func scheduleWarmUpMaintenanceTimer() {
         warmUpMaintenanceTimer?.invalidate()
         warmUpMaintenanceTimer = nil
@@ -2618,19 +2576,18 @@ final class UsageStore: ObservableObject {
         performWarmUp(profile)
     }
 
-    private func performWarmUp(_ profile: CodexProfile) {
+    private func performWarmUp(_ profile: CodexProfile, manual: Bool = false) {
         let unexpected = unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
-        guard warmUpSelection.isEnabled,
+        guard (manual || warmUpSelection.isEnabled),
               warmingProfileID == nil,
               !isLoggingIn,
               !isLaunchingCodex,
               !isAccountSwitchTransactionActive,
-              !isEvaluatingAutomaticAccountSwitch,
-              CodexWarmUpPolicy.isDue(
+              (manual || CodexWarmUpPolicy.isDue(
                 profile,
                 selection: effectiveWarmUpSelection(for: profile, unexpected: unexpected),
                 unexpected: unexpected
-              )
+              ))
         else { return }
         warmingProfileID = profile.id
         accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 发送最小请求…"
@@ -2643,7 +2600,7 @@ final class UsageStore: ObservableObject {
                 self.warmingProfileID = nil
                 if succeeded {
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，正在确认窗口是否开始…"
-                    self.refreshProfileAfterWarmUp(profile)
+                    self.refreshProfileAfterWarmUp(profile, manual: manual)
                 } else {
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败；不会自动重试，请稍后点刷新"
                     self.scheduleWarmUpTimer()
@@ -2742,7 +2699,7 @@ final class UsageStore: ObservableObject {
         }
         guard !kinds.isEmpty else { return }
         unexpectedWarmUpKindsByAccount[previous.recordedAccountKey, default: []].formUnion(kinds)
-        accountManagerMessage = "检测到 \(AccountDisplay.profileName(previous)) 官方额度提前重置；点刷新时执行一次暖号"
+        accountManagerMessage = "检测到 \(AccountDisplay.profileName(previous)) 官方额度提前重置；暖号调度将独立执行一次"
     }
 
     private func clearResolvedUnexpectedWarmUp(for profile: CodexProfile) {
@@ -2761,7 +2718,7 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    private func refreshProfileAfterWarmUp(_ profile: CodexProfile) {
+    private func refreshProfileAfterWarmUp(_ profile: CodexProfile, manual: Bool = false) {
         let preference = statisticsPreference
         DispatchQueue.global(qos: .utility).async {
             let context = RuntimeLoadContext.live(
@@ -2773,6 +2730,16 @@ final class UsageStore: ObservableObject {
                 try? self.profileStore.record(snapshot, for: profile.id)
                 self.syncProfiles()
                 let updated = self.profiles.first { $0.id == profile.id } ?? profile
+                if manual {
+                    self.accountManagerMessage = snapshot.quotaReadSucceeded
+                        ? "\(AccountDisplay.profileName(profile)) 已暖号并刷新额度"
+                        : "\(AccountDisplay.profileName(profile)) 已发送最小请求；官方额度暂不可用"
+                    if profile.id == self.selectedMonitorProfileID {
+                        self.refresh(queueIfBusy: true)
+                    }
+                    self.scheduleWarmUpTimer()
+                    return
+                }
                 let selection = self.effectiveWarmUpSelection(
                     for: updated,
                     unexpected: self.unexpectedWarmUpKindsByAccount[updated.recordedAccountKey] ?? []
@@ -2799,21 +2766,27 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    private func refreshWarmUpProfilesThenSchedule() {
-        warmUpTimer?.invalidate()
-        warmUpTimer = nil
-        guard warmUpSelection.isEnabled,
-              hasStarted,
+    private func refreshWarmUpProfilesThenSchedule(
+        performWarmUpAfterRefresh: Bool = true,
+        profileIDs: Set<String>? = nil,
+        completion: ((Bool) -> Void)? = nil
+    ) {
+        if performWarmUpAfterRefresh {
+            warmUpTimer?.invalidate()
+            warmUpTimer = nil
+        }
+        guard hasStarted,
               !isRefreshingWarmUpProfiles,
-              warmingProfileID == nil,
               !isLoggingIn,
               !isLaunchingCodex,
-              !isAccountSwitchTransactionActive,
-              !isEvaluatingAutomaticAccountSwitch
+              !isAccountSwitchTransactionActive
         else { return }
-        let profiles = profiles
+        let profiles = profileIDs.map { ids in self.profiles.filter { ids.contains($0.id) } } ?? self.profiles
+        guard !profiles.isEmpty else { return }
+        let refreshingIDs = Set(profiles.map(\.id))
         let preference = statisticsPreference
         isRefreshingWarmUpProfiles = true
+        refreshingProfileIDs = refreshingIDs
         warmUpRefreshStartedAt = Date()
         DispatchQueue.global(qos: .utility).async {
             let snapshots = profiles.map { profile in
@@ -2825,6 +2798,7 @@ final class UsageStore: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.isRefreshingWarmUpProfiles = false
+                self.refreshingProfileIDs.subtract(refreshingIDs)
                 self.warmUpRefreshStartedAt = nil
                 guard self.hasStarted else { return }
                 for (profileID, snapshot) in snapshots {
@@ -2836,10 +2810,46 @@ final class UsageStore: ObservableObject {
                     try? self.profileStore.record(snapshot, for: profileID)
                 }
                 self.syncProfiles()
-                self.runDueWarmUp()
-                self.scheduleWarmUpTimer()
+                completion?(snapshots.contains { $0.1.quotaReadSucceeded })
+                if performWarmUpAfterRefresh {
+                    if self.warmUpSelection.isEnabled {
+                        self.runDueWarmUp()
+                    }
+                    self.scheduleWarmUpTimer()
+                }
+                if self.hasPendingDispatchQuotaRefresh {
+                    self.hasPendingDispatchQuotaRefresh = false
+                    self.requestDispatchQuotaRefresh()
+                }
             }
         }
+    }
+
+    private func requestDispatchQuotaRefresh() {
+        guard hasStarted else { return }
+        if isRefreshingWarmUpProfiles {
+            hasPendingDispatchQuotaRefresh = true
+            return
+        }
+        guard !isLoggingIn, !isLaunchingCodex, !isAccountSwitchTransactionActive else {
+            accountManagerMessage = "Next 调度额度刷新已阻止：账号操作尚未结束"
+            return
+        }
+        let systemAccountKey = profiles.first(where: \.isSystemProfile)?.recordedAccountKey
+        let profileIDs = Set(profiles.filter {
+            !$0.isSystemProfile
+                && $0.recordedAccountKey != systemAccountKey
+                && automaticSwitchParticipation(for: $0)
+        }.map(\.id))
+        guard !profileIDs.isEmpty else {
+            accountManagerMessage = "Next 调度额度刷新已阻止：没有允许参与的账号"
+            return
+        }
+        accountManagerMessage = "正在为 Next 调度刷新账号额度…"
+        refreshWarmUpProfilesThenSchedule(
+            performWarmUpAfterRefresh: false,
+            profileIDs: profileIDs
+        )
     }
 
     func stageLaunchProfileID(_ profileID: String) {
@@ -2922,6 +2932,15 @@ final class UsageStore: ObservableObject {
         taskClient.start(reason: .startup)
         configureAuthMonitoring()
         synchronizeMonitorWithCurrentCodex(announce: false)
+        if dispatchQuotaRefreshObserver == nil {
+            dispatchQuotaRefreshObserver = DistributedNotificationCenter.default().addObserver(
+                forName: Self.dispatchQuotaRefreshNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.requestDispatchQuotaRefresh()
+            }
+        }
         refreshStaleOfficialProfiles()
         refreshWarmUpProfilesThenSchedule()
         systemTimeZoneObserver = NotificationCenter.default.addObserver(
@@ -3000,6 +3019,8 @@ final class UsageStore: ObservableObject {
         warmUpMaintenanceTimer = nil
         warmUpRefreshStartedAt = nil
         isRefreshingWarmUpProfiles = false
+        refreshingProfileIDs.removeAll()
+        hasPendingDispatchQuotaRefresh = false
         accountActions.cancelLogin()
         stopAuthMonitoring()
         if let wakeObserver {
@@ -3009,6 +3030,10 @@ final class UsageStore: ObservableObject {
         if let codexActivationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(codexActivationObserver)
             self.codexActivationObserver = nil
+        }
+        if let dispatchQuotaRefreshObserver {
+            DistributedNotificationCenter.default().removeObserver(dispatchQuotaRefreshObserver)
+            self.dispatchQuotaRefreshObserver = nil
         }
         codexInactiveSince = nil
         isCodexFrontmost = false
@@ -3029,11 +3054,10 @@ final class UsageStore: ObservableObject {
         PerformanceMonitor.shared.flush()
     }
 
-    func refresh(queueIfBusy: Bool = false) {
+    func refresh(queueIfBusy: Bool = false, scheduleWarmUpAfterRefresh: Bool = true) {
         guard !isRefreshing,
               !isLaunchingCodex,
-              !isAccountSwitchTransactionActive,
-              !isEvaluatingAutomaticAccountSwitch
+              !isAccountSwitchTransactionActive
         else {
             if queueIfBusy { hasPendingRefresh = true }
             return
@@ -3060,7 +3084,6 @@ final class UsageStore: ObservableObject {
                 CodexOfficialProfileReader.credentialIdentity(codexHomeURL: $0)
             }
             DispatchQueue.main.async {
-                var didApplySnapshot = false
                 if generation == self.refreshGeneration,
                    multiSnapshot.statisticsIdentity.preference == self.statisticsPreference {
                     let incoming = multiSnapshot.displaySnapshot(for: .codex)
@@ -3093,7 +3116,6 @@ final class UsageStore: ObservableObject {
                     } else {
                         self.apply(multiSnapshot)
                         self.captureCurrentProfile()
-                        didApplySnapshot = true
                         if let officialProfile {
                             try? self.profileStore.recordOfficialProfile(officialProfile, for: profileID)
                             self.syncProfiles()
@@ -3111,10 +3133,8 @@ final class UsageStore: ObservableObject {
                 PerformanceMonitor.shared.end(performanceSpan)
                 self.lastFullRefreshCompletedAt = Date()
                 self.scheduleFullRefreshTimer()
-                self.scheduleWarmUpTimer()
-                if self.shouldWarmUpAfterManualRefresh, didApplySnapshot {
-                    self.shouldWarmUpAfterManualRefresh = false
-                    self.runDueWarmUp()
+                if scheduleWarmUpAfterRefresh {
+                    self.scheduleWarmUpTimer()
                 }
                 if self.hasPendingRefresh {
                     self.hasPendingRefresh = false
@@ -3128,9 +3148,9 @@ final class UsageStore: ObservableObject {
         }
     }
 
-    func refreshQuotaAndWarmUp() {
-        shouldWarmUpAfterManualRefresh = true
-        refresh(queueIfBusy: true)
+    func refreshQuotas() {
+        refreshWarmUpProfilesThenSchedule(performWarmUpAfterRefresh: false)
+        refresh(scheduleWarmUpAfterRefresh: false)
     }
 
     private func updateCodexForegroundState(frontmostBundleID: String? = nil) {
@@ -7556,7 +7576,6 @@ struct HeaderActionButton: View {
 }
 
 struct TitlebarToolbarView: View {
-    @ObservedObject var store: UsageStore
     @ObservedObject var settings: AppSettings
     @Environment(\.colorScheme) private var colorScheme
     let onOpenSettings: () -> Void
@@ -7571,27 +7590,10 @@ struct TitlebarToolbarView: View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
             ZYZHMark(size: 27)
-                .frame(width: 42, height: titlebarControlHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(FixedVisualPalette.controlFill(effectiveColorScheme))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .strokeBorder(FixedVisualPalette.controlStroke(effectiveColorScheme), lineWidth: 0.8)
-                        )
-                )
+                .frame(width: 34, height: titlebarControlHeight)
                 .help("帧影帧画")
 
             HStack(spacing: 2) {
-                HeaderActionButton(
-                    systemName: store.isRefreshing ? "hourglass" : "arrow.clockwise",
-                    help: language.text("刷新", "Refresh"),
-                    accessibilityLabel: language.text("刷新", "Refresh")
-                ) {
-                    store.refreshQuotaAndWarmUp()
-                }
-                .disabled(store.isRefreshing)
-
                 HeaderActionButton(
                     systemName: "gearshape",
                     help: language.text("设置", "Settings"),
@@ -7643,7 +7645,7 @@ struct SettingsPanelView: View {
             }
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                 if showsHeader {
                     settingsHeader
                 }
@@ -7913,7 +7915,7 @@ struct SettingsPanelView: View {
                     )
                 }
                 }
-                .padding(.horizontal, compact ? 14 : 20)
+                .padding(.horizontal, compact ? 12 : 20)
                 .padding(.top, compact ? 12 : settingsContentTopInset)
                 .padding(.bottom, 20)
             }
@@ -7977,19 +7979,15 @@ struct SettingsPanelView: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(language.text("设置", "Settings"))
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .semibold))
                 Text(language.text("账号、额度与运行时控制", "Accounts, quotas, and runtimes"))
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(.system(size: 11, weight: .regular))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Text("NEXT")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .tracking(1.2)
-                .foregroundStyle(.tint)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(Capsule().fill(Color.accentColor.opacity(0.13)))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -8000,15 +7998,11 @@ struct SettingsPanelView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 9) {
                 Image(systemName: symbol)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.tint)
-                    .frame(width: 27, height: 27)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.accentColor.opacity(0.12))
-                    )
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
@@ -8019,23 +8013,17 @@ struct SettingsPanelView: View {
                 }
                 Spacer(minLength: 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
 
             Divider()
-                .padding(.leading, 49)
+                .padding(.leading, 43)
 
             VStack(spacing: 0) {
                 content()
             }
         }
-        .cardBackground(cornerRadius: 12, elevated: true)
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(Color.accentColor)
-                .frame(width: 3)
-                .padding(.vertical, 12)
-        }
+        .cardBackground(cornerRadius: 12, elevated: false)
     }
 
     private var planLabel: String {
@@ -8285,8 +8273,11 @@ struct SettingsBaseRow<Accessory: View>: View {
                 .frame(width: settingsAccessoryColumnWidth, alignment: .trailing)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 9)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) {
+            Divider().padding(.leading, 12)
+        }
     }
 }
 
@@ -8358,7 +8349,7 @@ struct SectionBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(
                         FixedVisualPalette.sectionFill(
                             colorScheme,
@@ -8366,7 +8357,7 @@ struct SectionBackgroundModifier: ViewModifier {
                         )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(
                                 FixedVisualPalette.sectionStroke(
                                     colorScheme,
@@ -13791,6 +13782,8 @@ private func fourCharCode(_ value: String) -> OSType {
 
 func debugLog(_ message: String) {
     guard message.hasPrefix("switch timing:")
+            || message.hasPrefix("app launched")
+            || message.hasPrefix("account manager: ")
             || ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1"
     else { return }
 
@@ -13987,7 +13980,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     private func installTitlebarToolbar(on window: NSWindow) {
         let toolbarView = NSHostingView(
             rootView: TitlebarToolbarView(
-                store: store,
                 settings: settings,
                 onOpenSettings: { [weak self] in
                     self?.openSettingsWindow()
