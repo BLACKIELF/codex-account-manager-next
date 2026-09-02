@@ -195,7 +195,7 @@ final class AccountInspectionModel: ObservableObject {
     nonisolated static func parseProfileConfiguration(_ contents: String) -> AccountInspectionProfileConfiguration {
         var model: String?
         var effort: String?
-        for rawLine in contents.split(whereSeparator: \Character.isNewline) {
+        for rawLine in contents.split(whereSeparator: { $0.isNewline }) {
             let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.hasPrefix("#"), let separator = line.firstIndex(of: "=") else { continue }
             let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
