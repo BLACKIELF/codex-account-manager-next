@@ -975,6 +975,10 @@ final class UsageStore: ObservableObject {
         copyingRemarkFrom sourceProfileID: String?,
         chromeProfile: ChromeProfileBinding?
     ) {
+        guard !isRefreshingWarmUpProfiles else {
+            accountManagerMessage = "账号数据仍在读取；完成后再添加账号"
+            return
+        }
         guard !isLoggingIn, captureCurrentProfile() else { return }
         let profile: CodexProfile
         do {
@@ -1220,6 +1224,10 @@ final class UsageStore: ObservableObject {
     }
 
     func loginProfile(_ profileID: String) {
+        guard !isRefreshingWarmUpProfiles else {
+            accountManagerMessage = "账号数据仍在读取；完成后再登录"
+            return
+        }
         guard !isLoggingIn,
               captureCurrentProfile(),
               let profile = profiles.first(where: { $0.id == profileID })
@@ -2496,6 +2504,16 @@ final class UsageStore: ObservableObject {
         )
     }
 
+    /// 额度读取失败的卡片提示；官方明确拒绝令牌（401/吊销）时给出明确的重新登录指引。
+    private func quotaFailureStatusText(for profile: CodexProfile) -> String? {
+        guard let failureAt = profile.lastQuotaReadFailureAt else { return nil }
+        let base = "额度读取失败 " + failureAt.formatted(.dateTime.month().day().hour().minute())
+        if profile.lastQuotaReadFailureReason == "oauth-invalidated" {
+            return base + "；该账号登录已失效，请在账号卡上重新登录"
+        }
+        return base + "；旧额度仅供参考，如持续出现请对该账号重新登录"
+    }
+
     func warmUpStatus(for profile: CodexProfile) -> String? {
         if warmingProfileID == profile.id {
             return "正在发送最小请求，以开始已开启的额度窗口…"
@@ -2506,15 +2524,13 @@ final class UsageStore: ObservableObject {
             return "\(state) " + date.formatted(.dateTime.month().day().hour().minute())
         }
         guard warmUpSelection.isEnabled else {
-            let failure = profile.lastQuotaReadFailureAt.map { date in
-                "额度读取失败 " + date.formatted(.dateTime.month().day().hour().minute()) + "；旧额度仅供参考，如持续出现请对该账号重新登录"
-            }
+            let failure = quotaFailureStatusText(for: profile)
             return failure ?? last.map { "智能暖号已关闭 · \($0)" }
         }
         let selection = effectiveWarmUpSelection(for: profile)
         var parts = [last].compactMap { $0 }
-        if let failureAt = profile.lastQuotaReadFailureAt {
-            parts.append("额度读取失败 " + failureAt.formatted(.dateTime.month().day().hour().minute()) + "；旧额度仅供参考")
+        if let failureText = quotaFailureStatusText(for: profile) {
+            parts.append(failureText)
         }
         if warmUpSelection.fiveHour, !selection.fiveHour {
             parts.append("5 小时已排除 · 官方随机重置仍会暖号")
@@ -2840,18 +2856,51 @@ final class UsageStore: ObservableObject {
         refreshingProfileIDs = refreshingIDs
         warmUpRefreshStartedAt = Date()
         DispatchQueue.global(qos: .utility).async {
-            let snapshots = profiles.map { profile in
-                var context = RuntimeLoadContext.live(
+            let contexts = profiles.map { profile in
+                RuntimeLoadContext.live(
                     statisticsPreference: preference,
                     codexHomeDirectory: profile.codexHomeURL
                 )
-                var snapshot = CodexUsageReader().load(context: context, quotaOnly: quotaOnly)
+            }
+            // 第一阶段：官方额度读取按账号并行（系统 home 内部仍串行），上限 4 个并发 app-server。
+            let readerCount = contexts.count
+            var quotaResults: [(appServer: CodexUsageReader.AppServerSnapshot, messages: [String])] = .init(
+                repeating: (CodexUsageReader.AppServerSnapshot(), []),
+                count: readerCount
+            )
+            let quotaResultsLock = NSLock()
+            let workerCount = min(4, max(1, readerCount))
+            DispatchQueue.concurrentPerform(iterations: workerCount) { worker in
+                var index = worker
+                while index < readerCount {
+                    var readMessages: [String] = []
+                    let reader = CodexUsageReader()
+                    let appServer = reader.readQuotaSnapshot(
+                        context: contexts[index],
+                        quotaOnly: quotaOnly,
+                        messages: &readMessages
+                    )
+                    quotaResultsLock.lock()
+                    quotaResults[index] = (appServer, readMessages)
+                    quotaResultsLock.unlock()
+                    index += workerCount
+                }
+            }
+            // 第二阶段：本地统计与重试保持串行，行为与旧链路一致。
+            let snapshots: [(id: String, snapshot: UsageSnapshot)] = quotaResults.indices.map { index in
+                let profile = profiles[index]
+                var snapshot = CodexUsageReader().finishingLoad(
+                    appServer: quotaResults[index].appServer,
+                    messages: quotaResults[index].messages,
+                    context: contexts[index],
+                    quotaOnly: quotaOnly
+                )
                 if retryQuotaReadOnce, !snapshot.quotaReadSucceeded {
-                    context = RuntimeLoadContext.live(
+                    let retryContext = RuntimeLoadContext.live(
                         statisticsPreference: preference,
                         codexHomeDirectory: profile.codexHomeURL
                     )
-                    snapshot = CodexUsageReader().load(context: context, quotaOnly: quotaOnly)
+                    snapshot = CodexUsageReader().load(context: retryContext, quotaOnly: quotaOnly)
                 }
                 return (profile.id, snapshot)
             }
@@ -3737,11 +3786,40 @@ final class CodexUsageReader {
 
     func load(context: RuntimeLoadContext, quotaOnly: Bool = false) -> UsageSnapshot {
         var messages: [String] = []
-        let appServer = readAppServer(
+        let appServer = readQuotaSnapshot(
+            context: context,
+            quotaOnly: quotaOnly,
+            messages: &messages
+        )
+        return finishingLoad(
+            appServer: appServer,
+            messages: messages,
+            context: context,
+            quotaOnly: quotaOnly
+        )
+    }
+
+    /// 只读官方额度（app-server 一段）。不同账号 home 之间可并行；本地统计仍在 finishingLoad 串行完成。
+    func readQuotaSnapshot(
+        context: RuntimeLoadContext,
+        quotaOnly: Bool,
+        messages: inout [String]
+    ) -> AppServerSnapshot {
+        return readAppServer(
             context: context,
             messages: &messages,
             quotaOnly: quotaOnly
         )
+    }
+
+    /// 用已取回的 app-server 快照补齐本地统计，组装完整 UsageSnapshot。
+    func finishingLoad(
+        appServer: AppServerSnapshot,
+        messages: [String],
+        context: RuntimeLoadContext,
+        quotaOnly: Bool
+    ) -> UsageSnapshot {
+        var messages = messages
         func snapshot(local: LocalUsage?) -> UsageSnapshot {
             UsageSnapshot(
                 refreshedAt: context.now,
@@ -3833,7 +3911,7 @@ final class CodexUsageReader {
         return dateFromEpoch(rows.first?["updatedAt"])
     }
 
-    private struct AppServerSnapshot {
+    struct AppServerSnapshot {
         var account: AccountInfo?
         var limitId: String?
         var limitName: String?
@@ -3851,8 +3929,17 @@ final class CodexUsageReader {
         messages: inout [String],
         quotaOnly: Bool
     ) -> AppServerSnapshot {
-        CodexCredentialAccessGate.lock.lock()
-        defer { CodexCredentialAccessGate.lock.unlock() }
+        // 系统默认 home 是官方 Codex 正在使用的登录，保持原有全局门禁不变；
+        // 其他账号 home 只涉及自身凭据，按 home 互斥即可允许跨账号并行读取。
+        let homePath = context.codexHomeDirectory.standardizedFileURL.path
+        let systemHomePath = context.homeDirectory
+            .appendingPathComponent(".codex", isDirectory: true)
+            .standardizedFileURL.path
+        let gate: NSRecursiveLock = homePath == systemHomePath
+            ? CodexCredentialAccessGate.lock
+            : CodexCredentialAccessGate.homeLock(forHomePath: homePath)
+        gate.lock()
+        defer { gate.unlock() }
         let performanceSpan = PerformanceMonitor.shared.begin(.appServerQuota)
         defer { PerformanceMonitor.shared.end(performanceSpan) }
         guard let codexPath = resolveCodexExecutablePath() else {

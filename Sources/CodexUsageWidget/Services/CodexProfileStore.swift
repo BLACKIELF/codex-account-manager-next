@@ -114,6 +114,7 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var lastWarmUpAt: Date? = nil
     var lastWarmUpSucceeded: Bool? = nil
     var lastQuotaReadFailureAt: Date? = nil
+    var lastQuotaReadFailureReason: String? = nil
     var chromeProfile: ChromeProfileBinding? = nil
     var automaticSwitchParticipation: Bool? = nil
     var proTierMultiplier: Int? = nil
@@ -898,8 +899,13 @@ final class CodexProfileStore {
         guard snapshot.quotaReadSucceeded || (allowAccountOnly && hasVerifiedAccount) else {
             // 额度读取失败时保留旧数据，但必须留下可见的失败痕迹，
             // 避免账号凭证失效后快照无限期静默过期。
-            if state.profiles[index].lastQuotaReadFailureAt != snapshot.refreshedAt {
+            // 失败原因只保留分类标记，不落盘原始服务端消息，避免写入账号标识。
+            let failureReason = Self.quotaFailureReason(from: snapshot.messages)
+            let changed = state.profiles[index].lastQuotaReadFailureAt != snapshot.refreshedAt
+                || state.profiles[index].lastQuotaReadFailureReason != failureReason
+            if changed {
                 state.profiles[index].lastQuotaReadFailureAt = snapshot.refreshedAt
+                state.profiles[index].lastQuotaReadFailureReason = failureReason
                 try save()
             }
             return
@@ -954,6 +960,7 @@ final class CodexProfileStore {
         let previousSevenDay = state.profiles[index].lastSnapshot?.sevenDay
         state.profiles[index].lastSnapshot = record
         state.profiles[index].lastQuotaReadFailureAt = nil
+        state.profiles[index].lastQuotaReadFailureReason = nil
         if !accountChanged,
            CodexWarmUpPolicy.didConsumeReset(
             previous: previousSevenDay,
@@ -994,6 +1001,15 @@ final class CodexProfileStore {
         state.profiles[index].lastWarmUpAt = date
         state.profiles[index].lastWarmUpSucceeded = succeeded
         try save()
+    }
+
+    /// 从额度读取的诊断消息中提取可展示的失败分类；只保留标记，不保留原始消息。
+    static func quotaFailureReason(from messages: [String]) -> String? {
+        let joined = messages.joined(separator: "\n")
+        if joined.contains("invalidated oauth token") || joined.contains("401 Unauthorized") {
+            return "oauth-invalidated"
+        }
+        return nil
     }
 
     func resetCounter(accountKey: String) -> CodexAccountResetCounter {

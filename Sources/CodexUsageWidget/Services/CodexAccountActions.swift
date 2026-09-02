@@ -5,6 +5,21 @@ import Foundation
 
 enum CodexCredentialAccessGate {
     static let lock = NSRecursiveLock()
+
+    private static let registryLock = NSLock()
+    private static var homeLocks: [String: NSRecursiveLock] = [:]
+
+    /// 系统默认登录（官方 Codex 正在使用的 home）以外，只读额度读取按 home 串行；
+    /// 同一 home 的读取互斥，不同 home 之间允许并发。
+    static func homeLock(forHomePath path: String) -> NSRecursiveLock {
+        let key = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.path
+        registryLock.lock()
+        defer { registryLock.unlock() }
+        if let existing = homeLocks[key] { return existing }
+        let created = NSRecursiveLock()
+        homeLocks[key] = created
+        return created
+    }
 }
 
 private enum CodexLoginError: LocalizedError {
