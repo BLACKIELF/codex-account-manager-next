@@ -30,6 +30,7 @@ SDK_PATH ?= $(DEFAULT_SDK_PATH)
 endif
 MODULE_CACHE_PATH ?= $(BUILD_DIR)/ModuleCache
 SWIFTC_TARGET_FLAGS := -target $(TARGET_TRIPLE) -sdk $(SDK_PATH) -module-cache-path $(MODULE_CACHE_PATH)
+SWIFT_OPTIMIZATION ?= -O
 MACOS_SDK_MAJOR := $(shell /usr/libexec/PlistBuddy -c "Print Version" "$(SDK_PATH)/SDKSettings.plist" 2>/dev/null | cut -d. -f1)
 SWIFTC_FEATURE_FLAGS :=
 
@@ -45,7 +46,7 @@ endif
 
 POWERSHELL ?= powershell.exe
 
-.PHONY: build run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-cc-switch test-profile-store test-automatic-account-switch test-feishu-webhook test-account-automation-audit test-account-switch-safety test-task-runtime test-leadership-model test-leadership-assets test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
+.PHONY: build debug run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-cc-switch test-profile-store test-account-inspection test-automatic-account-switch test-feishu-webhook test-account-automation-audit test-account-switch-safety test-task-runtime test-leadership-model test-leadership-assets test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
 
 build:
 	rm -rf "$(APP_DIR)"
@@ -55,7 +56,7 @@ build:
 	cp Resources/codexU-icon.png Resources/codex-color.png Resources/codex-template.png "$(RESOURCES_DIR)/"
 	cp -R Resources/Palettes "$(RESOURCES_DIR)/Palettes"
 	/usr/bin/xattr -dr com.apple.quarantine "$(APP_DIR)" 2>/dev/null || true
-	MACOSX_DEPLOYMENT_TARGET="$(DEPLOYMENT_TARGET)" swiftc -O -parse-as-library $(SWIFTC_TARGET_FLAGS) $(SWIFTC_FEATURE_FLAGS) $(SOURCES) \
+	MACOSX_DEPLOYMENT_TARGET="$(DEPLOYMENT_TARGET)" swiftc $(SWIFT_OPTIMIZATION) -parse-as-library $(SWIFTC_TARGET_FLAGS) $(SWIFTC_FEATURE_FLAGS) $(SOURCES) \
 		-o "$(MACOS_DIR)/$(APP_NAME)" \
 		-framework Cocoa \
 		-framework Carbon \
@@ -63,6 +64,9 @@ build:
 		-framework SwiftUI
 	codesign $(CODESIGN_FLAGS) "$(APP_DIR)"
 	codesign --verify --deep --strict "$(APP_DIR)"
+
+debug:
+	$(MAKE) build BUILD_DIR=build-debug SWIFT_OPTIMIZATION=-Onone
 
 run: build
 	open "$(APP_DIR)"
@@ -96,6 +100,9 @@ test-cc-switch: build
 
 test-profile-store: build
 	"$(MACOS_DIR)/$(APP_NAME)" --self-test-profile-store
+
+test-account-inspection: build
+	"$(MACOS_DIR)/$(APP_NAME)" --self-test-account-inspection
 
 test-automatic-account-switch: build
 	"$(MACOS_DIR)/$(APP_NAME)" --self-test-automatic-account-switch

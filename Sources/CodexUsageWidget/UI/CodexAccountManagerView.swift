@@ -2,6 +2,20 @@ import AppKit
 import SwiftUI
 
 struct CodexAccountManagerView: View {
+    private enum Section: String, CaseIterable, Identifiable {
+        case workspace
+        case inspection
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .workspace: return "工作台"
+            case .inspection: return "巡检"
+            }
+        }
+    }
+
     @ObservedObject var store: UsageStore
     @ObservedObject var settings: AppSettings
     let paletteCatalog: PaletteCatalog
@@ -19,6 +33,7 @@ struct CodexAccountManagerView: View {
     @State private var showsAllHubTasks = false
     @State private var showsAllHubThreads = false
     @State private var showsHubSubagentThreads = false
+    @State private var selectedSection: Section = .workspace
     @StateObject private var hubConsole = HubConsoleModel()
 
     static let defaultWidth: CGFloat = 1080
@@ -34,7 +49,15 @@ struct CodexAccountManagerView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            workspace
+            VStack(alignment: .leading, spacing: 14) {
+                sectionNavigation
+                switch selectedSection {
+                case .workspace:
+                    workspace
+                case .inspection:
+                    AccountInspectionView(store: store)
+                }
+            }
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)
         }
@@ -79,6 +102,29 @@ struct CodexAccountManagerView: View {
         }
     }
 
+    private var sectionNavigation: some View {
+        HStack {
+            Picker("主窗口页面", selection: $selectedSection) {
+                ForEach(Section.allCases) { section in
+                    Text(section.title).tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 230)
+            .accessibilityLabel("主窗口页面")
+
+            Spacer()
+
+            if selectedSection == .inspection {
+                Label("多账号巡检看板", systemImage: "checklist.checked")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
     private var workspace: some View {
         VStack(alignment: .leading, spacing: 14) {
             workspaceHeader
@@ -91,7 +137,6 @@ struct CodexAccountManagerView: View {
 
             agentBreakdownPanel
             automationPanel
-            hubConsolePanel
 
             profilesPanel
             safetyFooter
@@ -455,7 +500,7 @@ struct CodexAccountManagerView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("账号与快照", systemImage: "person.2")
                         .font(.headline)
-                    Text("额度、重置时间；暖号按已知重置时间执行一次，未知状态由手动刷新触发")
+                    Text("额度与重置时间；刷新只读取官方数据，暖号独立执行")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -529,6 +574,9 @@ struct CodexAccountManagerView: View {
                         isWarmingProfile: store.warmingProfileID == profile.id,
                         canMoveUp: index > 0,
                         canMoveDown: index < presentedProfiles.count - 1,
+                        quotaReadSucceeded: linkedProfile == nil
+                            && profile.lastSnapshot != nil
+                            && profile.lastQuotaReadFailureAt == nil,
                         fiveHourRemainingPercent: fiveHourRemaining(for: profile),
                         fiveHourResetsAt: fiveHourReset(for: profile),
                         remainingPercent: sevenDayRemaining(for: profile),
@@ -600,7 +648,7 @@ struct CodexAccountManagerView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 7) {
-                    Text("安全自动换号")
+                    Text("低额度调度提醒")
                         .font(.subheadline.weight(.semibold))
                     Text("5h ≤5%")
                         .profileBadge()
@@ -770,7 +818,6 @@ struct CodexAccountManagerView: View {
             Button("开启") {
                 hubConsole.updateSettings(
                     baseURL: hubConsole.baseURL,
-                    token: UserDefaults.standard.string(forKey: HubConsoleModel.tokenKey) ?? "",
                     enabled: true
                 )
             }
@@ -2212,6 +2259,7 @@ private struct ProfileRow: View {
     let isWarmingProfile: Bool
     let canMoveUp: Bool
     let canMoveDown: Bool
+    let quotaReadSucceeded: Bool
     let fiveHourRemainingPercent: Double?
     let fiveHourResetsAt: Date?
     let remainingPercent: Double?
@@ -2243,8 +2291,8 @@ private struct ProfileRow: View {
     private static let resetExpiryFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "dd/MM/yy HH:mm 'UTC'"
+        formatter.timeZone = .autoupdatingCurrent
+        formatter.dateFormat = "M月d日 HH:mm"
         return formatter
     }()
 
@@ -2387,22 +2435,26 @@ private struct ProfileRow: View {
             quotaWindow(
                 title: "5 小时剩余",
                 remainingPercent: fiveHourRemainingPercent,
-                resetsAt: fiveHourResetsAt
+                resetsAt: fiveHourResetsAt,
+                officialReadSucceeded: quotaReadSucceeded
             )
             quotaWindow(
                 title: "7 天剩余",
                 remainingPercent: remainingPercent,
-                resetsAt: resetsAt
+                resetsAt: resetsAt,
+                officialReadSucceeded: quotaReadSucceeded
             )
             Label(
-                availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置 暂无",
+                availableResetCredits.map { "可用重置 \($0) 次" }
+                    ?? (quotaReadSucceeded ? "可用重置 官方未返回" : "可用重置 暂无"),
                 systemImage: "arrow.counterclockwise.circle"
             )
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .help("仅显示 Codex 官方返回的当前可用重置卡数量")
-                .accessibilityLabel(availableResetCredits.map { "可用重置 \($0) 次" } ?? "可用重置次数未知")
+                .accessibilityLabel(availableResetCredits.map { "可用重置 \($0) 次" }
+                    ?? (quotaReadSucceeded ? "官方未返回可用重置次数" : "可用重置次数未知"))
             if (availableResetCredits ?? 0) > 0,
                let expiry = resetCreditExpiries.first {
                 Text("最近到期 " + Self.resetExpiryFormatter.string(from: expiry))
@@ -2416,20 +2468,23 @@ private struct ProfileRow: View {
     private func quotaWindow(
         title: String,
         remainingPercent: Double?,
-        resetsAt: Date?
+        resetsAt: Date?,
+        officialReadSucceeded: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let windowUnavailable = remainingPercent == nil && resetsAt == nil
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.caption.weight(.semibold))
                 Spacer()
-                Text(remainingPercent.map { "\(Int($0.rounded()))%" } ?? "暂无")
+                Text(remainingPercent.map { "\(Int($0.rounded()))%" }
+                    ?? (officialReadSucceeded ? "官方未返回" : "暂无"))
                     .font(.subheadline.weight(.bold).monospacedDigit())
             }
             QuotaProgressTrack(percent: remainingPercent)
             Text(resetsAt.map {
                 "官方重置 " + Self.resetExpiryFormatter.string(from: $0)
-            } ?? "官方重置时间未知")
+            } ?? (officialReadSucceeded && windowUnavailable ? "此窗口未由官方返回" : "官方重置时间未知"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -2485,7 +2540,7 @@ private struct ProfileRow: View {
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .accessibilityValue(participatesInAutomaticSwitch ? "已加入" : "已排除")
-                .help("开启后可参与 Next 的安全自动换号；关闭后仍可手动刷新和暖号")
+                .help("开启后可被低额度提醒推荐，并参与 5 小时暖号；关闭后不自动消耗 5 小时额度，但仍保留 7 天暖号")
             }
 
             HStack(spacing: 8) {
@@ -2661,8 +2716,13 @@ private struct ProfileRow: View {
     }
 }
 
-private enum DispatchCodeCatalog {
-    private static let codes = load()
+enum DispatchCodeCatalog {
+    private static let entries = load()
+
+    private struct Entry {
+        let code: String
+        let alias: String
+    }
 
     private struct Payload: Decodable {
         let schemaVersion: Int
@@ -2671,14 +2731,19 @@ private enum DispatchCodeCatalog {
 
     private struct Account: Decodable {
         let code: String
+        let alias: String
         let profileId: String
     }
 
     static func code(for profileID: String) -> String? {
-        codes[profileID]
+        entries[profileID]?.code
     }
 
-    private static func load(fileManager: FileManager = .default) -> [String: String] {
+    static func alias(for profileID: String) -> String? {
+        entries[profileID]?.alias
+    }
+
+    private static func load(fileManager: FileManager = .default) -> [String: Entry] {
         guard let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first,
               let data = try? Data(contentsOf: support
                 .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
@@ -2687,20 +2752,22 @@ private enum DispatchCodeCatalog {
               payload.schemaVersion == 1
         else { return [:] }
 
-        var codes: [String: String] = [:]
+        var entries: [String: Entry] = [:]
         var claimedCodes = Set<String>()
         for account in payload.accounts {
             let profileID = account.profileId.trimmingCharacters(in: .whitespacesAndNewlines)
             let code = account.code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            let alias = account.alias.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !profileID.isEmpty,
-                  codes[profileID] == nil,
+                  !alias.isEmpty,
+                  entries[profileID] == nil,
                   code.unicodeScalars.count == 1,
                   code.unicodeScalars.allSatisfy({ (65...90).contains(Int($0.value)) }),
                   claimedCodes.insert(code).inserted
             else { continue }
-            codes[profileID] = code
+            entries[profileID] = Entry(code: code, alias: alias)
         }
-        return codes
+        return entries
     }
 }
 
@@ -2959,7 +3026,6 @@ private struct HubConsoleSettingsSheet: View {
     @ObservedObject var model: HubConsoleModel
     @Environment(\.dismiss) private var dismiss
     @State private var baseURLDraft = ""
-    @State private var tokenDraft = ""
     @State private var enabledDraft = true
 
     var body: some View {
@@ -2973,7 +3039,7 @@ private struct HubConsoleSettingsSheet: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("多 agent 控制台")
                         .font(.title3.weight(.semibold))
-                    Text("连接与访问设置")
+                    Text("内网连接设置")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2998,7 +3064,7 @@ private struct HubConsoleSettingsSheet: View {
                         .toggleStyle(.switch)
                 }
 
-                GroupBox("连接") {
+                GroupBox("内网连接") {
                     VStack(alignment: .leading, spacing: 12) {
                         VStack(alignment: .leading, spacing: 5) {
                             Text("Hub 地址")
@@ -3006,16 +3072,9 @@ private struct HubConsoleSettingsSheet: View {
                                 .foregroundStyle(.secondary)
                             TextField("http://127.0.0.1:8787", text: $baseURLDraft)
                                 .textFieldStyle(.roundedBorder)
-                            Text("本机默认无需修改")
+                            Text("本机默认无需修改；不使用访问令牌")
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
-                        }
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text("访问令牌")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            SecureField("未启用令牌可留空", text: $tokenDraft)
-                                .textFieldStyle(.roundedBorder)
                         }
                     }
                     .padding(.top, 4)
@@ -3028,7 +3087,6 @@ private struct HubConsoleSettingsSheet: View {
                     Button("保存") {
                         model.updateSettings(
                             baseURL: baseURLDraft,
-                            token: tokenDraft,
                             enabled: enabledDraft
                         )
                         dismiss()
@@ -3042,7 +3100,6 @@ private struct HubConsoleSettingsSheet: View {
         .frame(width: 440)
         .onAppear {
             baseURLDraft = model.baseURL
-            tokenDraft = UserDefaults.standard.string(forKey: HubConsoleModel.tokenKey) ?? ""
             enabledDraft = model.isEnabled
         }
     }

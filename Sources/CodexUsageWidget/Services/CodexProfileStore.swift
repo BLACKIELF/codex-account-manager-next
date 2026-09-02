@@ -201,7 +201,6 @@ enum CodexWarmUpWindowKind: String, Equatable {
 }
 
 enum CodexWarmUpPolicy {
-    static let failureRetryInterval: TimeInterval = 30 * 60
     static let resetGrace: TimeInterval = 8
     static let fiveHourSuccessInterval: TimeInterval = 5 * 60 * 60
     static let sevenDaySuccessInterval: TimeInterval = 7 * 24 * 60 * 60
@@ -210,6 +209,17 @@ enum CodexWarmUpPolicy {
     static let unexpectedResetDrop = 8.0
     static let minimumWeeklyRemaining = 5.0
     static let resetStartTolerance: TimeInterval = 10 * 60
+
+    static func maintenanceRefreshInterval(warmUpEnabled: Bool) -> TimeInterval {
+        warmUpEnabled ? 10 * 60 : 30 * 60
+    }
+
+    static func maintenanceTimerNeedsReplacement(
+        currentInterval: TimeInterval?,
+        requestedInterval: TimeInterval
+    ) -> Bool {
+        currentInterval != requestedInterval
+    }
 
     static func effectiveSelection(
         _ selection: CodexWarmUpSelection,
@@ -288,9 +298,7 @@ enum CodexWarmUpPolicy {
     ) -> Date? {
         guard selection.isEnabled else { return nil }
         guard let email = profile.lastSnapshot?.email, !email.isEmpty else { return nil }
-        if profile.lastWarmUpSucceeded == false, let attemptedAt = profile.lastWarmUpAt {
-            return attemptedAt.addingTimeInterval(failureRetryInterval)
-        }
+        if profile.lastWarmUpSucceeded == false { return nil }
 
         var dates: [Date] = []
         if selection.fiveHour, !shouldSkipFiveHourToProtectWeekly(profile, now: now) {
@@ -561,6 +569,7 @@ final class CodexProfileStore {
     private let fileManager: FileManager
     private let stateURL: URL
     private let managedRootURL: URL
+    private let persistenceBlocked: Bool
     private var state: State
 
     init(
@@ -592,13 +601,19 @@ final class CodexProfileStore {
             selectedMonitorProfileID: systemProfile.id,
             selectedLaunchProfileID: systemProfile.id
         )
-        if let data = try? Data(contentsOf: stateURL),
-           let decoded = try? JSONDecoder().decode(State.self, from: data),
-           Self.isValid(decoded, systemPath: systemProfile.codexHomePath, managedRoot: managedRootURL) {
+        if !fileManager.fileExists(atPath: stateURL.path) {
+            state = fallback
+            persistenceBlocked = false
+        } else if let data = try? Data(contentsOf: stateURL),
+                  let decoded = try? JSONDecoder().decode(State.self, from: data),
+                  Self.isValid(decoded, systemPath: systemProfile.codexHomePath, managedRoot: managedRootURL) {
             state = decoded
+            persistenceBlocked = false
         } else {
             state = fallback
+            persistenceBlocked = true
         }
+        guard !persistenceBlocked else { return }
         var shouldSave = backfillCredentialAccountIDs()
         if state.resetBackfillCheckedAt == nil {
             backfillResetCountersFromHistory()
@@ -1131,6 +1146,13 @@ final class CodexProfileStore {
     }
 
     private func save() throws {
+        guard !persistenceBlocked else {
+            throw NSError(
+                domain: "CodexAccountManagerNext.ProfileStore",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "账号状态文件无法安全读取；已阻止覆盖，请先备份并恢复该文件"]
+            )
+        }
         let directory = stateURL.deletingLastPathComponent()
         try fileManager.createDirectory(
             at: directory,
@@ -1171,6 +1193,8 @@ final class CodexProfileStore {
             fiveHour: snapshot.fiveHour,
             sevenDay: snapshot.sevenDay,
             monthly: snapshot.monthly,
+            availableResetCredits: snapshot.availableResetCredits,
+            resetCreditExpiries: snapshot.resetCreditExpiries,
             fetchedAt: snapshot.fetchedAt,
             appServerVersion: snapshot.appServerVersion
         )
@@ -1214,6 +1238,30 @@ enum CodexProfileStoreSelfTest {
             let home = root.appendingPathComponent("home", isDirectory: true)
             let support = root.appendingPathComponent("support", isDirectory: true)
             try fileManager.createDirectory(at: home, withIntermediateDirectories: true)
+            let corruptSupport = root.appendingPathComponent("corrupt-support", isDirectory: true)
+            let corruptStateURL = corruptSupport
+                .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
+                .appendingPathComponent("account-manager-next-v1.json")
+            try fileManager.createDirectory(
+                at: corruptStateURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            let corruptState = Data("{not-valid-json".utf8)
+            try corruptState.write(to: corruptStateURL)
+            let blocked = CodexProfileStore(
+                fileManager: fileManager,
+                homeDirectory: home,
+                applicationSupportDirectory: corruptSupport
+            )
+            do {
+                try blocked.setRemark("must not persist", for: "system")
+                print("Codex profile store self-test failed: corrupt state mutation was accepted")
+                return false
+            } catch {}
+            guard try Data(contentsOf: corruptStateURL) == corruptState else {
+                print("Codex profile store self-test failed: corrupt state was overwritten")
+                return false
+            }
             let first = CodexProfileStore(
                 fileManager: fileManager,
                 homeDirectory: home,
@@ -1236,7 +1284,12 @@ enum CodexProfileStoreSelfTest {
             let added = try first.addManagedProfile()
             try first.selectMonitor(added.id)
             try first.selectLaunch(added.id)
-            let firstSnapshot = testSnapshot(email: "first@example.com", usedPercent: 11, at: Date(timeIntervalSince1970: 100))
+            let firstSnapshot = testSnapshot(
+                email: "first@example.com",
+                usedPercent: 11,
+                at: Date(timeIntervalSince1970: 100),
+                resetCredits: 2
+            )
             let secondSnapshot = testSnapshot(email: "second@example.com", usedPercent: 22, at: Date(timeIntervalSince1970: 200))
             let managedSnapshot = testSnapshot(
                 email: "managed@example.com",
@@ -1394,6 +1447,8 @@ enum CodexProfileStoreSelfTest {
             let preservedAgain = try reordered.preserveSystemLogin()
             guard preserved.lastSnapshot?.email == "first@example.com",
                   preserved.lastSnapshot?.accountID == "acct-first",
+                  preserved.lastSnapshot?.availableResetCredits == 2,
+                  preserved.lastSnapshot?.resetCreditExpiries == [Date(timeIntervalSince1970: 1_100)],
                   preservedAuth == systemAuth,
                   preservedAgain.id == preserved.id,
                   reordered.profiles.count == 3,
@@ -2057,6 +2112,19 @@ enum CodexWarmUpPolicySelfTest {
             if !condition { print("Codex warm-up policy self-test failed: \(message)") }
             return condition
         }
+        guard expect(
+            CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: true) == 10 * 60
+                && CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: false) == 30 * 60
+                && !CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
+                    currentInterval: 10 * 60,
+                    requestedInterval: 10 * 60
+                )
+                && CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
+                    currentInterval: 30 * 60,
+                    requestedInterval: 10 * 60
+                ),
+            "quota maintenance cadence"
+        ) else { return false }
         func window(
             used: Double,
             resetsIn: TimeInterval? = nil,
@@ -2188,9 +2256,8 @@ enum CodexWarmUpPolicySelfTest {
         failed.lastWarmUpSucceeded = false
         failed.lastWarmUpAt = now.addingTimeInterval(-600)
         guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: failed, selection: fiveHourOnly, now: now)
-                == now.addingTimeInterval(30 * 60 - 600),
-            "failed warm-up retries after 30 minutes"
+            CodexWarmUpPolicy.nextEligibleDate(for: failed, selection: fiveHourOnly, now: now) == nil,
+            "failed warm-up requires manual retry"
         ) else { return false }
         guard expect(
             CodexWarmUpPolicy.nextEligibleDate(for: idleProfile, selection: fiveHourOnly, unexpected: [.fiveHour], now: now) == now,

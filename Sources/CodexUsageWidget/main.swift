@@ -824,6 +824,8 @@ final class UsageStore: ObservableObject {
     private var hasPendingDispatchQuotaRefresh = false
     private var warmUpRefreshStartedAt: Date?
     private var unexpectedWarmUpKindsByAccount: [String: Set<CodexWarmUpWindowKind>] = [:]
+    private var hubWarmUpDeferredUntilByAccount: [String: Date] = [:]
+    private var hubWarmUpUnavailableUntil: Date?
     private var refreshGeneration: UInt64 = 0
     private var hasPendingRefresh = false
     private var statisticsSnapshotCache: [String: StatisticsSnapshotCacheEntry] = [:]
@@ -848,6 +850,7 @@ final class UsageStore: ObservableObject {
     private let statisticsSnapshotCacheTTL: TimeInterval = 3 * 60
     private let foregroundFullRefreshInterval: TimeInterval = 3 * 60
     private let backgroundFullRefreshInterval: TimeInterval = 5 * 60
+    private let hubWarmUpRetryDelay: TimeInterval = 5 * 60
     private let profileStore: CodexProfileStore
     private let accountActions = CodexAccountActions()
     private let taskClient = CodexAppServerTaskClient()
@@ -1146,11 +1149,11 @@ final class UsageStore: ObservableObject {
             try profileStore.setAutomaticSwitchParticipation(enabled, for: id)
             syncProfiles()
             accountManagerMessage = enabled
-                ? "该账号已加入自动切换范围"
-                : "该账号已排除自动切换；仅保留 7 天与官方随机重置暖号"
+                ? "该账号已加入低额度调度范围"
+                : "该账号已排除低额度调度；仅保留 7 天与官方随机重置暖号"
             refreshWarmUpProfilesThenSchedule()
         } catch {
-            accountManagerMessage = "自动切换范围保存失败：\(error.localizedDescription)"
+            accountManagerMessage = "低额度调度范围保存失败：\(error.localizedDescription)"
         }
     }
 
@@ -2215,12 +2218,6 @@ final class UsageStore: ObservableObject {
         } ?? "暂无满足 30% 额度要求的候选账号"
         let detail = "额度低于阈值；推荐账号：\(recommendedName)。请一键在终端中使用"
         accountManagerMessage = detail
-        reportAutomaticSwitchFailure(
-            sourceProfile: sourceProfile,
-            quota: sourceQuota,
-            reason: .noEligibleAccount,
-            detail: detail
-        )
         if let source = maskedAccount(for: sourceProfile) {
             sendFeishuNotification(
                 event: .lowQuotaDetected,
@@ -2280,24 +2277,6 @@ final class UsageStore: ObservableObject {
             self.taskClient.start(reason: .startup)
             self.taskClient.refreshThreads()
         }
-    }
-
-    private func reportAutomaticSwitchFailure(
-        sourceProfile: CodexProfile,
-        quota: AutomaticSwitchQuotaState,
-        reason: FeishuSwitchNotification.FailureReason,
-        detail: String
-    ) {
-        guard let source = maskedAccount(for: sourceProfile) else { return }
-        let eventID = UUID()
-        recordAutomationEvent(level: .failure, title: "自动切换未执行", detail: "\(source.value) · \(detail)")
-        sendFeishuNotification(
-            event: .switchFailed(reason),
-            source: source,
-            target: nil,
-            quota: quota,
-            eventID: eventID
-        )
     }
 
     private func sendFeishuNotification(
@@ -2450,31 +2429,39 @@ final class UsageStore: ObservableObject {
     }
 
     private func handleWarmUpSelectionChanged() {
+        scheduleWarmUpMaintenanceTimer()
         if !warmUpSelection.isEnabled {
             warmUpTimer?.invalidate()
             warmUpTimer = nil
-            warmUpMaintenanceTimer?.invalidate()
-            warmUpMaintenanceTimer = nil
             unexpectedWarmUpKindsByAccount.removeAll()
             return
         }
         refreshWarmUpProfilesThenSchedule()
     }
 
-    /// 监控刷新只覆盖当前账号；用固定周期全量刷新所有账号的官方额度，
-    /// 同时为已开启的暖号提供 15 分钟内的证据。额度读取不能依赖暖号成功，
-    /// 否则一次暖号失败会让非当前账号的卡片永久停在旧快照。
+    /// 独立维护所有账号的官方额度：暖号开启时每 10 分钟刷新，关闭时每 30 分钟刷新。
+    /// 维护刷新始终 quota-only，不会发送暖号请求；暖号仅由独立的到期判定触发。
     private func scheduleWarmUpMaintenanceTimer() {
+        guard hasStarted else { return }
+        let interval = CodexWarmUpPolicy.maintenanceRefreshInterval(
+            warmUpEnabled: warmUpSelection.isEnabled
+        )
+        if let timer = warmUpMaintenanceTimer,
+           timer.isValid,
+           !CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
+               currentInterval: timer.timeInterval,
+               requestedInterval: interval
+           ) {
+            return
+        }
         warmUpMaintenanceTimer?.invalidate()
         warmUpMaintenanceTimer = nil
-        guard warmUpSelection.isEnabled, hasStarted else { return }
         let timer = Timer(
-            fire: Date().addingTimeInterval(10 * 60),
-            interval: 10 * 60,
+            fire: Date().addingTimeInterval(interval),
+            interval: interval,
             repeats: true
         ) { [weak self] _ in
             guard let self,
-                  self.warmUpSelection.isEnabled,
                   self.hasStarted
             else { return }
             if self.isRefreshingWarmUpProfiles {
@@ -2487,7 +2474,11 @@ final class UsageStore: ObservableObject {
                 self.warmUpRefreshStartedAt = nil
                 self.accountManagerMessage = "检测到上一轮账号刷新卡住，已自动恢复"
             }
-            self.refreshWarmUpProfilesThenSchedule()
+            self.refreshWarmUpProfilesThenSchedule(
+                performWarmUpAfterRefresh: self.warmUpSelection.isEnabled,
+                quotaOnly: true,
+                retryQuotaReadOnce: true
+            )
         }
         timer.tolerance = 30
         RunLoop.main.add(timer, forMode: .common)
@@ -2511,7 +2502,7 @@ final class UsageStore: ObservableObject {
         }
         guard warmUpSelection.isEnabled || profile.lastWarmUpAt != nil || profile.lastQuotaReadFailureAt != nil else { return nil }
         let last = profile.lastWarmUpAt.map { date in
-            let state = profile.lastWarmUpSucceeded == true ? "上次成功" : "上次失败"
+            let state = profile.lastWarmUpSucceeded == true ? "最近暖号成功" : "最近暖号失败"
             return "\(state) " + date.formatted(.dateTime.month().day().hour().minute())
         }
         guard warmUpSelection.isEnabled else {
@@ -2560,15 +2551,15 @@ final class UsageStore: ObservableObject {
             if profile.lastWarmUpSucceeded == true, let lastWarmUpAt = profile.lastWarmUpAt {
                 let next = lastWarmUpAt.addingTimeInterval(successfulInterval)
                 if next > Date() {
-                    return "\(label)下次 " + next.formatted(.dateTime.month().day().hour().minute())
+                    return "下次暖号 \(label) " + next.formatted(.dateTime.month().day().hour().minute())
                 }
             }
             return "\(label)等待额度刷新确认"
         }
         if let resetsAt = window?.resetsAt, resetsAt > Date() {
-            return "\(label)将在重置后执行一次 · " + resetsAt.formatted(.dateTime.month().day().hour().minute())
+            return "下次暖号 \(label) " + resetsAt.formatted(.dateTime.month().day().hour().minute())
         }
-        return "\(label)重置时间未知；请点刷新检查"
+        return "下次暖号 \(label) 未知；请点刷新检查"
     }
 
     private func runDueWarmUp() {
@@ -2590,6 +2581,45 @@ final class UsageStore: ObservableObject {
               ))
         else { return }
         warmingProfileID = profile.id
+        accountManagerMessage = "正在确认 \(AccountDisplay.profileName(profile)) 是否空闲…"
+        guard let alias = hubAccountAlias(for: profile) else {
+            warmingProfileID = nil
+            hubWarmUpUnavailableUntil = Date().addingTimeInterval(hubWarmUpRetryDelay)
+            accountManagerMessage = "无法确认账号在 Hub 中的身份，已阻止暖号"
+            scheduleWarmUpTimer()
+            return
+        }
+        Task { @MainActor [weak self] in
+            let availability = await HubConsoleModel.warmUpAvailability(for: alias)
+            self?.continueWarmUp(profile, manual: manual, availability: availability)
+        }
+    }
+
+    private func continueWarmUp(
+        _ profile: CodexProfile,
+        manual: Bool,
+        availability: HubWarmUpAvailability
+    ) {
+        guard warmingProfileID == profile.id else { return }
+        let accountKey = profile.recordedAccountKey
+        switch availability {
+        case .busy:
+            hubWarmUpUnavailableUntil = nil
+            hubWarmUpDeferredUntilByAccount[accountKey] = Date().addingTimeInterval(hubWarmUpRetryDelay)
+            warmingProfileID = nil
+            accountManagerMessage = "Hub 正在使用 \(AccountDisplay.profileName(profile))，已跳过暖号"
+            scheduleWarmUpTimer()
+            return
+        case .unavailable:
+            hubWarmUpUnavailableUntil = Date().addingTimeInterval(hubWarmUpRetryDelay)
+            warmingProfileID = nil
+            accountManagerMessage = "暂时无法确认 Hub 账号状态，已阻止暖号"
+            scheduleWarmUpTimer()
+            return
+        case .idle:
+            hubWarmUpUnavailableUntil = nil
+            hubWarmUpDeferredUntilByAccount.removeValue(forKey: accountKey)
+        }
         accountManagerMessage = "正在为 \(AccountDisplay.profileName(profile)) 发送最小请求…"
         do {
             try accountActions.warmUp(profile: profile) { [weak self] result in
@@ -2602,7 +2632,7 @@ final class UsageStore: ObservableObject {
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，正在确认窗口是否开始…"
                     self.refreshProfileAfterWarmUp(profile, manual: manual)
                 } else {
-                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败；不会自动重试，请稍后点刷新"
+                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败；不会自动重试，请刷新确认后手动暖号"
                     self.scheduleWarmUpTimer()
                 }
             }
@@ -2610,13 +2640,25 @@ final class UsageStore: ObservableObject {
             try? profileStore.recordWarmUp(at: Date(), succeeded: false, for: profile.id)
             syncProfiles()
             warmingProfileID = nil
-            accountManagerMessage = "暖号启动失败：\(error.localizedDescription)；不会自动重试"
+            accountManagerMessage = "暖号启动失败：\(error.localizedDescription)；不会自动重试，请手动暖号"
             scheduleWarmUpTimer()
         }
     }
 
+    private func hubAccountAlias(for profile: CodexProfile) -> String? {
+        if let alias = DispatchCodeCatalog.alias(for: profile.id) { return alias }
+        let identity = profile.lastSnapshot?.email ?? profile.name
+        let alias = identity.split(separator: "@", maxSplits: 1).first.map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return alias?.isEmpty == false ? alias : nil
+    }
+
     private func nextDueWarmUpProfile(now: Date = Date()) -> CodexProfile? {
-        CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> CodexProfile? in
+        if let unavailableUntil = hubWarmUpUnavailableUntil, unavailableUntil > now { return nil }
+        return CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> CodexProfile? in
+            guard let accountKey = group.first?.recordedAccountKey,
+                  hubWarmUpDeferredUntilByAccount[accountKey].map({ $0 <= now }) ?? true
+            else { return nil }
             guard group.allSatisfy({
                 let unexpected = unexpectedWarmUpKindsByAccount[$0.recordedAccountKey] ?? []
                 return CodexWarmUpPolicy.isDue(
@@ -2633,7 +2675,6 @@ final class UsageStore: ObservableObject {
     private func scheduleWarmUpTimer() {
         warmUpTimer?.invalidate()
         warmUpTimer = nil
-        scheduleWarmUpMaintenanceTimer()
         guard warmUpSelection.isEnabled, hasStarted, warmingProfileID == nil else { return }
         if let profile = nextDueWarmUpProfile() {
             performWarmUp(profile)
@@ -2651,7 +2692,15 @@ final class UsageStore: ObservableObject {
     }
 
     private func nextScheduledWarmUp(now: Date = Date()) -> Date? {
-        CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> Date? in
+        if let unavailableUntil = hubWarmUpUnavailableUntil, unavailableUntil > now {
+            return unavailableUntil
+        }
+        return CodexProfile.groupsByRecordedAccount(profiles).compactMap { group -> Date? in
+            if let accountKey = group.first?.recordedAccountKey,
+               let deferredUntil = hubWarmUpDeferredUntilByAccount[accountKey],
+               deferredUntil > now {
+                return deferredUntil
+            }
             let dates = group.compactMap { profile -> Date? in
                 let unexpected = unexpectedWarmUpKindsByAccount[profile.recordedAccountKey] ?? []
                 let selection = effectiveWarmUpSelection(for: profile, unexpected: unexpected)
@@ -2769,6 +2818,8 @@ final class UsageStore: ObservableObject {
     private func refreshWarmUpProfilesThenSchedule(
         performWarmUpAfterRefresh: Bool = true,
         profileIDs: Set<String>? = nil,
+        quotaOnly: Bool = false,
+        retryQuotaReadOnce: Bool = false,
         completion: ((Bool) -> Void)? = nil
     ) {
         if performWarmUpAfterRefresh {
@@ -2790,11 +2841,19 @@ final class UsageStore: ObservableObject {
         warmUpRefreshStartedAt = Date()
         DispatchQueue.global(qos: .utility).async {
             let snapshots = profiles.map { profile in
-                let context = RuntimeLoadContext.live(
+                var context = RuntimeLoadContext.live(
                     statisticsPreference: preference,
                     codexHomeDirectory: profile.codexHomeURL
                 )
-                return (profile.id, CodexUsageReader().load(context: context))
+                var snapshot = CodexUsageReader().load(context: context, quotaOnly: quotaOnly)
+                if retryQuotaReadOnce, !snapshot.quotaReadSucceeded {
+                    context = RuntimeLoadContext.live(
+                        statisticsPreference: preference,
+                        codexHomeDirectory: profile.codexHomeURL
+                    )
+                    snapshot = CodexUsageReader().load(context: context, quotaOnly: quotaOnly)
+                }
+                return (profile.id, snapshot)
             }
             DispatchQueue.main.async {
                 self.isRefreshingWarmUpProfiles = false
@@ -2848,7 +2907,9 @@ final class UsageStore: ObservableObject {
         accountManagerMessage = "正在为 Next 调度刷新账号额度…"
         refreshWarmUpProfilesThenSchedule(
             performWarmUpAfterRefresh: false,
-            profileIDs: profileIDs
+            profileIDs: profileIDs,
+            quotaOnly: true,
+            retryQuotaReadOnce: true
         )
     }
 
@@ -2969,6 +3030,7 @@ final class UsageStore: ObservableObject {
         updateVisualEnergyMode()
         scheduleStatisticsRollover()
         scheduleFullRefreshTimer()
+        scheduleWarmUpMaintenanceTimer()
         if wakeObserver == nil {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification,
@@ -3673,9 +3735,32 @@ final class CodexUsageReader {
     private static var lastPersistentSessionUsageCacheWriteAt: Date?
     private static var localAnalyticsCache: LocalAnalyticsCacheEntry?
 
-    func load(context: RuntimeLoadContext) -> UsageSnapshot {
+    func load(context: RuntimeLoadContext, quotaOnly: Bool = false) -> UsageSnapshot {
         var messages: [String] = []
-        let appServer = readAppServer(context: context, messages: &messages)
+        let appServer = readAppServer(
+            context: context,
+            messages: &messages,
+            quotaOnly: quotaOnly
+        )
+        func snapshot(local: LocalUsage?) -> UsageSnapshot {
+            UsageSnapshot(
+                refreshedAt: context.now,
+                account: appServer.account,
+                limitId: appServer.limitId,
+                limitName: appServer.limitName,
+                quotaReadSucceeded: appServer.quotaReadSucceeded,
+                fiveHourQuota: appServer.fiveHourQuota,
+                sevenDayQuota: appServer.sevenDayQuota,
+                monthlyQuota: appServer.monthlyQuota,
+                credits: appServer.credits,
+                cloudLifetimeTokens: appServer.cloudLifetimeTokens,
+                local: local,
+                taskBoard: nil,
+                messages: messages
+            )
+        }
+        if quotaOnly { return snapshot(local: nil) }
+
         var local: LocalUsage?
         switch CCSwitchUsageReader().load(context: context) {
         case let .success(summary):
@@ -3723,22 +3808,7 @@ final class CodexUsageReader {
                 )
             }
         }
-
-        return UsageSnapshot(
-            refreshedAt: context.now,
-            account: appServer.account,
-            limitId: appServer.limitId,
-            limitName: appServer.limitName,
-            quotaReadSucceeded: appServer.quotaReadSucceeded,
-            fiveHourQuota: appServer.fiveHourQuota,
-            sevenDayQuota: appServer.sevenDayQuota,
-            monthlyQuota: appServer.monthlyQuota,
-            credits: appServer.credits,
-            cloudLifetimeTokens: appServer.cloudLifetimeTokens,
-            local: local,
-            taskBoard: nil,
-            messages: messages
-        )
+        return snapshot(local: local)
     }
 
     func loadTaskBoard(context: RuntimeLoadContext) -> TaskBoard? {
@@ -3776,7 +3846,11 @@ final class CodexUsageReader {
         var cloudLifetimeTokens: Int64?
     }
 
-    private func readAppServer(context: RuntimeLoadContext, messages: inout [String]) -> AppServerSnapshot {
+    private func readAppServer(
+        context: RuntimeLoadContext,
+        messages: inout [String],
+        quotaOnly: Bool
+    ) -> AppServerSnapshot {
         CodexCredentialAccessGate.lock.lock()
         defer { CodexCredentialAccessGate.lock.unlock() }
         let performanceSpan = PerformanceMonitor.shared.begin(.appServerQuota)
@@ -3789,6 +3863,15 @@ final class CodexUsageReader {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: codexPath)
         process.arguments = ["app-server"]
+        if quotaOnly {
+            process.arguments?.append(contentsOf: [
+                "--disable", "apps",
+                "--disable", "plugins",
+                "--disable", "remote_plugin",
+                "--disable", "recommended_plugins",
+                "--disable", "skill_search"
+            ])
+        }
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = context.codexHomeDirectory.path
         process.environment = environment
@@ -3822,8 +3905,9 @@ final class CodexUsageReader {
             }
         }
 
+        let requestedResponseIDs = quotaOnly ? [2, 3] : [2, 3, 4]
         let responseGroup = DispatchGroup()
-        [2, 3, 4].forEach { _ in responseGroup.enter() }
+        requestedResponseIDs.forEach { _ in responseGroup.enter() }
 
         let lock = NSLock()
         var buffer = Data()
@@ -3857,7 +3941,9 @@ final class CodexUsageReader {
                     writeMessage(["method": "initialized"])
                     writeMessage(["id": 2, "method": "account/read", "params": ["refreshToken": false]])
                     writeMessage(["id": 3, "method": "account/rateLimits/read"])
-                    writeMessage(["id": 4, "method": "account/usage/read"])
+                    if !quotaOnly {
+                        writeMessage(["id": 4, "method": "account/usage/read"])
+                    }
                 }
                 return
             }
@@ -3889,7 +3975,7 @@ final class CodexUsageReader {
             }
             lock.unlock()
 
-            if [2, 3, 4].contains(id) {
+            if requestedResponseIDs.contains(id) {
                 markComplete(id)
             }
         }
@@ -3930,7 +4016,7 @@ final class CodexUsageReader {
                     lock.lock()
                     appServerMessages.append("app-server 输出超过安全上限")
                     lock.unlock()
-                    [2, 3, 4].forEach(markComplete)
+                    requestedResponseIDs.forEach(markComplete)
                     break
                 }
 
@@ -3960,7 +4046,7 @@ final class CodexUsageReader {
             ]
         ])
 
-        if responseGroup.wait(timeout: .now() + 12) == .timedOut {
+        if responseGroup.wait(timeout: .now() + (quotaOnly ? 30 : 12)) == .timedOut {
             lock.lock()
             appServerMessages.append("app-server 响应超时")
             lock.unlock()
@@ -13945,6 +14031,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         }
         store.updateVisibleRuntimeScopes(settings.visibleRuntimeScopes)
         store.start()
+        showMainWindow()
         PerformanceMonitor.shared.end(startupPerformanceSpan)
     }
 
@@ -14811,6 +14898,10 @@ struct CodexAccountManagerNextMain {
             exit(CodexProfileStoreSelfTest.run() ? 0 : 1)
         }
 
+        if CommandLine.arguments.contains("--self-test-account-inspection") {
+            exit(AccountInspectionSelfTest.run() ? 0 : 1)
+        }
+
         if CommandLine.arguments.contains("--self-test-automatic-account-switch") {
             exit(CodexAutomaticSwitchPolicySelfTest.run() ? 0 : 1)
         }
@@ -14828,7 +14919,7 @@ struct CodexAccountManagerNextMain {
         }
 
         if CommandLine.arguments.contains("--self-test-account-switch-safety") {
-            exit(CodexAccountSwitchSafetySelfTest.run() ? 0 : 1)
+            exit(CodexAccountSwitchSafetySelfTest.run() && HubWarmUpGateSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-task-runtime") {

@@ -14,7 +14,7 @@ Codex Account Manager Next may read:
 
 Credential values must never be displayed, logged, emitted by diagnostics, included in Feishu cards, or committed. Saved credentials and account-switch locks use restrictive local permissions.
 
-The active Codex login is inherently shared at `~/.codex/auth.json`. Automatic switching is disabled by default and refuses to act when the legacy manager is observed running, task state is stale/disconnected/active, Codex is foreground-active, or candidate identity/quota cannot be verified. Legacy-process checks are repeated around the write, but the legacy manager does not participate in the Next lock protocol.
+The active Codex login is inherently shared at `~/.codex/auth.json`. Low-quota automation only recommends a verified terminal account and never rewrites that shared login. Manual Desktop switching is a separate explicit action and refuses to proceed when its safety checks cannot verify the source and target state. Legacy-process checks are repeated around a manual write, but the legacy manager does not participate in the Next lock protocol.
 
 ## Network boundary
 
@@ -23,14 +23,14 @@ Network access is limited to explicit product functions:
 - the installed Codex CLI and `codex app-server` communicate with official OpenAI services for login, identity, quota, tasks, and user-enabled warm-up;
 - official profile metadata may be requested from `https://chatgpt.com/backend-api/wham/profiles/me` using the selected local account;
 - the updater reads public metadata from `https://api.github.com/repos/BLACKIELF/codex-account-manager-next/releases` and never installs silently;
-- optional Feishu notifications send only masked switch facts to an allowlisted HTTPS webhook on `open.feishu.cn` or `open.larksuite.com`, without redirects.
+- optional Feishu notifications send only masked low-quota recommendation facts to an allowlisted HTTPS webhook on `open.feishu.cn` or `open.larksuite.com`, without redirects.
 
-Feishu is a user-enabled third-party disclosure boundary. Notification failure never changes the account-switch result. Standard transport metadata such as IP address, TLS information, User-Agent, and request time remains visible to the contacted service.
+Feishu is a user-enabled third-party disclosure boundary. Notification failure never changes local account or quota state. Standard transport metadata such as IP address, TLS information, User-Agent, and request time remains visible to the contacted service.
 
 ## Account-switch guarantees
 
 - target email and stable `chatgpt_account_id` must match the saved profile, and conflicting token/account claims are rejected;
-- a Next-private cross-process lock serializes manual and automatic switches initiated by Next;
+- a Next-private cross-process lock serializes manual switches initiated by Next;
 - Codex receives a graceful termination request and must exit before credentials change;
 - source credentials are compared with the previously captured state immediately before an atomic `0600` write;
 - before that write, a private `0600` pending-switch journal records the original state and target fingerprint; startup recovery uses compare-and-swap and never overwrites a newer external credential;

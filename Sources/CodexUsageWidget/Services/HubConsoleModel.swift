@@ -15,6 +15,18 @@ struct HubTask: Identifiable, Codable, Equatable {
     let approvalExpiresAt: Date?
     let resultNote: String?
 
+    private static let accountBusyStates: Set<String> = [
+        "awaiting_approval", "starting", "running", "cancel_requested", "uncertain"
+    ]
+
+    static func blocksAccountWarmUp(state: String) -> Bool {
+        accountBusyStates.contains(state)
+    }
+
+    var blocksAccountWarmUp: Bool {
+        Self.blocksAccountWarmUp(state: state)
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id, version, agent, project, accountAlias, state, actionHash, canResume, reasonCode
         case createdAt, updatedAt, approvalExpiresAt, resultNote
@@ -90,6 +102,12 @@ enum HubConnectionState: Equatable {
     case offline(String)
 }
 
+enum HubWarmUpAvailability: Equatable {
+    case idle
+    case busy
+    case unavailable
+}
+
 enum HubConsoleError: LocalizedError {
     case badURL
     case http(status: Int, code: String?)
@@ -102,7 +120,7 @@ enum HubConsoleError: LocalizedError {
         case .http(let status, let code):
             switch (status, code) {
             case (401, _):
-                return "hub 令牌不对，去设置里更新"
+                return "内网 hub 拒绝连接，请检查服务配置"
             case (403, _):
                 return "hub 拒绝了请求来源"
             case (400, _):
@@ -126,7 +144,6 @@ enum HubConsoleError: LocalizedError {
 final class HubConsoleModel: ObservableObject {
     static let defaultBaseURL = "http://127.0.0.1:8787"
     static let baseURLKey = "CodexManagerNext.hub.baseURL"
-    static let tokenKey = "CodexManagerNext.hub.token"
     static let enabledKey = "CodexManagerNext.hub.console.enabled"
     static let pollInterval: TimeInterval = 5
 
@@ -143,7 +160,6 @@ final class HubConsoleModel: ObservableObject {
     @Published private(set) var lastRefreshedAt: Date?
     @Published private(set) var isEnabled: Bool
     @Published private(set) var baseURL: String
-    @Published private(set) var hasToken: Bool
 
     private var pollingTask: Task<Void, Never>?
 
@@ -151,8 +167,7 @@ final class HubConsoleModel: ObservableObject {
         let defaults = UserDefaults.standard
         let storedBaseURL = defaults.string(forKey: Self.baseURLKey)
         baseURL = Self.normalizedBaseURL(storedBaseURL ?? Self.defaultBaseURL)
-        let token = defaults.string(forKey: Self.tokenKey) ?? ""
-        hasToken = !token.isEmpty
+        defaults.removeObject(forKey: "CodexManagerNext.hub.token")
         isEnabled = defaults.object(forKey: Self.enabledKey) as? Bool ?? true
     }
 
@@ -266,14 +281,12 @@ final class HubConsoleModel: ObservableObject {
         }
     }
 
-    func updateSettings(baseURL newBaseURL: String, token newToken: String, enabled newEnabled: Bool) {
+    func updateSettings(baseURL newBaseURL: String, enabled newEnabled: Bool) {
         let defaults = UserDefaults.standard
         let normalized = Self.normalizedBaseURL(newBaseURL)
         defaults.set(normalized, forKey: Self.baseURLKey)
-        defaults.set(newToken, forKey: Self.tokenKey)
         defaults.set(newEnabled, forKey: Self.enabledKey)
         baseURL = normalized
-        hasToken = !newToken.isEmpty
         let wasEnabled = isEnabled
         isEnabled = newEnabled
         if newEnabled {
@@ -318,13 +331,45 @@ final class HubConsoleModel: ObservableObject {
     }
 
     private func request(path: String, method: String, body: [String: Any]?) async throws -> Data {
+        try await Self.request(baseURL: baseURL, path: path, method: method, body: body)
+    }
+
+    static func warmUpAvailability(for accountAlias: String) async -> HubWarmUpAvailability {
+        let alias = accountAlias.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !alias.isEmpty else { return .unavailable }
+        let storedBaseURL = UserDefaults.standard.string(forKey: Self.baseURLKey)
+        let baseURL = normalizedBaseURL(storedBaseURL ?? defaultBaseURL)
+        do {
+            let data = try await request(baseURL: baseURL, path: "/api/overview", method: "GET", body: nil)
+            let overview = try decoder.decode(HubOverview.self, from: data)
+            let busy = (overview.tasks ?? []).contains {
+                $0.accountAlias?.caseInsensitiveCompare(alias) == .orderedSame && $0.blocksAccountWarmUp
+            }
+            return busy ? .busy : .idle
+        } catch {
+            return .unavailable
+        }
+    }
+
+    static func fetchInspectionOverview() async throws -> HubOverview {
+        let data = try await request(
+            baseURL: defaultBaseURL,
+            path: "/api/overview",
+            method: "GET",
+            body: nil
+        )
+        return try decoder.decode(HubOverview.self, from: data)
+    }
+
+    private static func request(
+        baseURL: String,
+        path: String,
+        method: String,
+        body: [String: Any]?
+    ) async throws -> Data {
         guard let url = URL(string: baseURL + path) else { throw HubConsoleError.badURL }
         var request = URLRequest(url: url, timeoutInterval: 6)
         request.httpMethod = method
-        let token = UserDefaults.standard.string(forKey: Self.tokenKey) ?? ""
-        if !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -387,6 +432,17 @@ final class HubConsoleModel: ObservableObject {
 
     static func parseHubDate(_ raw: String) -> Date? {
         HubDateParsing.parse(raw)
+    }
+}
+
+enum HubWarmUpGateSelfTest {
+    static func run() -> Bool {
+        let blocking = ["awaiting_approval", "starting", "running", "cancel_requested", "uncertain"]
+        let terminal = ["succeeded", "failed", "cancelled", "blocked_configuration"]
+        let passed = blocking.allSatisfy { HubTask.blocksAccountWarmUp(state: $0) }
+            && terminal.allSatisfy { !HubTask.blocksAccountWarmUp(state: $0) }
+        if !passed { print("Hub warm-up gate self-test failed") }
+        return passed
     }
 }
 
