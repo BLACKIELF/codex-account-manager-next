@@ -220,6 +220,7 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var officialProfile: CodexOfficialProfileSnapshot? = nil
     var lastWarmUpAt: Date? = nil
     var lastWarmUpSucceeded: Bool? = nil
+    var lastWarmUpFailureReason: String? = nil
     var lastQuotaReadFailureAt: Date? = nil
     var lastQuotaReadFailureReason: String? = nil
     var chromeProfile: ChromeProfileBinding? = nil
@@ -418,7 +419,7 @@ enum CodexWarmUpPolicy {
     ) -> Date? {
         guard selection.isEnabled else { return nil }
         guard let email = profile.lastSnapshot?.email, !email.isEmpty else { return nil }
-        if profile.lastWarmUpSucceeded == false { return nil }
+        let unresolvedFailure = hasUnresolvedFailure(profile, selection: selection, now: now)
 
         var dates: [Date] = []
         if selection.fiveHour, !shouldSkipFiveHourToProtectWeekly(profile, now: now) {
@@ -428,6 +429,7 @@ enum CodexWarmUpPolicy {
                 lastWarmUpSucceeded: profile.lastWarmUpSucceeded,
                 successfulInterval: fiveHourSuccessInterval,
                 unexpected: unexpected.contains(.fiveHour),
+                blockIdleRetry: unresolvedFailure,
                 now: now
             ) {
                 dates.append(date)
@@ -440,12 +442,26 @@ enum CodexWarmUpPolicy {
                 lastWarmUpSucceeded: profile.lastWarmUpSucceeded,
                 successfulInterval: sevenDaySuccessInterval,
                 unexpected: unexpected.contains(.sevenDay),
+                blockIdleRetry: unresolvedFailure,
                 now: now
             ) {
                 dates.append(date)
             }
         }
         return dates.min()
+    }
+
+    static func hasUnresolvedFailure(
+        _ profile: CodexProfile,
+        selection: CodexWarmUpSelection,
+        now: Date = Date()
+    ) -> Bool {
+        guard profile.lastWarmUpSucceeded == false,
+              let attemptedAt = profile.lastWarmUpAt
+        else { return false }
+        guard let snapshot = profile.lastSnapshot, snapshot.fetchedAt > attemptedAt else { return true }
+        return (selection.fiveHour && isWindowIdle(snapshot.fiveHour, now: now))
+            || (selection.sevenDay && isWindowIdle(snapshot.sevenDay, now: now))
     }
 
     static func isDue(
@@ -500,10 +516,12 @@ enum CodexWarmUpPolicy {
         lastWarmUpSucceeded: Bool?,
         successfulInterval: TimeInterval,
         unexpected: Bool,
+        blockIdleRetry: Bool,
         now: Date
     ) -> Date? {
         if unexpected { return now }
         if isWindowIdle(window, now: now) {
+            if blockIdleRetry { return nil }
             if lastWarmUpSucceeded == true, let lastWarmUpAt {
                 let retryAt = lastWarmUpAt.addingTimeInterval(successfulInterval)
                 if retryAt > now { return retryAt }
@@ -896,6 +914,7 @@ final class CodexProfileStore {
             officialProfile: system.officialProfile,
             lastWarmUpAt: system.lastWarmUpAt,
             lastWarmUpSucceeded: system.lastWarmUpSucceeded,
+            lastWarmUpFailureReason: system.lastWarmUpFailureReason,
             chromeProfile: system.chromeProfile,
             automaticSwitchParticipation: system.automaticSwitchParticipation,
             proTierMultiplier: system.proTierMultiplier
@@ -1070,6 +1089,7 @@ final class CodexProfileStore {
             state.profiles[index].officialProfile = nil
             state.profiles[index].lastWarmUpAt = nil
             state.profiles[index].lastWarmUpSucceeded = nil
+            state.profiles[index].lastWarmUpFailureReason = nil
             state.profiles[index].proTierMultiplier = nil
             if state.profiles[index].isSystemProfile {
                 state.profiles[index].remark = nil
@@ -1140,10 +1160,16 @@ final class CodexProfileStore {
         try save()
     }
 
-    func recordWarmUp(at date: Date, succeeded: Bool, for profileID: String) throws {
+    func recordWarmUp(
+        at date: Date,
+        succeeded: Bool,
+        failureReason: String? = nil,
+        for profileID: String
+    ) throws {
         guard let index = state.profiles.firstIndex(where: { $0.id == profileID }) else { return }
         state.profiles[index].lastWarmUpAt = date
         state.profiles[index].lastWarmUpSucceeded = succeeded
+        state.profiles[index].lastWarmUpFailureReason = succeeded ? nil : failureReason
         try save()
     }
 
@@ -2533,10 +2559,42 @@ enum CodexWarmUpPolicySelfTest {
             "failed warm-up requires manual retry"
         ) else { return false }
         guard expect(
+            !CodexWarmUpPolicy.hasUnresolvedFailure(
+                failed,
+                selection: CodexWarmUpSelection(fiveHour: false, sevenDay: false),
+                now: now
+            ),
+            "fresh quota evidence makes old failure display stale while warm-up is disabled"
+        ) else { return false }
+        let activeProfile = profile(snapshot(five: window(used: 40, resetsIn: 600)))
+        var supersededFailure = activeProfile
+        supersededFailure.lastWarmUpSucceeded = false
+        supersededFailure.lastWarmUpAt = now.addingTimeInterval(-600)
+        guard expect(
+            !CodexWarmUpPolicy.hasUnresolvedFailure(
+                supersededFailure,
+                selection: fiveHourOnly,
+                now: now
+            ) && CodexWarmUpPolicy.nextEligibleDate(
+                for: supersededFailure,
+                selection: fiveHourOnly,
+                now: now
+            ) == now.addingTimeInterval(608),
+            "new active window supersedes an old failure"
+        ) else { return false }
+        guard expect(
+            CodexWarmUpPolicy.nextEligibleDate(
+                for: failed,
+                selection: fiveHourOnly,
+                unexpected: [.fiveHour],
+                now: now
+            ) == now,
+            "new reset may retry a previous failure once"
+        ) else { return false }
+        guard expect(
             CodexWarmUpPolicy.nextEligibleDate(for: idleProfile, selection: fiveHourOnly, unexpected: [.fiveHour], now: now) == now,
             "unexpected reset warms up immediately"
         ) else { return false }
-        let activeProfile = profile(snapshot(five: window(used: 40, resetsIn: 600)))
         guard expect(
             CodexWarmUpPolicy.nextEligibleDate(for: activeProfile, selection: fiveHourOnly, now: now)
                 == now.addingTimeInterval(608),
@@ -2602,6 +2660,21 @@ enum CodexWarmUpPolicySelfTest {
             )
             try store.record(failedRead, for: profileID)
             guard expect(store.profiles.first?.lastQuotaReadFailureAt == now, "quota failure is recorded") else { return false }
+            try store.recordWarmUp(
+                at: now,
+                succeeded: false,
+                failureReason: "timeout",
+                for: profileID
+            )
+            guard expect(
+                store.profiles.first?.lastWarmUpFailureReason == "timeout",
+                "warm-up failure category is recorded"
+            ) else { return false }
+            try store.recordWarmUp(at: now, succeeded: true, for: profileID)
+            guard expect(
+                store.profiles.first?.lastWarmUpFailureReason == nil,
+                "warm-up success clears failure category"
+            ) else { return false }
             try store.record(
                 testWindowSnapshot(email: "f@example.com", at: now),
                 for: profileID

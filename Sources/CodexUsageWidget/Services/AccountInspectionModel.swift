@@ -20,7 +20,6 @@ struct AccountInspectionAccount: Identifiable, Equatable {
     let sevenDayRemainingPercent: Double?
     let snapshotFetchedAt: Date?
     let dispatchDisabled: Bool
-    let latestTask: HubTask?
 
     var id: String { alias }
 }
@@ -40,12 +39,6 @@ struct AccountInspectionIssue: Identifiable, Equatable {
     var id: String { "\(accountAlias)-\(kind)-\(detail)" }
 }
 
-enum AccountInspectionHubState: Equatable {
-    case loading
-    case online
-    case offline
-}
-
 @MainActor
 final class AccountInspectionModel: ObservableObject {
     nonisolated static let baselineModel = "gpt-5.6-sol"
@@ -54,8 +47,6 @@ final class AccountInspectionModel: ObservableObject {
 
     @Published private(set) var accounts: [AccountInspectionAccount] = []
     @Published private(set) var issues: [AccountInspectionIssue] = []
-    @Published private(set) var hubState: AccountInspectionHubState = .loading
-    @Published private(set) var isRefreshing = false
     @Published private(set) var refreshedAt: Date?
     @Published private(set) var configurationError: String?
 
@@ -75,47 +66,35 @@ final class AccountInspectionModel: ObservableObject {
         let configuration: AccountInspectionProfileConfiguration
     }
 
-    private var localSources: [LocalAccountSource] = []
-    private var latestTasksByAlias: [String: HubTask] = [:]
-    private var latestProfiles: [CodexProfile] = []
-    private var refreshTask: Task<Void, Never>?
+    private enum ConfigurationError: LocalizedError {
+        case missingConfiguration
 
-    deinit {
-        refreshTask?.cancel()
+        var errorDescription: String? {
+            "未配置巡检账号映射（inspection-config-v1.json / CAMNEXT_INSPECTION_CONFIG）"
+        }
     }
 
+    private var localSources: [LocalAccountSource] = []
+    private var latestProfiles: [CodexProfile] = []
+
     func refresh(profiles: [CodexProfile]) {
-        refreshTask?.cancel()
         latestProfiles = profiles
-        isRefreshing = true
-        hubState = .loading
         configurationError = nil
 
         do {
             localSources = try Self.loadLocalSources()
             rebuildAccounts(now: Date())
+            refreshedAt = Date()
+        } catch let error as ConfigurationError {
+            localSources = []
+            accounts = []
+            issues = []
+            configurationError = error.localizedDescription
         } catch {
             localSources = []
             accounts = []
             issues = []
             configurationError = "无法读取巡检账号映射"
-        }
-
-        refreshTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let overview = try await HubConsoleModel.fetchInspectionOverview()
-                guard !Task.isCancelled else { return }
-                latestTasksByAlias = Self.latestTasksByAlias(overview.tasks ?? [])
-                hubState = .online
-            } catch {
-                guard !Task.isCancelled else { return }
-                latestTasksByAlias = [:]
-                hubState = .offline
-            }
-            refreshedAt = Date()
-            isRefreshing = false
-            rebuildAccounts(now: Date())
         }
     }
 
@@ -137,8 +116,7 @@ final class AccountInspectionModel: ObservableObject {
                 fiveHourRemainingPercent: Self.remainingPercent(snapshot?.fiveHour),
                 sevenDayRemainingPercent: Self.remainingPercent(snapshot?.sevenDay),
                 snapshotFetchedAt: snapshot?.fetchedAt,
-                dispatchDisabled: source.mapping.dispatchDisabled == true,
-                latestTask: latestTasksByAlias[source.mapping.alias]
+                dispatchDisabled: source.mapping.dispatchDisabled == true
             )
         }
         issues = Self.makeIssues(accounts: accounts, now: now)
@@ -148,7 +126,10 @@ final class AccountInspectionModel: ObservableObject {
         fileManager: FileManager = .default,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) throws -> [LocalAccountSource] {
-        let configURL = hubConfigurationURL(fileManager: fileManager, environment: environment)
+        let configURL = try hubConfigurationURL(fileManager: fileManager, environment: environment)
+        guard fileManager.fileExists(atPath: configURL.path) else {
+            throw ConfigurationError.missingConfiguration
+        }
         let data = try Data(contentsOf: configURL)
         let payload = try JSONDecoder().decode(HubConfiguration.self, from: data)
         return payload.accounts.compactMap { mapping in
@@ -175,21 +156,19 @@ final class AccountInspectionModel: ObservableObject {
     private static func hubConfigurationURL(
         fileManager: FileManager,
         environment: [String: String]
-    ) -> URL {
+    ) throws -> URL {
         if let override = environment["CAMNEXT_INSPECTION_CONFIG"]?
             .trimmingCharacters(in: .whitespacesAndNewlines),
            !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: false)
         }
-        return fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Documents", isDirectory: true)
-            .appendingPathComponent("AgentHub", isDirectory: true)
-            .appendingPathComponent("10-projects", isDirectory: true)
-            .appendingPathComponent("2026", isDirectory: true)
-            .appendingPathComponent("Swift", isDirectory: true)
-            .appendingPathComponent("work", isDirectory: true)
-            .appendingPathComponent("agent-remote-control-0828v1", isDirectory: true)
-            .appendingPathComponent("config.json", isDirectory: false)
+        guard let support = fileManager.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else { throw ConfigurationError.missingConfiguration }
+        return support
+            .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
+            .appendingPathComponent("inspection-config-v1.json", isDirectory: false)
     }
 
     nonisolated static func parseProfileConfiguration(_ contents: String) -> AccountInspectionProfileConfiguration {
@@ -225,16 +204,7 @@ final class AccountInspectionModel: ObservableObject {
     }
 
     nonisolated static func latestTasksByAlias(_ tasks: [HubTask]) -> [String: HubTask] {
-        var result: [String: HubTask] = [:]
-        for task in tasks {
-            guard let alias = task.accountAlias?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !alias.isEmpty
-            else { continue }
-            if result[alias].map({ task.createdAt > $0.createdAt }) ?? true {
-                result[alias] = task
-            }
-        }
-        return result
+        HubAccountTaskStatusResolver.latestTasksByAlias(tasks)
     }
 
     nonisolated static func makeIssues(
@@ -304,15 +274,105 @@ enum AccountInspectionSelfTest {
             fiveHourRemainingPercent: 19.9,
             sevenDayRemainingPercent: 20,
             snapshotFetchedAt: now.addingTimeInterval(-1_801),
-            dispatchDisabled: true,
-            latestTask: nil
+            dispatchDisabled: true
         )
         let issueKinds = AccountInspectionModel.makeIssues(accounts: [issueAccount], now: now).map(\.kind)
+        let task = { (alias: String, state: String, createdOffset: TimeInterval, updatedOffset: TimeInterval) in
+            HubTask(
+                accountAlias: alias,
+                state: state,
+                createdAt: now.addingTimeInterval(createdOffset),
+                updatedAt: now.addingTimeInterval(updatedOffset)
+            )
+        }
+        let stateMappingPassed = [
+            ("awaiting_approval", "待批准"),
+            ("starting", "准备中"),
+            ("running", "工作进行中"),
+            ("cancel_requested", "正在请求取消"),
+            ("uncertain", "状态待确认"),
+            ("succeeded", "任务成功"),
+            ("failed", "任务失败")
+        ].allSatisfy { state, label in
+            HubAccountTaskStatusResolver.status(
+                for: task("alpha", state, -20, -10),
+                now: now
+            ).localizedLabel == label
+        }
+        let busyStates = ["awaiting_approval", "starting", "running", "cancel_requested", "uncertain"]
+        let busyPassed = busyStates.allSatisfy {
+            HubAccountTaskStatusResolver.status(
+                for: task("alpha", $0, -20, -10),
+                now: now
+            ).isBusy
+        }
+        let freshTerminal = HubAccountTaskStatusResolver.status(
+            for: task("alpha", "succeeded", -20, -119),
+            now: now
+        )
+        let expiredTerminal = HubAccountTaskStatusResolver.status(
+            for: task("alpha", "succeeded", -200, -121),
+            now: now
+        )
+        let staleActive = HubAccountTaskStatusResolver.status(
+            for: task("alpha", "running", -200, -121),
+            now: now
+        )
+        let newestByAlias = HubAccountTaskStatusResolver.latestTasksByAlias([
+            task(" Alpha ", "running", -30, -2),
+            task("alpha", "succeeded", -10, -3),
+            task("beta", "starting", -5, -4)
+        ], now: now)
+        let expiredApproval = HubTask(
+            accountAlias: "alpha",
+            state: "awaiting_approval",
+            createdAt: now.addingTimeInterval(-5),
+            updatedAt: now.addingTimeInterval(-5),
+            approvalExpiresAt: now.addingTimeInterval(-1),
+            approvalExpired: true
+        )
+        let activeBeatsExpiredApproval = HubAccountTaskStatusResolver.latestTasksByAlias([
+            task("alpha", "running", -30, -20),
+            expiredApproval
+        ], now: now)
+        let newestTerminalByAlias = HubAccountTaskStatusResolver.latestTasksByAlias([
+            task("gamma", "failed", -20, -10),
+            task("gamma", "succeeded", -5, -4)
+        ], now: now)
+        let offline = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "alpha",
+            tasksByAlias: newestByAlias,
+            connectionState: .offline,
+            lastSuccessfulRefreshAt: now,
+            now: now
+        )
+        let staleOverview = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "alpha",
+            tasksByAlias: newestByAlias,
+            connectionState: .online,
+            lastSuccessfulRefreshAt: now.addingTimeInterval(-31),
+            now: now
+        )
         let passed = baseline.matchesBaseline
             && !drift.matchesBaseline
             && AccountInspectionModel.maskEmail(testEmail) == "a***@example.com"
             && AccountInspectionModel.maskEmail("invalid") == nil
             && issueKinds == [.staleSnapshot, .lowQuota, .configurationDrift, .dispatchDisabled]
+            && stateMappingPassed
+            && busyPassed
+            && freshTerminal.phase == .succeeded
+            && expiredTerminal.phase == .idle
+            && staleActive.phase == .running
+            && staleActive.blocksLocalCLI
+            && HubAccountTaskStatusResolver.status(for: expiredApproval, now: now).phase == .idle
+            && newestByAlias["alpha"]?.state == "running"
+            && newestByAlias["beta"]?.state == "starting"
+            && activeBeatsExpiredApproval["alpha"]?.state == "running"
+            && newestTerminalByAlias["gamma"]?.state == "succeeded"
+            && offline.localizedLabel == "状态待确认"
+            && offline.blocksLocalCLI
+            && staleOverview.phase == .unavailable
+            && staleOverview.blocksLocalCLI
         if !passed { print("Account inspection self-test failed") }
         return passed
     }

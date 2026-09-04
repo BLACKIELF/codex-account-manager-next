@@ -358,7 +358,7 @@ private func runtimeJSONObject(_ usage: PricedTokenUsage) -> [String: Any] {
 private func runtimeJSONObject(_ project: ProjectUsage) -> [String: Any] {
     [
         "name": project.name,
-        "fullPath": project.fullPath,
+        "fullPath": "[redacted]",
         "tokens": project.tokens,
         "estimatedCostUSD": runtimeJSONValue(project.estimatedCostUSD),
         "threadCount": project.threadCount,
@@ -380,7 +380,7 @@ private func runtimeJSONObject(_ tool: ToolUsage) -> [String: Any] {
 private func runtimeJSONObject(_ skill: SkillUsage) -> [String: Any] {
     [
         "name": skill.name,
-        "path": skill.path,
+        "path": "[redacted]",
         "sourceLabel": skill.sourceLabel,
         "loadCount": skill.loadCount,
         "threadCount": skill.threadCount,

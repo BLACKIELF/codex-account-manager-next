@@ -29,6 +29,7 @@ struct CodexAccountManagerView: View {
     @State private var isAgentBreakdownExpanded = false
     @State private var isAutomationCenterPresented = false
     @State private var selectedSection: Section = .workspace
+    @StateObject private var hubTaskStatusModel = HubAccountTaskStatusModel()
 
     static let defaultWidth: CGFloat = 1080
     static let minWidth: CGFloat = 960
@@ -49,7 +50,7 @@ struct CodexAccountManagerView: View {
                 case .workspace:
                     workspace
                 case .inspection:
-                    AccountInspectionView(store: store)
+                    AccountInspectionView(store: store, taskStatusModel: hubTaskStatusModel)
                 }
             }
                 .padding(.horizontal, 24)
@@ -73,6 +74,8 @@ struct CodexAccountManagerView: View {
             )
         )
         .preferredColorScheme(settings.themeMode.preferredColorScheme)
+        .onAppear { hubTaskStatusModel.startPolling() }
+        .onDisappear { hubTaskStatusModel.stopPolling() }
         .sheet(isPresented: $isAutomationCenterPresented) {
             AccountAutomationCenterView(store: store)
         }
@@ -556,6 +559,9 @@ struct CodexAccountManagerView: View {
                         allProfiles: store.profiles,
                         executionPreference: profile.effectiveExecutionPreference,
                         dispatchCode: DispatchCodeCatalog.code(for: profile.id),
+                        cliTaskStatus: hubTaskStatusModel.status(
+                            forAccountAlias: DispatchCodeCatalog.alias(for: profile.id)
+                        ),
                         isMonitoring: profile.id == store.selectedMonitorProfileID,
                         isLaunchProfile: profile.id == store.selectedLaunchProfileID,
                         isDuplicateAccount: isDuplicateAccount(profile),
@@ -811,7 +817,7 @@ private struct AccountAutomationCenterView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("额度低于阈值时通知并推荐可用账号，可一键在终端中使用；不会改写 ~/.codex 身份。")
+            Text("额度低于阈值时显示候选提示；请回到账号卡手动使用终端，不会改写 ~/.codex 身份。")
         }
         .alert("移除飞书 Webhook？", isPresented: $isConfirmingWebhookRemoval) {
             Button("移除", role: .destructive) {
@@ -855,14 +861,14 @@ private struct AccountAutomationCenterView: View {
                 HStack(spacing: 10) {
                     automationMetric(title: "触发", value: "5h ≤5%", icon: "exclamationmark.triangle.fill")
                     automationMetric(title: "备用", value: "≥ 30%", icon: "battery.75percent")
-                    automationMetric(title: "冷却", value: "30 分钟", icon: "clock.arrow.circlepath")
+                    automationMetric(title: "评估间隔", value: "1 小时", icon: "clock.arrow.circlepath")
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
                     safetyRule("官方 5 小时剩余 ≤5%，或 7 天剩余严格低于 10%")
                     safetyRule("实时任务状态已连接、数据新鲜，且没有运行或等待输入的任务")
-                    safetyRule("推荐参与提醒且对应额度窗口至少剩余 30% 的账号")
-                    safetyRule("可一键在终端中使用推荐账号，各账号环境互不干扰")
+                    safetyRule("按已保存快照推荐参与提醒且对应窗口至少剩余 30% 的账号")
+                    safetyRule("推荐只显示候选；请回到账号卡手动启动 CLI 并执行 Hub 门禁")
                 }
 
                 Label(
@@ -1046,6 +1052,7 @@ struct CodexAccountMenuView: View {
     @State private var screen: Screen
     @State private var isEditingAccounts = false
     @State private var profilePendingDeletion: CodexProfile?
+    @StateObject private var hubTaskStatusModel = HubAccountTaskStatusModel()
 
     init(
         store: UsageStore,
@@ -1130,6 +1137,8 @@ struct CodexAccountMenuView: View {
             appearance: PaletteAppearance(colorScheme)
         )
         .preferredColorScheme(colorScheme)
+        .onAppear { hubTaskStatusModel.startPolling() }
+        .onDisappear { hubTaskStatusModel.stopPolling() }
         .alert(
             store.forcedAccountSwitchProfileID == nil ? "未切换账号" : "强制切换账号？",
             isPresented: Binding(
@@ -1437,6 +1446,9 @@ struct CodexAccountMenuView: View {
 
     private func homeProfileRow(_ profile: CodexProfile) -> some View {
         let remaining = sevenDayRemaining(for: profile)
+        let cliTaskStatus = hubTaskStatusModel.status(
+            forAccountAlias: DispatchCodeCatalog.alias(for: profile.id)
+        )
         return HStack(spacing: 6) {
             Button {
                 if profile.id != store.selectedMonitorProfileID {
@@ -1462,6 +1474,7 @@ struct CodexAccountMenuView: View {
                         if profile.id == store.selectedMonitorProfileID {
                             Circle().fill(Color.green).frame(width: 6, height: 6)
                         }
+                        HubCLITaskStatusBadge(status: cliTaskStatus, compact: true)
                     }
                     AccountSemanticQuotaTrack(percent: remaining, height: 6)
                 }
@@ -1483,8 +1496,10 @@ struct CodexAccountMenuView: View {
                 Image(systemName: "terminal")
             }
             .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white, compact: true))
-            .disabled(profile.isSystemProfile || profile.lastSnapshot == nil)
-            .help(text("在终端中使用", "Use in Terminal"))
+            .disabled(profile.isSystemProfile || profile.lastSnapshot == nil || cliTaskStatus.blocksLocalCLI)
+            .help(cliTaskStatus.blocksLocalCLI
+                ? "缺少可信映射、Hub 概览不新鲜或同账号有活跃任务"
+                : text("在终端中使用", "Use in Terminal"))
             .accessibilityLabel(text("在终端中使用", "Use in Terminal"))
             .padding(.trailing, 7)
         }
@@ -1534,6 +1549,9 @@ struct CodexAccountMenuView: View {
     private func accountCard(_ profile: CodexProfile) -> some View {
         let remaining = sevenDayRemaining(for: profile)
         let isCurrent = isCurrentCodexAccount(profile)
+        let cliTaskStatus = hubTaskStatusModel.status(
+            forAccountAlias: DispatchCodeCatalog.alias(for: profile.id)
+        )
         return VStack(alignment: .leading, spacing: 9) {
             HStack(spacing: 10) {
                 avatar(for: profile, size: 32)
@@ -1556,6 +1574,7 @@ struct CodexAccountMenuView: View {
                                 .font(.system(size: 8.5, weight: .bold))
                                 .foregroundStyle(.blue)
                         }
+                        HubCLITaskStatusBadge(status: cliTaskStatus, compact: true)
                     }
                     Text(profile.lastSnapshot.map {
                         text("更新于 ", "Updated ") + $0.fetchedAt.formatted(.dateTime.month().day().hour().minute())
@@ -2249,6 +2268,7 @@ private struct ProfileRow: View {
     let allProfiles: [CodexProfile]
     let executionPreference: CodexExecutionPreference
     let dispatchCode: String?
+    let cliTaskStatus: HubAccountTaskStatus
     let isMonitoring: Bool
     let isLaunchProfile: Bool
     let isDuplicateAccount: Bool
@@ -2362,6 +2382,7 @@ private struct ProfileRow: View {
             HStack(spacing: 5) {
                 if isMonitoring { Text("监控中").profileBadge() }
                 if isLaunchProfile { Text("启动账号").profileBadge() }
+                HubCLITaskStatusBadge(status: cliTaskStatus)
                 if linkedAccountName != nil {
                     Text("待独立登录")
                         .profileBadge()
@@ -2560,7 +2581,8 @@ private struct ProfileRow: View {
                         .frame(maxWidth: .infinity)
                 }
                     .buttonStyle(.borderedProminent)
-                    .disabled(linkedAccountName != nil || profile.isSystemProfile)
+                    .disabled(linkedAccountName != nil || profile.isSystemProfile || cliTaskStatus.blocksLocalCLI)
+                    .help(cliTaskStatus.blocksLocalCLI ? "缺少可信映射、Hub 概览不新鲜或同账号有活跃任务" : "在终端中使用此账号")
                 Menu {
                     Button("以该账号打开 CLI（选择目录…）") { chooseDirectoryAndOpenTerminal() }
                     Button("复制一句话 CLI 调用命令") { onCopyTerminalCommand() }
@@ -2568,7 +2590,8 @@ private struct ProfileRow: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .controlSize(.small)
-                .disabled(profile.isSystemProfile)
+                .disabled(profile.isSystemProfile || cliTaskStatus.blocksLocalCLI)
+                .help(cliTaskStatus.blocksLocalCLI ? "缺少可信映射、Hub 概览不新鲜或同账号有活跃任务" : "更多 CLI 入口")
             }
 
             HStack(spacing: 8) {
@@ -2793,6 +2816,54 @@ private struct DispatchCodeBadge: View {
             .padding(.vertical, 2)
             .background(Capsule().fill(Color.accentColor.opacity(0.14)))
             .accessibilityLabel("调度编号 \(code)")
+    }
+}
+
+private struct HubCLITaskStatusBadge: View {
+    let status: HubAccountTaskStatus
+    var compact = false
+
+    private var tint: Color {
+        switch status.phase {
+        case .succeeded: return .green
+        case .failed, .cancelled: return .red
+        case .uncertain, .unavailable, .cancelRequested: return .orange
+        case .awaitingApproval, .starting, .running: return .accentColor
+        case .idle: return .secondary
+        }
+    }
+
+    private var gradientColors: [Color] {
+        switch status.phase {
+        case .awaitingApproval, .starting, .running:
+            return [Color.blue.opacity(0.18), Color.purple.opacity(0.16)]
+        default:
+            return [tint.opacity(0.13), tint.opacity(0.08)]
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: compact ? 3 : 4) {
+            Circle()
+                .fill(tint)
+                .frame(width: compact ? 5 : 6, height: compact ? 5 : 6)
+            Text(status.localizedLabel)
+                .lineLimit(1)
+        }
+        .font(.system(size: compact ? 8.5 : 9.5, weight: .semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, compact ? 5 : 7)
+        .padding(.vertical, compact ? 2 : 3)
+        .background(
+            Capsule().fill(LinearGradient(
+                colors: gradientColors,
+                startPoint: .leading,
+                endPoint: .trailing
+            ))
+        )
+        .overlay(Capsule().stroke(tint.opacity(0.16), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("CLI 任务状态：\(status.localizedLabel)")
     }
 }
 

@@ -780,13 +780,7 @@ final class UsageStore: ObservableObject {
     @Published private(set) var localAllAgentsLifetimeTokens: Int64?
     @Published private(set) var selectedMonitorProfileID: String
     @Published private(set) var selectedLaunchProfileID: String
-    @Published private(set) var accountManagerMessage: String? {
-        didSet {
-            if let accountManagerMessage {
-                debugLog("account manager: \(accountManagerMessage)")
-            }
-        }
-    }
+    @Published private(set) var accountManagerMessage: String?
     @Published private(set) var accountSwitchAlertMessage: String?
     @Published private(set) var forcedAccountSwitchProfileID: String?
     @Published private(set) var isLoggingIn = false
@@ -977,6 +971,10 @@ final class UsageStore: ObservableObject {
         copyingRemarkFrom sourceProfileID: String?,
         chromeProfile: ChromeProfileBinding?
     ) {
+        guard warmingProfileID == nil else {
+            accountManagerMessage = "账号暖号正在执行；完成后再添加账号"
+            return
+        }
         guard !isRefreshingWarmUpProfiles else {
             accountManagerMessage = "账号数据仍在读取；完成后再添加账号"
             return
@@ -1214,9 +1212,15 @@ final class UsageStore: ObservableObject {
     func deleteProfile(_ id: String) {
         guard !isLoggingIn,
               !isLaunchingCodex,
+              warmingProfileID == nil,
               let profile = profiles.first(where: { $0.id == id }),
               !profile.isSystemProfile
-        else { return }
+        else {
+            if warmingProfileID != nil {
+                accountManagerMessage = "账号暖号正在执行；完成后再删除账号"
+            }
+            return
+        }
         let wasMonitoring = id == selectedMonitorProfileID
         do {
             try profileStore.removeManagedProfile(id)
@@ -1243,6 +1247,10 @@ final class UsageStore: ObservableObject {
     }
 
     func loginProfile(_ profileID: String) {
+        guard warmingProfileID == nil else {
+            accountManagerMessage = "账号暖号正在执行；完成后再登录"
+            return
+        }
         guard !isRefreshingWarmUpProfiles else {
             accountManagerMessage = "账号数据仍在读取；完成后再登录"
             return
@@ -1346,6 +1354,16 @@ final class UsageStore: ObservableObject {
             userConfirmedForce: forceWithoutSessionRestore
         )
         if !isAutomaticSwitch { dismissAccountSwitchAlert() }
+        guard warmingProfileID == nil else {
+            presentAccountSwitchBlock("账号暖号正在执行；完成后再切换", isAutomatic: isAutomaticSwitch)
+            finishAutomaticSwitchAttempt(
+                for: profileID,
+                succeeded: false,
+                failureReason: .validationFailed,
+                detail: "账号暖号尚未完成"
+            )
+            return
+        }
         guard !isLoggingIn,
               !isLaunchingCodex,
               !isRefreshing,
@@ -1641,7 +1659,7 @@ final class UsageStore: ObservableObject {
                         "switch timing: guard mode=\(self.codexLiveTasks.connectionMode) "
                             + "age=\(Int(Date().timeIntervalSince(self.codexLiveTasks.refreshedAt)))s "
                             + "active=\(activeRecords.count) "
-                            + activeRecords.map { "\($0.threadID)=\($0.state)" }.joined(separator: ",")
+                            + "states=" + activeRecords.map { "\($0.state)" }.sorted().joined(separator: ",")
                     )
                 }
                 guard isForcedManualSwitch
@@ -2243,7 +2261,7 @@ final class UsageStore: ObservableObject {
         let recommendedName = recommendedProfile.map {
             AccountDisplay.profileName($0, allProfiles: profiles)
         } ?? "暂无满足 30% 额度要求的候选账号"
-        let detail = "额度低于阈值；推荐账号：\(recommendedName)。请一键在终端中使用"
+        let detail = "额度低于阈值；推荐账号：\(recommendedName)。请回到账号卡手动使用终端"
         accountManagerMessage = detail
         if let source = maskedAccount(for: sourceProfile) {
             sendFeishuNotification(
@@ -2421,6 +2439,7 @@ final class UsageStore: ObservableObject {
     func refreshProfile(_ profileID: String) {
         guard let profile = profiles.first(where: { $0.id == profileID }) else { return }
         guard hasStarted,
+              warmingProfileID == nil,
               !isRefreshingWarmUpProfiles,
               !isLoggingIn,
               !isLaunchingCodex,
@@ -2452,7 +2471,23 @@ final class UsageStore: ObservableObject {
             accountManagerMessage = "账号操作正在进行，请稍后再暖号"
             return
         }
-        performWarmUp(profile, manual: true)
+        let name = AccountDisplay.profileName(profile)
+        accountManagerMessage = "正在刷新 \(name) 的额度并校验凭据…"
+        refreshWarmUpProfilesThenSchedule(
+            performWarmUpAfterRefresh: false,
+            profileIDs: [profileID],
+            quotaOnly: true,
+            retryQuotaReadOnce: true
+        ) { [weak self] succeeded in
+            guard let self else { return }
+            guard succeeded,
+                  let refreshed = self.profiles.first(where: { $0.id == profileID })
+            else {
+                self.accountManagerMessage = "\(name) 的额度或凭据校验失败，已阻止暖号"
+                return
+            }
+            self.performWarmUp(refreshed, manual: true)
+        }
     }
 
     private func handleWarmUpSelectionChanged() {
@@ -2538,15 +2573,22 @@ final class UsageStore: ObservableObject {
             return "正在发送最小请求，以开始已开启的额度窗口…"
         }
         guard warmUpSelection.isEnabled || profile.lastWarmUpAt != nil || profile.lastQuotaReadFailureAt != nil else { return nil }
-        let last = profile.lastWarmUpAt.map { date in
-            let state = profile.lastWarmUpSucceeded == true ? "最近暖号成功" : "最近暖号失败"
-            return "\(state) " + date.formatted(.dateTime.month().day().hour().minute())
+        let selection = effectiveWarmUpSelection(for: profile)
+        let staleFailure = profile.lastWarmUpSucceeded == false
+            && !CodexWarmUpPolicy.hasUnresolvedFailure(profile, selection: selection)
+        let last = profile.lastWarmUpAt.flatMap { date -> String? in
+            if staleFailure { return nil }
+            if profile.lastWarmUpSucceeded == true {
+                return "最近暖号成功 " + date.formatted(.dateTime.month().day().hour().minute())
+            }
+            let detail = warmUpFailureDetail(profile.lastWarmUpFailureReason)
+                .map { "（\($0)）" } ?? ""
+            return "最近暖号失败\(detail) " + date.formatted(.dateTime.month().day().hour().minute())
         }
         guard warmUpSelection.isEnabled else {
             let failure = quotaFailureStatusText(for: profile)
             return failure ?? last.map { "智能暖号已关闭 · \($0)" }
         }
-        let selection = effectiveWarmUpSelection(for: profile)
         var parts = [last].compactMap { $0 }
         if let failureText = quotaFailureStatusText(for: profile) {
             parts.append(failureText)
@@ -2574,6 +2616,20 @@ final class UsageStore: ObservableObject {
             ))
         }
         return parts.joined(separator: " · ")
+    }
+
+    private func warmUpFailureDetail(_ reason: String?) -> String? {
+        switch reason {
+        case "timeout": return "请求超时"
+        case "network": return "网络失败"
+        case "http-401", "credentials-unavailable": return "登录失效"
+        case "http-403": return "无权访问"
+        case "http-429": return "频率受限"
+        case "http-5xx": return "官方服务异常"
+        case "stream-failed": return "官方返回失败"
+        case "stream-incomplete": return "响应未完成"
+        default: return nil
+        }
     }
 
     private func warmUpWindowStatus(
@@ -2659,33 +2715,42 @@ final class UsageStore: ObservableObject {
         do {
             try accountActions.warmUp(profile: profile) { [weak self] result in
                 guard let self else { return }
-                let succeeded = (try? result.get()) != nil
-                try? self.profileStore.recordWarmUp(at: Date(), succeeded: succeeded, for: profile.id)
-                self.syncProfiles()
-                self.warmingProfileID = nil
-                if succeeded {
+                switch result {
+                case .success:
+                    try? self.profileStore.recordWarmUp(at: Date(), succeeded: true, for: profile.id)
+                    self.syncProfiles()
+                    self.warmingProfileID = nil
                     self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 已发送最小请求，正在确认窗口是否开始…"
                     self.refreshProfileAfterWarmUp(profile, manual: manual)
-                } else {
-                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败；不会自动重试，请刷新确认后手动暖号"
+                case .failure(let error):
+                    try? self.profileStore.recordWarmUp(
+                        at: Date(),
+                        succeeded: false,
+                        failureReason: CodexAccountActions.warmUpFailureReason(for: error),
+                        for: profile.id
+                    )
+                    self.syncProfiles()
+                    self.warmingProfileID = nil
+                    self.accountManagerMessage = "\(AccountDisplay.profileName(profile)) 暖号失败：\(error.localizedDescription)；本窗口不会自动重试"
                     self.scheduleWarmUpTimer()
                 }
             }
         } catch {
-            try? profileStore.recordWarmUp(at: Date(), succeeded: false, for: profile.id)
+            try? profileStore.recordWarmUp(
+                at: Date(),
+                succeeded: false,
+                failureReason: CodexAccountActions.warmUpFailureReason(for: error),
+                for: profile.id
+            )
             syncProfiles()
             warmingProfileID = nil
-            accountManagerMessage = "暖号启动失败：\(error.localizedDescription)；不会自动重试，请手动暖号"
+            accountManagerMessage = "暖号启动失败：\(error.localizedDescription)；本窗口不会自动重试"
             scheduleWarmUpTimer()
         }
     }
 
     private func hubAccountAlias(for profile: CodexProfile) -> String? {
-        if let alias = DispatchCodeCatalog.alias(for: profile.id) { return alias }
-        let identity = profile.lastSnapshot?.email ?? profile.name
-        let alias = identity.split(separator: "@", maxSplits: 1).first.map(String.init)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return alias?.isEmpty == false ? alias : nil
+        DispatchCodeCatalog.alias(for: profile.id)
     }
 
     private func nextDueWarmUpProfile(now: Date = Date()) -> CodexProfile? {
@@ -4054,10 +4119,9 @@ final class CodexUsageReader {
                 return
             }
 
-            if let errorObject = object["error"] as? [String: Any] {
-                let message = errorObject["message"] as? String ?? "未知错误"
+            if object["error"] is [String: Any] {
                 lock.lock()
-                appServerMessages.append("app-server \(id): \(message)")
+                appServerMessages.append("app-server \(id): 请求失败")
                 lock.unlock()
                 markComplete(id)
                 return
@@ -6057,7 +6121,7 @@ final class CodexUsageReader {
             let data = try encoder.encode(entry)
             try data.write(to: url, options: .atomic)
         } catch {
-            debugLog("failed to write local analytics cache: \(error.localizedDescription)")
+            debugLog("failed to write local analytics cache")
         }
     }
 
@@ -6082,7 +6146,7 @@ final class CodexUsageReader {
             Self.persistentSessionUsageCacheIsDirty = false
             Self.lastPersistentSessionUsageCacheWriteAt = now
         } catch {
-            debugLog("failed to write session usage cache: \(error.localizedDescription)")
+            debugLog("failed to write session usage cache")
         }
     }
 
@@ -6293,7 +6357,7 @@ private func skillSourceLabel(from path: String) -> String {
     if displayPath.contains("/.codex/skills/") {
         return "personal"
     }
-    return displayPath
+    return "local"
 }
 
 private func displayHomePath(_ path: String) -> String {
@@ -12321,7 +12385,7 @@ struct ProjectActivityRow: View {
             RoundedRectangle(cornerRadius: dashboardRowCornerRadius, style: .continuous)
                 .fill(FixedVisualPalette.surfaceTrack.opacity(0.42))
         )
-        .help(project.fullPath.isEmpty ? project.name : project.fullPath)
+        .help(project.name)
     }
 
     private var projectDetail: String {
@@ -12401,7 +12465,7 @@ struct ProjectUsageRow: View {
             RoundedRectangle(cornerRadius: dashboardRowCornerRadius, style: .continuous)
                 .fill(FixedVisualPalette.surfaceTrack.opacity(0.42))
         )
-        .help(project.fullPath.isEmpty ? project.name : project.fullPath)
+        .help(project.name)
     }
 
     private var projectDetail: String {
@@ -12673,8 +12737,8 @@ struct SkillUsageRow: View {
         }
         let size = formatBytes(skill.staticByteCount)
         return language.text(
-            "\(skill.name) · \(skill.loadCount) 次加载 · \(skill.threadCount) 线程 · Skill.md Token数 \(formatTokens(staticTokenEstimate)) · 当前文件 \(size) · \(displayHomePath(skill.path))",
-            "\(skill.name) · \(skill.loadCount)x loads · \(skill.threadCount) threads · Skill.md tokens \(formatTokens(staticTokenEstimate)) · current file \(size) · \(displayHomePath(skill.path))"
+            "\(skill.name) · \(skill.loadCount) 次加载 · \(skill.threadCount) 线程 · Skill.md Token数 \(formatTokens(staticTokenEstimate)) · 当前文件 \(size) · \(skill.sourceLabel)",
+            "\(skill.name) · \(skill.loadCount)x loads · \(skill.threadCount) threads · Skill.md tokens \(formatTokens(staticTokenEstimate)) · current file \(size) · \(skill.sourceLabel)"
         )
     }
 }
@@ -13973,11 +14037,7 @@ private func fourCharCode(_ value: String) -> OSType {
 }
 
 func debugLog(_ message: String) {
-    guard message.hasPrefix("switch timing:")
-            || message.hasPrefix("app launched")
-            || message.hasPrefix("account manager: ")
-            || ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1"
-    else { return }
+    guard ProcessInfo.processInfo.environment["CAMNEXT_DEBUG"] == "1" else { return }
 
     let formatter = ISO8601DateFormatter()
     let line = "\(formatter.string(from: Date())) \(message)\n"
@@ -14103,7 +14163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         NSApp.setActivationPolicy(.accessory)
         settings.themeMode.applyAppearance()
         setupMainMenu()
-        debugLog("app launched bundle=\(Bundle.main.bundlePath)")
+        debugLog("app launched")
 
         createMainWindow()
         activeSpaceObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -15025,7 +15085,12 @@ struct CodexAccountManagerNextMain {
         }
 
         if CommandLine.arguments.contains("--self-test-account-switch-safety") {
-            exit(CodexAccountSwitchSafetySelfTest.run() && HubWarmUpGateSelfTest.run() ? 0 : 1)
+            exit(
+                CodexAccountSwitchSafetySelfTest.run()
+                    && HubWarmUpGateSelfTest.run()
+                    && CodexWarmUpProtocolSelfTest.run()
+                    ? 0 : 1
+            )
         }
 
         if CommandLine.arguments.contains("--self-test-task-runtime") {

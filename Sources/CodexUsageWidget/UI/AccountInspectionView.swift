@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AccountInspectionView: View {
     @ObservedObject var store: UsageStore
+    @ObservedObject var taskStatusModel: HubAccountTaskStatusModel
     @StateObject private var model = AccountInspectionModel()
     @State private var didRefreshOnAppear = false
 
@@ -29,7 +30,10 @@ struct AccountInspectionView: View {
             } else if !model.accounts.isEmpty {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 12) {
                     ForEach(model.accounts) { account in
-                        AccountInspectionCard(account: account, hubState: model.hubState)
+                        AccountInspectionCard(
+                            account: account,
+                            taskStatus: taskStatusModel.status(forAccountAlias: account.alias)
+                        )
                     }
                 }
             }
@@ -84,17 +88,18 @@ struct AccountInspectionView: View {
 
             Button {
                 model.refresh(profiles: store.profiles)
+                taskStatusModel.restartPolling()
             } label: {
-                Label(model.isRefreshing ? "巡检中…" : "立即刷新", systemImage: "arrow.clockwise")
+                Label(taskStatusModel.isRefreshing ? "巡检中…" : "立即刷新", systemImage: "arrow.clockwise")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(model.isRefreshing)
+            .disabled(taskStatusModel.isRefreshing)
         }
     }
 
     @ViewBuilder
     private var hubBadge: some View {
-        switch model.hubState {
+        switch taskStatusModel.connectionState {
         case .loading:
             Label("hub 连接中", systemImage: "ellipsis")
                 .inspectionBadge(color: .secondary)
@@ -180,7 +185,7 @@ struct AccountInspectionView: View {
 
 private struct AccountInspectionCard: View {
     let account: AccountInspectionAccount
-    let hubState: AccountInspectionHubState
+    let taskStatus: HubAccountTaskStatus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
@@ -223,7 +228,7 @@ private struct AccountInspectionCard: View {
 
             Divider()
 
-            taskStatus
+            taskStatusRow
         }
         .padding(14)
         .frame(maxWidth: .infinity, minHeight: 183, alignment: .topLeading)
@@ -232,23 +237,12 @@ private struct AccountInspectionCard: View {
     }
 
     @ViewBuilder
-    private var taskStatus: some View {
-        switch hubState {
-        case .loading:
-            taskRow(color: .secondary, state: "读取 hub…", date: nil)
-        case .offline:
-            taskRow(color: .orange, state: "hub 离线", date: nil)
-        case .online:
-            if let task = account.latestTask {
-                taskRow(
-                    color: taskColor(task.state),
-                    state: task.state,
-                    date: task.updatedAt
-                )
-            } else {
-                taskRow(color: .secondary, state: "暂无任务", date: nil)
-            }
-        }
+    private var taskStatusRow: some View {
+        taskRow(
+            color: taskColor(taskStatus.phase),
+            state: taskStatus.localizedLabel,
+            date: taskStatus.updatedAt
+        )
     }
 
     private func taskRow(color: Color, state: String, date: Date?) -> some View {
@@ -258,8 +252,8 @@ private struct AccountInspectionCard: View {
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
             Text(state)
-                .font(.caption.weight(.medium).monospaced())
-                .foregroundStyle(state == "暂无任务" ? Color.secondary : Color.primary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(state == "未运行" ? Color.secondary : Color.primary)
                 .lineLimit(1)
             Spacer(minLength: 8)
             if let date {
@@ -270,18 +264,13 @@ private struct AccountInspectionCard: View {
         }
     }
 
-    private func taskColor(_ state: String) -> Color {
-        switch state.lowercased() {
-        case "succeeded", "completed", "success":
-            return .green
-        case "starting", "running", "dispatched":
-            return .accentColor
-        case "awaiting_approval", "pending", "cancel_requested", "uncertain":
-            return .orange
-        case "failed", "error", "cancelled", "blocked_configuration":
-            return .red
-        default:
-            return .secondary
+    private func taskColor(_ phase: HubAccountTaskPhase) -> Color {
+        switch phase {
+        case .succeeded: return .green
+        case .awaitingApproval, .starting, .running: return .accentColor
+        case .cancelRequested, .uncertain, .unavailable: return .orange
+        case .failed, .cancelled: return .red
+        case .idle: return .secondary
         }
     }
 }

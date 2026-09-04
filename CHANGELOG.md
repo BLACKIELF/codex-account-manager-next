@@ -1,15 +1,35 @@
 # Changelog
 
+## 9.4.2 / 0904v2 - 2026-09-04
+
+- 修复暖号命令达到固定 90 秒后被强制结束、同时丢弃错误输出，导致长期只显示“暖号失败”的问题。
+- 内置经 MIT 授权的 Codex-Manager 暖号协议层，改为直接向 ChatGPT Codex 后端地址发送最小 SSE 请求，并区分登录失效、限频、网络、超时与服务异常。
+- 一次失败只阻止同一空闲额度窗口重复消耗；更新后的有效额度窗口会淘汰历史失败状态。暖号期间禁止切号、登录、删除账号或并发手动刷新。
+- 账号卡与巡检页新增 Hub CLI 任务状态：待批准、准备中、工作进行中、取消中、待确认和终态反馈；缺少可信账号映射、新鲜 Hub 概览或检测到同别名活跃任务时，Next 会关闭该账号的终端入口。
+- 暖号只接受正式 Hub 调度别名，不再用邮箱或账号名猜测；巡检映射改用 Next 自己的 Application Support 配置，并保留显式环境变量覆盖。
+- 收紧发布隐私边界：默认调试日志去除账号消息、任务 ID、Bundle 路径与底层错误详情；终端命令用 `$HOME` 表达托管账号目录，诊断 JSON 与统计悬浮提示不再输出项目或 Skill 完整路径。
+- 重写中英文 GitHub README，按当前可达功能补齐 Hub 门禁、执行偏好、暖号、安全切换、安装与隐私边界，并替换为隐私安全的 0904v2 Retina 2× 功能截图。
+
+### English
+
+- Fixed warm-up runs being force-terminated at a fixed 90-second deadline while their diagnostics were discarded, leaving a persistent generic failure state.
+- Embedded the MIT-licensed Codex-Manager warm-up protocol layer to send a minimal SSE request directly to the ChatGPT Codex backend endpoint and classify authentication, rate-limit, network, timeout, and service failures.
+- A failure blocks repeated consumption only within the same idle quota window; a newer active quota window supersedes the historical failure. Switching, login, deletion, and manual per-account refresh are blocked while warm-up is active.
+- Added Hub CLI task state to account cards and inspection: approval, starting, working, cancellation, uncertain, and terminal feedback. Next disables terminal entry without a trusted mapping and fresh Hub overview, or when the mapped alias has active work.
+- Warm-up now accepts only provisioned Hub dispatch aliases instead of guessing from email or account name. Inspection mapping uses Next's own Application Support configuration with an explicit environment override.
+- Tightened release privacy boundaries: default debug output omits account messages, task IDs, bundle paths, and low-level error details; terminal commands express managed account homes through `$HOME`, while diagnostics JSON and analytics tooltips omit full project and Skill paths.
+- Rewrote the Chinese and English GitHub README around currently reachable features, documenting Hub gates, execution preference, warm-up, safe switching, installation, and privacy boundaries with privacy-safe 0904v2 Retina 2× feature captures.
+
 ## 9.4.1 / 0904v1 - 2026-09-04
 
 - 账号卡新增蓝紫色任务执行偏好入口，可分别选择模型、推理强度与标准/Fast 速度，并支持一次性应用到所有账号。
-- “在终端中使用”与后续 Hub 派单统一携带同一组 CLI 参数；默认子 Agent 继承相同模型与推理强度。
+- “在终端中使用”生成的启动命令统一携带主模型、推理强度、默认子 Agent 与 Standard/Fast 参数；外部 Hub 派单器若从其他入口创建任务，需显式复用同一组参数。
 - 执行偏好按账号持久化；不支持的模型组合、损坏状态或保存失败均会阻断变更并保留上一份有效配置。
 
 ### English
 
 - Added a blue-purple per-account execution preference control for model, reasoning effort, and Standard/Fast speed, with a one-time Apply to All action.
-- Terminal launch and subsequent Hub dispatch now carry the same CLI parameters; default subagents inherit the selected model and reasoning effort.
+- The generated terminal command carries the primary model, effort, default-subagent, and Standard/Fast parameters; an external Hub dispatcher must explicitly reuse them when creating work through another entry point.
 - Preferences persist per account, while unsupported combinations, invalid stored state, and save failures fail closed without replacing the last valid configuration.
 
 ## 8.26.1 / 0826v1 - 2026-08-26

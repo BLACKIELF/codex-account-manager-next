@@ -87,7 +87,7 @@ final class AFUnixWebSocket {
                     onMessage: onMessage
                 )
             } catch {
-                debugLog("AFUnixWebSocket: connection ended reason=\(error)")
+                debugLog("AFUnixWebSocket: connection ended")
             }
             self.close()
             debugLog("AFUnixWebSocket: scheduling onDisconnect callback")
@@ -346,7 +346,7 @@ final class AFUnixWebSocket {
             try writeAll(frame, descriptor: descriptor)
             return true
         } catch {
-            debugLog("AFUnixWebSocket: send failed reason=\(error)")
+            debugLog("AFUnixWebSocket: send failed")
             return false
         }
     }

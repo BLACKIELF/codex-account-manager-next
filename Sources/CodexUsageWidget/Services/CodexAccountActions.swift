@@ -555,6 +555,404 @@ private final class CodexLoginSession {
     }
 }
 
+private enum CodexWarmUpFailure: LocalizedError, Equatable {
+    case credentialsUnavailable
+    case identityMismatch
+    case invalidRequest
+    case redirected
+    case timedOut
+    case networkUnavailable
+    case unauthorized
+    case forbidden
+    case rateLimited
+    case serviceUnavailable
+    case rejected(Int)
+    case streamFailed
+    case incompleteStream
+    case oversizedStream
+
+    var persistenceCode: String {
+        switch self {
+        case .credentialsUnavailable: return "credentials-unavailable"
+        case .identityMismatch: return "identity-mismatch"
+        case .invalidRequest: return "invalid-request"
+        case .redirected: return "redirected"
+        case .timedOut: return "timeout"
+        case .networkUnavailable: return "network"
+        case .unauthorized: return "http-401"
+        case .forbidden: return "http-403"
+        case .rateLimited: return "http-429"
+        case .serviceUnavailable: return "http-5xx"
+        case .rejected(let status): return "http-\(status)"
+        case .streamFailed: return "stream-failed"
+        case .incompleteStream: return "stream-incomplete"
+        case .oversizedStream: return "stream-oversized"
+        }
+    }
+
+    var errorDescription: String? {
+        switch self {
+        case .credentialsUnavailable: return "账号凭据不可用，请重新登录该账号"
+        case .identityMismatch: return "账号凭据与账号卡不一致，已阻止暖号"
+        case .invalidRequest: return "无法生成安全的暖号请求"
+        case .redirected: return "官方暖号地址发生重定向，已停止发送凭据"
+        case .timedOut: return "官方暖号请求超时"
+        case .networkUnavailable: return "网络连接失败"
+        case .unauthorized: return "账号登录已失效，请重新登录"
+        case .forbidden: return "该账号无权执行暖号请求"
+        case .rateLimited: return "官方暂时限制了请求频率"
+        case .serviceUnavailable: return "官方暖号服务暂时不可用"
+        case .rejected(let status): return "官方拒绝了暖号请求（HTTP \(status)）"
+        case .streamFailed: return "官方暖号流返回失败"
+        case .incompleteStream: return "官方暖号流未返回完成标记"
+        case .oversizedStream: return "官方暖号流超过安全上限"
+        }
+    }
+
+    static func httpStatus(_ status: Int) -> CodexWarmUpFailure {
+        switch status {
+        case 401: return .unauthorized
+        case 403: return .forbidden
+        case 429: return .rateLimited
+        case 500...599: return .serviceUnavailable
+        default: return .rejected(status)
+        }
+    }
+
+    static func network(_ error: Error) -> CodexWarmUpFailure {
+        if let urlError = error as? URLError, urlError.code == .timedOut {
+            return .timedOut
+        }
+        return .networkUnavailable
+    }
+}
+
+private enum CodexWarmUpStreamOutcome: Equatable {
+    case pending
+    case completed
+    case failed
+    case oversized
+}
+
+private struct CodexWarmUpSSEParser {
+    private static let maximumBytes = 64 * 1_024
+    private var buffer = Data()
+    private var eventName: String?
+    private var dataLines: [String] = []
+    private var bufferedBytes = 0
+
+    mutating func append(_ data: Data) -> CodexWarmUpStreamOutcome {
+        guard buffer.count + bufferedBytes + data.count <= Self.maximumBytes else {
+            return .oversized
+        }
+        buffer.append(data)
+        while let newline = buffer.firstIndex(of: 10) {
+            let lineData = buffer.subdata(in: buffer.startIndex..<newline)
+            buffer.removeSubrange(buffer.startIndex...newline)
+            guard var line = String(data: lineData, encoding: .utf8) else { return .failed }
+            if line.last == "\r" { line.removeLast() }
+            let outcome = consume(line)
+            if outcome != .pending { return outcome }
+        }
+        return .pending
+    }
+
+    mutating func finish() -> CodexWarmUpStreamOutcome {
+        if !buffer.isEmpty {
+            guard var line = String(data: buffer, encoding: .utf8) else { return .failed }
+            buffer.removeAll(keepingCapacity: false)
+            if line.last == "\r" { line.removeLast() }
+            let outcome = consume(line)
+            if outcome != .pending { return outcome }
+        }
+        return processEvent()
+    }
+
+    private mutating func consume(_ line: String) -> CodexWarmUpStreamOutcome {
+        if line.isEmpty { return processEvent() }
+        if line.hasPrefix("event:") {
+            eventName = String(line.dropFirst("event:".count)).trimmingCharacters(in: .whitespaces)
+        } else if line.hasPrefix("data:") {
+            let value = String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces)
+            bufferedBytes += value.utf8.count
+            guard bufferedBytes <= Self.maximumBytes else { return .oversized }
+            dataLines.append(value)
+        }
+        return .pending
+    }
+
+    private mutating func processEvent() -> CodexWarmUpStreamOutcome {
+        defer {
+            eventName = nil
+            dataLines.removeAll(keepingCapacity: true)
+            bufferedBytes = 0
+        }
+        if let eventName {
+            if Self.isTerminal(eventName) { return .completed }
+            if Self.isFailure(eventName) { return .failed }
+        }
+        guard !dataLines.isEmpty else { return .pending }
+        let payload = dataLines.joined(separator: "\n")
+        if payload == "[DONE]" { return .completed }
+        guard let data = payload.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = object["type"] as? String
+        else { return .pending }
+        if Self.isTerminal(type) { return .completed }
+        if Self.isFailure(type) { return .failed }
+        return .pending
+    }
+
+    private static func isTerminal(_ value: String) -> Bool {
+        value == "response.completed" || value == "response.done"
+    }
+
+    private static func isFailure(_ value: String) -> Bool {
+        value == "error" || value == "response.failed" || value == "response.incomplete"
+    }
+}
+
+/// Direct request shape and SSE completion rules adapted from
+/// qxcnm/Codex-Manager `account_warmup.rs` (MIT, copyright 2026 hongshun.gao).
+private enum CodexWarmUpProtocol {
+    private static let endpoint = URL(string: "https://chatgpt.com/backend-api/codex/responses")!
+    private static let maximumAuthBytes = 1 * 1_024 * 1_024
+    private static let model = "gpt-5.6-luna"
+
+    static func request(for profile: CodexProfile, fileManager: FileManager = .default) throws -> URLRequest {
+        let authURL = profile.codexHomeURL.appendingPathComponent("auth.json")
+        let homePath = profile.codexHomeURL.standardizedFileURL.path
+        let systemHomePath = fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex", isDirectory: true)
+            .standardizedFileURL.path
+        let lock = homePath == systemHomePath
+            ? CodexCredentialAccessGate.lock
+            : CodexCredentialAccessGate.homeLock(forHomePath: homePath)
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let attributes = try? fileManager.attributesOfItem(atPath: authURL.path),
+              let size = attributes[.size] as? NSNumber,
+              size.intValue > 0,
+              size.intValue <= maximumAuthBytes,
+              let authData = try? Data(contentsOf: authURL),
+              let identity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: authData),
+              let auth = try? JSONSerialization.jsonObject(with: authData) as? [String: Any],
+              let tokens = auth["tokens"] as? [String: Any],
+              let accessToken = nonEmpty(tokens["access_token"] as? String)
+        else { throw CodexWarmUpFailure.credentialsUnavailable }
+        guard profile.matchesRecordedCredential(identity) else {
+            throw CodexWarmUpFailure.identityMismatch
+        }
+
+        var request = URLRequest(url: endpoint, timeoutInterval: 45)
+        request.httpMethod = "POST"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(identity.accountID, forHTTPHeaderField: "ChatGPT-Account-Id")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("codex_cli_rs", forHTTPHeaderField: "originator")
+        request.setValue("codex_cli_rs/0.153.0", forHTTPHeaderField: "User-Agent")
+        guard let body = try? JSONSerialization.data(withJSONObject: requestBody()) else {
+            throw CodexWarmUpFailure.invalidRequest
+        }
+        request.httpBody = body
+        return request
+    }
+
+    static func requestBody(message: String = "hi") -> [String: Any] {
+        [
+            "model": model,
+            "instructions": "",
+            "input": [[
+                "type": "message",
+                "role": "user",
+                "content": [["type": "input_text", "text": message]]
+            ]],
+            "stream": true,
+            "store": false
+        ]
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        let normalized = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
+    }
+}
+
+private final class CodexWarmUpSession: NSObject, URLSessionDataDelegate {
+    private let request: URLRequest
+    private let completion: (Result<Void, Error>) -> Void
+    private var parser = CodexWarmUpSSEParser()
+    private var session: URLSession?
+    private var task: URLSessionDataTask?
+    private var isFinished = false
+
+    init(request: URLRequest, completion: @escaping (Result<Void, Error>) -> Void) {
+        self.request = request
+        self.completion = completion
+    }
+
+    func start() {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 45
+        configuration.timeoutIntervalForResource = 90
+        configuration.urlCache = nil
+        configuration.httpShouldSetCookies = false
+        let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+        self.session = session
+        let task = session.dataTask(with: request)
+        self.task = task
+        task.resume()
+    }
+
+    func urlSession(
+        _: URLSession,
+        task _: URLSessionTask,
+        willPerformHTTPRedirection _: HTTPURLResponse,
+        newRequest _: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
+        finish(.failure(CodexWarmUpFailure.redirected))
+    }
+
+    func urlSession(
+        _: URLSession,
+        dataTask _: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let status = (response as? HTTPURLResponse)?.statusCode else {
+            completionHandler(.cancel)
+            finish(.failure(CodexWarmUpFailure.networkUnavailable))
+            return
+        }
+        guard (200...299).contains(status) else {
+            completionHandler(.cancel)
+            finish(.failure(CodexWarmUpFailure.httpStatus(status)))
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_: URLSession, dataTask _: URLSessionDataTask, didReceive data: Data) {
+        switch parser.append(data) {
+        case .completed: finish(.success(()))
+        case .failed: finish(.failure(CodexWarmUpFailure.streamFailed))
+        case .oversized: finish(.failure(CodexWarmUpFailure.oversizedStream))
+        case .pending: break
+        }
+    }
+
+    func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
+        guard !isFinished else { return }
+        if let error {
+            finish(.failure(CodexWarmUpFailure.network(error)))
+            return
+        }
+        switch parser.finish() {
+        case .completed: finish(.success(()))
+        case .failed: finish(.failure(CodexWarmUpFailure.streamFailed))
+        case .oversized: finish(.failure(CodexWarmUpFailure.oversizedStream))
+        case .pending: finish(.failure(CodexWarmUpFailure.incompleteStream))
+        }
+    }
+
+    private func finish(_ result: Result<Void, Error>) {
+        guard !isFinished else { return }
+        isFinished = true
+        task?.cancel()
+        session?.invalidateAndCancel()
+        task = nil
+        session = nil
+        DispatchQueue.main.async { [completion] in completion(result) }
+    }
+}
+
+enum CodexWarmUpProtocolSelfTest {
+    static func run() -> Bool {
+        let body = CodexWarmUpProtocol.requestBody()
+        guard body["model"] as? String == "gpt-5.6-luna",
+              body["stream"] as? Bool == true,
+              body["store"] as? Bool == false,
+              CodexWarmUpFailure.httpStatus(401) == .unauthorized,
+              CodexWarmUpFailure.httpStatus(429) == .rateLimited,
+              requestContractPasses()
+        else {
+            print("Codex warm-up protocol self-test failed: request contract")
+            return false
+        }
+
+        var completed = CodexWarmUpSSEParser()
+        guard completed.append(Data("event: response.created\ndata: {\"type\":\"response.created\"}\n\n".utf8)) == .pending,
+              completed.append(Data("event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n".utf8)) == .completed
+        else {
+            print("Codex warm-up protocol self-test failed: completion event")
+            return false
+        }
+        var failed = CodexWarmUpSSEParser()
+        guard failed.append(Data("event: response.failed\ndata: {\"type\":\"response.failed\"}\n\n".utf8)) == .failed else {
+            print("Codex warm-up protocol self-test failed: failure event")
+            return false
+        }
+        var fragmented = CodexWarmUpSSEParser()
+        guard fragmented.append(Data("event: response.com".utf8)) == .pending,
+              fragmented.append(Data("pleted\ndata: {\"type\":\"response.completed\"}\n\n".utf8)) == .completed
+        else {
+            print("Codex warm-up protocol self-test failed: fragmented completion event")
+            return false
+        }
+        print("Codex warm-up protocol self-test passed")
+        return true
+    }
+
+    private static func requestContractPasses() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appendingPathComponent("camnext-warm-up-protocol-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: root) }
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            let claims = try JSONSerialization.data(withJSONObject: [
+                "email": "warm-up-self-test@example.com",
+                "https://api.openai.com/auth": ["chatgpt_account_id": "acct-warm-up-self-test"]
+            ])
+            let encoded = claims.base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            let token = "x.\(encoded).y"
+            let auth = try JSONSerialization.data(withJSONObject: [
+                "tokens": [
+                    "access_token": token,
+                    "id_token": token,
+                    "account_id": "acct-warm-up-self-test"
+                ]
+            ])
+            try auth.write(to: root.appendingPathComponent("auth.json"), options: .atomic)
+            let profile = CodexProfile(
+                id: "warm-up-protocol-self-test",
+                name: "warm-up-protocol-self-test",
+                codexHomePath: root.path,
+                isSystemProfile: false,
+                createdAt: Date()
+            )
+            let request = try CodexWarmUpProtocol.request(for: profile, fileManager: fileManager)
+            return request.url?.absoluteString == "https://chatgpt.com/backend-api/codex/responses"
+                && request.httpMethod == "POST"
+                && request.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)"
+                && request.value(forHTTPHeaderField: "ChatGPT-Account-Id") == "acct-warm-up-self-test"
+                && request.value(forHTTPHeaderField: "Accept") == "text/event-stream"
+                && request.value(forHTTPHeaderField: "Content-Type") == "application/json"
+                && request.httpBody?.isEmpty == false
+        } catch {
+            return false
+        }
+    }
+}
+
 final class CodexAccountActions {
     enum PendingSwitchRecoveryOutcome: Equatable {
         case noPendingSwitch
@@ -608,16 +1006,17 @@ final class CodexAccountActions {
     }
 
     private var loginSession: CodexLoginSession?
-    private var warmUpProcess: Process?
+    private var warmUpSession: CodexWarmUpSession?
 
     var isLoginRunning: Bool { loginSession != nil }
-    var isWarmUpRunning: Bool { warmUpProcess?.isRunning == true }
+    var isWarmUpRunning: Bool { warmUpSession != nil }
 
     func login(
         profile: CodexProfile,
         completion: @escaping (Result<Void, Error>) -> Void
     ) throws {
         guard !isLoginRunning else { throw CodexLoginError.message("已有账号正在登录") }
+        guard !isWarmUpRunning else { throw CodexLoginError.message("账号暖号正在执行；完成后再登录") }
         guard let executable = CodexExecutable.path() else {
             throw CocoaError(.fileNoSuchFile)
         }
@@ -2110,75 +2509,35 @@ final class CodexAccountActions {
         )
     }
 
-    fileprivate static func warmUpArguments(workingDirectory: String) -> [String] {
-        [
-            "exec",
-            "--ephemeral",
-            "--skip-git-repo-check",
-            "--ignore-user-config",
-            "--ignore-rules",
-            "--strict-config",
-            "--config", "model_reasoning_effort=\"low\"",
-            "--config", "model_verbosity=\"low\"",
-            "--model", "gpt-5.6-luna",
-            "--sandbox", "read-only",
-            "--color", "never",
-            "-C", workingDirectory,
-            "只回复 1，不调用工具。"
-        ]
-    }
-
     func warmUp(
         profile: CodexProfile,
         completion: @escaping (Result<Void, Error>) -> Void
     ) throws {
-        guard !isWarmUpRunning else {
+        guard !isLoginRunning else {
             throw NSError(
                 domain: "CodexAccountActions",
                 code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "账号登录正在执行；完成后再暖号"]
+            )
+        }
+        guard !isWarmUpRunning else {
+            throw NSError(
+                domain: "CodexAccountActions",
+                code: 2,
                 userInfo: [NSLocalizedDescriptionKey: "已有暖号请求在执行，请稍候"]
             )
         }
-        guard let executable = CodexExecutable.path() else {
-            throw CocoaError(.fileNoSuchFile)
+        let request = try CodexWarmUpProtocol.request(for: profile)
+        let session = CodexWarmUpSession(request: request) { [weak self] result in
+            self?.warmUpSession = nil
+            completion(result)
         }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = Self.warmUpArguments(
-            workingDirectory: FileManager.default.temporaryDirectory.path
-        )
-        var environment = ProcessInfo.processInfo.environment
-        environment["CODEX_HOME"] = profile.codexHomePath
-        process.environment = environment
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        process.terminationHandler = { [weak self] finished in
-            DispatchQueue.main.async {
-                self?.warmUpProcess = nil
-                if finished.terminationStatus == 0 {
-                    completion(.success(()))
-                } else {
-                    completion(.failure(NSError(
-                        domain: "CodexAccountActions",
-                        code: Int(finished.terminationStatus),
-                        userInfo: [NSLocalizedDescriptionKey: "官方 Codex 请求未完成"]
-                    )))
-                }
-            }
-        }
-        try process.run()
-        warmUpProcess = process
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 90) {
-            if process.isRunning { process.terminate() }
-        }
-        // SIGTERM 可能被忽略；15 秒后强制结束，保证 completion 一定会触发。
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 105) {
-            guard process.isRunning else { return }
-            let pid = process.processIdentifier
-            guard pid > 0 else { return }
-            kill(pid, SIGKILL)
-        }
+        warmUpSession = session
+        session.start()
+    }
+
+    static func warmUpFailureReason(for error: Error) -> String {
+        (error as? CodexWarmUpFailure)?.persistenceCode ?? "unknown"
     }
 }
 
@@ -2682,24 +3041,6 @@ enum CodexAccountSwitchSafetySelfTest {
                   ]
             else {
                 print("Codex account switch safety self-test failed: Chrome profile routing")
-                return false
-            }
-            guard CodexAccountActions.warmUpArguments(workingDirectory: "/tmp/warm-up") == [
-                "exec",
-                "--ephemeral",
-                "--skip-git-repo-check",
-                "--ignore-user-config",
-                "--ignore-rules",
-                "--strict-config",
-                "--config", "model_reasoning_effort=\"low\"",
-                "--config", "model_verbosity=\"low\"",
-                "--model", "gpt-5.6-luna",
-                "--sandbox", "read-only",
-                "--color", "never",
-                "-C", "/tmp/warm-up",
-                "只回复 1，不调用工具。"
-            ] else {
-                print("Codex account switch safety self-test failed: minimal warm-up command")
                 return false
             }
             print("Codex account switch safety self-test passed")
