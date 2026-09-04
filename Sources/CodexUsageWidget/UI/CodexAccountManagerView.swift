@@ -554,6 +554,7 @@ struct CodexAccountManagerView: View {
                     ProfileRow(
                         profile: profile,
                         allProfiles: store.profiles,
+                        executionPreference: profile.effectiveExecutionPreference,
                         dispatchCode: DispatchCodeCatalog.code(for: profile.id),
                         isMonitoring: profile.id == store.selectedMonitorProfileID,
                         isLaunchProfile: profile.id == store.selectedLaunchProfileID,
@@ -597,6 +598,9 @@ struct CodexAccountManagerView: View {
                             store.setAutomaticSwitchParticipation($0, for: profile.id)
                         },
                         onSetProTierMultiplier: { store.setProTierMultiplier($0, for: profile.id) },
+                        onSetExecutionPreference: { preference, applyToAll in
+                            store.setExecutionPreference(preference, for: profile.id, applyToAll: applyToAll)
+                        },
                         onRename: { store.setProfileRemark($0, for: profile.id) },
                         onSetChromeProfile: { store.setChromeProfile($0, for: profile.id) },
                         onMoveUp: {
@@ -2003,9 +2007,247 @@ private struct QuotaProgressTrack: View {
     }
 }
 
+private struct ExecutionPreferenceControl: View {
+    let preference: CodexExecutionPreference
+    let onSave: (CodexExecutionPreference, Bool) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.visualTokens) private var visualTokens
+    @State private var isPresented = false
+    @State private var draft: CodexExecutionPreference
+
+    init(
+        preference: CodexExecutionPreference,
+        onSave: @escaping (CodexExecutionPreference, Bool) -> Void
+    ) {
+        self.preference = preference
+        self.onSave = onSave
+        _draft = State(initialValue: preference)
+    }
+
+    var body: some View {
+        Button {
+            draft = preference
+            isPresented = true
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(executionGradient)
+                Text(summary)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                Spacer(minLength: 2)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 11)
+            .frame(maxWidth: .infinity, minHeight: 34)
+            .background(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(executionGradient.opacity(colorScheme == .dark ? 0.18 : 0.11))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(executionGradient.opacity(0.42), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("设置后续 CLI 与任务派单使用的模型、推理强度和速度")
+        .accessibilityLabel("任务执行偏好")
+        .accessibilityValue(summary)
+        .popover(isPresented: $isPresented, arrowEdge: .trailing) {
+            editor
+        }
+        .onChange(of: preference) { updated in
+            draft = updated
+        }
+    }
+
+    private var editor: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(executionGradient)
+                    .frame(width: 32, height: 32)
+                    .background(executionGradient.opacity(0.14), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("任务执行偏好")
+                        .font(.headline)
+                    Text("选择后立即用于这个账号")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(spacing: 10) {
+                pickerRow("模型") {
+                    Picker("模型", selection: modelBinding) {
+                        ForEach(CodexExecutionPreference.Model.allCases, id: \.rawValue) { model in
+                            Text(model.displayName).tag(model)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 176)
+                }
+
+                pickerRow("推理强度") {
+                    Picker("推理强度", selection: effortBinding) {
+                        ForEach(draft.model.supportedReasoningEfforts, id: \.rawValue) { effort in
+                            Text(effort.displayName).tag(effort)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 176)
+                }
+            }
+
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("任务速度")
+                        .font(.subheadline.weight(.semibold))
+                    Text(draft.model.supportsFast ? "标准 / Fast" : "此模型仅支持标准速度")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Text("标准")
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(draft.serviceTier == .standard ? Color.primary : Color.secondary)
+                Toggle("Fast", isOn: fastBinding)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    .tint(visualTokens.accent.secondaryStrong.color)
+                    .disabled(!draft.model.supportsFast)
+                    .accessibilityLabel("Fast 速度")
+                    .accessibilityValue(draft.serviceTier == .fast ? "已开启" : "标准速度")
+                Text("Fast")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(
+                        draft.serviceTier == .fast
+                            ? visualTokens.accent.secondaryStrong.color
+                            : Color.secondary
+                    )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(executionGradient.opacity(colorScheme == .dark ? 0.22 : 0.13))
+            )
+
+            Divider()
+
+            Button {
+                onSave(draft, true)
+                isPresented = false
+            } label: {
+                Label("应用到所有账号", systemImage: "person.2.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(visualTokens.accent.secondaryStrong.color)
+            .help("一次性覆盖所有独立账号；之后仍可分别调整")
+
+            Text("模型、推理强度和速度会同时用于后续 CLI 与任务派单；不会修改账号的 config.toml。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(width: 330)
+        .background(.regularMaterial)
+    }
+
+    private func pickerRow<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            content()
+        }
+    }
+
+    private var modelBinding: Binding<CodexExecutionPreference.Model> {
+        Binding(
+            get: { draft.model },
+            set: { model in
+                let supportedEfforts = model.supportedReasoningEfforts
+                let effort = supportedEfforts.contains(draft.reasoningEffort)
+                    ? draft.reasoningEffort
+                    : (supportedEfforts.last ?? .low)
+                saveForProfile(CodexExecutionPreference(
+                    model: model,
+                    reasoningEffort: effort,
+                    serviceTier: model.supportsFast ? draft.serviceTier : .standard
+                ))
+            }
+        )
+    }
+
+    private var effortBinding: Binding<CodexExecutionPreference.ReasoningEffort> {
+        Binding(
+            get: { draft.reasoningEffort },
+            set: { effort in
+                saveForProfile(CodexExecutionPreference(
+                    model: draft.model,
+                    reasoningEffort: effort,
+                    serviceTier: draft.serviceTier
+                ))
+            }
+        )
+    }
+
+    private var fastBinding: Binding<Bool> {
+        Binding(
+            get: { draft.serviceTier == .fast },
+            set: { enabled in
+                saveForProfile(CodexExecutionPreference(
+                    model: draft.model,
+                    reasoningEffort: draft.reasoningEffort,
+                    serviceTier: enabled && draft.model.supportsFast ? .fast : .standard
+                ))
+            }
+        )
+    }
+
+    private func saveForProfile(_ updated: CodexExecutionPreference) {
+        draft = updated
+        onSave(updated, false)
+    }
+
+    private var summary: String {
+        let speed = preference.serviceTier == .fast ? "Fast" : "标准"
+        return "\(preference.model.displayName) · \(preference.reasoningEffort.displayName) · \(speed)"
+    }
+
+    private var executionGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                visualTokens.accent.primaryLight.color,
+                visualTokens.accent.secondaryStrong.color
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+}
+
 private struct ProfileRow: View {
     let profile: CodexProfile
     let allProfiles: [CodexProfile]
+    let executionPreference: CodexExecutionPreference
     let dispatchCode: String?
     let isMonitoring: Bool
     let isLaunchProfile: Bool
@@ -2039,6 +2281,7 @@ private struct ProfileRow: View {
     let onCopyTerminalCommand: () -> Void
     let onSetAutomaticSwitchParticipation: (Bool) -> Void
     let onSetProTierMultiplier: (Int?) -> Void
+    let onSetExecutionPreference: (CodexExecutionPreference, Bool) -> Void
     let onRename: (String) -> Void
     let onSetChromeProfile: (ChromeProfileBinding?) -> Void
     let onMoveUp: () -> Void
@@ -2254,6 +2497,13 @@ private struct ProfileRow: View {
 
     private var primaryControls: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if !profile.isSystemProfile {
+                ExecutionPreferenceControl(
+                    preference: executionPreference,
+                    onSave: onSetExecutionPreference
+                )
+            }
+
             HStack(spacing: 6) {
                 Button(action: onRefresh) {
                     HStack(spacing: 4) {

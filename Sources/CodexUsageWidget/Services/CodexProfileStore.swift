@@ -102,6 +102,113 @@ struct CodexOfficialProfileSnapshot: Codable, Equatable {
     let fetchedAt: Date
 }
 
+struct CodexExecutionPreference: Codable, Equatable {
+    enum Model: String, Codable, CaseIterable {
+        case sol = "gpt-5.6-sol"
+        case terra = "gpt-5.6-terra"
+        case luna = "gpt-5.6-luna"
+        case gpt55 = "gpt-5.5"
+        case gpt52 = "gpt-5.2"
+
+        var displayName: String {
+            switch self {
+            case .sol: return "5.6 Sol"
+            case .terra: return "5.6 Terra"
+            case .luna: return "5.6 Luna"
+            case .gpt55: return "GPT-5.5"
+            case .gpt52: return "GPT-5.2"
+            }
+        }
+
+        var supportedReasoningEfforts: [ReasoningEffort] {
+            switch self {
+            case .sol, .terra:
+                return ReasoningEffort.allCases
+            case .luna:
+                return [.low, .medium, .high, .xhigh, .max]
+            case .gpt55, .gpt52:
+                return [.low, .medium, .high, .xhigh]
+            }
+        }
+
+        var supportsFast: Bool { self != .gpt52 }
+    }
+
+    enum ReasoningEffort: String, Codable, CaseIterable {
+        case low
+        case medium
+        case high
+        case xhigh
+        case max
+        case ultra
+
+        var displayName: String {
+            switch self {
+            case .low: return "Low"
+            case .medium: return "Medium"
+            case .high: return "High"
+            case .xhigh: return "XHigh"
+            case .max: return "Max"
+            case .ultra: return "Ultra"
+            }
+        }
+    }
+
+    enum ServiceTier: String, Codable, CaseIterable {
+        case standard = "default"
+        case fast
+
+        var displayName: String {
+            switch self {
+            case .standard: return "Standard"
+            case .fast: return "Fast"
+            }
+        }
+    }
+
+    var model: Model
+    var reasoningEffort: ReasoningEffort
+    var serviceTier: ServiceTier
+
+    static let defaultValue = CodexExecutionPreference(
+        model: .sol,
+        reasoningEffort: .high,
+        serviceTier: .standard
+    )
+
+    var isValid: Bool { (try? validated()) != nil }
+
+    func validated() throws -> CodexExecutionPreference {
+        guard model.supportedReasoningEfforts.contains(reasoningEffort) else {
+            throw CodexExecutionPreferenceError.unsupportedReasoningEffort(
+                model: model.rawValue,
+                reasoningEffort: reasoningEffort.rawValue
+            )
+        }
+        guard serviceTier != .fast || model.supportsFast else {
+            throw CodexExecutionPreferenceError.fastUnavailable(model: model.rawValue)
+        }
+        return self
+    }
+}
+
+enum CodexExecutionPreferenceError: LocalizedError, Equatable {
+    case unsupportedReasoningEffort(model: String, reasoningEffort: String)
+    case fastUnavailable(model: String)
+    case systemProfileUnsupported
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedReasoningEffort(let model, let reasoningEffort):
+            return "模型 \(model) 不支持推理强度 \(reasoningEffort)"
+        case .fastUnavailable(let model):
+            return "模型 \(model) 不支持 Fast 模式"
+        case .systemProfileUnsupported:
+            return "系统账号不保存执行偏好"
+        }
+    }
+}
+
 struct CodexProfile: Codable, Equatable, Identifiable {
     let id: String
     var name: String
@@ -118,6 +225,7 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var chromeProfile: ChromeProfileBinding? = nil
     var automaticSwitchParticipation: Bool? = nil
     var proTierMultiplier: Int? = nil
+    var executionPreference: CodexExecutionPreference? = nil
 
     var participatesInAutomaticSwitch: Bool {
         automaticSwitchParticipation != false
@@ -126,6 +234,17 @@ struct CodexProfile: Codable, Equatable, Identifiable {
     var displayedProTierMultiplier: Int? {
         guard let proTierMultiplier, proTierMultiplier == 5 || proTierMultiplier == 20 else { return nil }
         return proTierMultiplier
+    }
+
+    var effectiveExecutionPreference: CodexExecutionPreference {
+        executionPreference ?? .defaultValue
+    }
+
+    func validatedExecutionPreference() throws -> CodexExecutionPreference {
+        guard !isSystemProfile else {
+            throw CodexExecutionPreferenceError.systemProfileUnsupported
+        }
+        return try effectiveExecutionPreference.validated()
     }
 
     var codexHomeURL: URL {
@@ -857,6 +976,31 @@ final class CodexProfileStore {
         try save()
     }
 
+    func setExecutionPreference(
+        _ preference: CodexExecutionPreference,
+        for id: String,
+        applyToAll: Bool = false
+    ) throws {
+        let validated = try preference.validated()
+        guard let profile = state.profiles.first(where: { $0.id == id }) else { return }
+        guard !profile.isSystemProfile else {
+            throw CodexExecutionPreferenceError.systemProfileUnsupported
+        }
+        let previousState = state
+        let accountKey = profile.recordedAccountKey
+        for index in state.profiles.indices
+        where !state.profiles[index].isSystemProfile
+            && (applyToAll || state.profiles[index].recordedAccountKey == accountKey) {
+            state.profiles[index].executionPreference = validated
+        }
+        do {
+            try save()
+        } catch {
+            state = previousState
+            throw error
+        }
+    }
+
     func effectiveCredentialHome(for profileID: String) -> URL? {
         guard let profile = state.profiles.first(where: { $0.id == profileID }) else { return nil }
         guard !profile.isSystemProfile,
@@ -1239,7 +1383,10 @@ final class CodexProfileStore {
         return state.profiles.allSatisfy { profile in
             let path = profile.codexHomeURL.standardizedFileURL.path
             let homeIsValid = profile.isSystemProfile ? path == systemPath : path.hasPrefix(root)
-            return homeIsValid && profile.chromeProfile?.isValid != false
+            let preferenceIsValid = profile.isSystemProfile
+                ? profile.executionPreference == nil
+                : profile.executionPreference?.isValid != false
+            return homeIsValid && profile.chromeProfile?.isValid != false && preferenceIsValid
         }
     }
 }
@@ -1313,7 +1460,82 @@ enum CodexProfileStoreSelfTest {
                 at: Date(timeIntervalSince1970: 300),
                 resetCredits: 2
             )
+            guard added.effectiveExecutionPreference == .defaultValue else {
+                print("Codex profile store self-test failed: legacy execution preference default")
+                return false
+            }
+            let invalidPreference = CodexExecutionPreference(
+                model: .gpt52,
+                reasoningEffort: .ultra,
+                serviceTier: .fast
+            )
+            guard !invalidPreference.isValid else {
+                print("Codex profile store self-test failed: invalid execution preference accepted")
+                return false
+            }
+            do {
+                try first.setExecutionPreference(.defaultValue, for: "system")
+                print("Codex profile store self-test failed: system execution preference accepted")
+                return false
+            } catch CodexExecutionPreferenceError.systemProfileUnsupported {
+            } catch {
+                print("Codex profile store self-test failed: unexpected system preference error")
+                return false
+            }
+
             try first.record(managedSnapshot, for: added.id)
+            let duplicate = try first.addManagedProfile()
+            try first.record(managedSnapshot, for: duplicate.id)
+            let fastPreference = CodexExecutionPreference(
+                model: .terra,
+                reasoningEffort: .ultra,
+                serviceTier: .fast
+            )
+            try first.setExecutionPreference(fastPreference, for: added.id)
+            let addedAccountKey = first.profiles.first(where: { $0.id == added.id })?.recordedAccountKey
+            let matchingPreferences = first.profiles
+                .filter { !$0.isSystemProfile && $0.recordedAccountKey == addedAccountKey }
+                .allSatisfy { $0.effectiveExecutionPreference == fastPreference }
+            guard addedAccountKey != nil,
+                matchingPreferences,
+                first.profiles.first(where: \.isSystemProfile)?.executionPreference == nil
+            else {
+                print("Codex profile store self-test failed: account execution preference propagation")
+                return false
+            }
+            let standardPreference = CodexExecutionPreference(
+                model: .gpt55,
+                reasoningEffort: .medium,
+                serviceTier: .standard
+            )
+            try first.setExecutionPreference(standardPreference, for: duplicate.id, applyToAll: true)
+            guard first.profiles.filter({ !$0.isSystemProfile }).allSatisfy({
+                $0.effectiveExecutionPreference == standardPreference
+            }) else {
+                print("Codex profile store self-test failed: apply execution preference to all")
+                return false
+            }
+            try first.discardManagedProfile(duplicate.id)
+
+            let standardCommand = try TerminalAppLauncher.configuredCodexCommand(
+                executable: "/usr/local/bin/codex",
+                preference: .defaultValue
+            )
+            let fastCommand = try TerminalAppLauncher.configuredCodexCommand(
+                executable: "/usr/local/bin/codex",
+                preference: fastPreference
+            )
+            guard standardCommand.contains("--model 'gpt-5.6-sol'"),
+                  standardCommand.contains("'agents.default_subagent_model=\"gpt-5.6-sol\"'"),
+                  standardCommand.contains("'agents.default_subagent_reasoning_effort=\"high\"'"),
+                  standardCommand.contains("'service_tier=\"default\"' --disable fast_mode"),
+                  fastCommand.contains("--model 'gpt-5.6-terra'"),
+                  fastCommand.contains("'model_reasoning_effort=\"ultra\"'"),
+                  fastCommand.contains("'service_tier=\"fast\"' --enable fast_mode")
+            else {
+                print("Codex profile store self-test failed: terminal execution preference command")
+                return false
+            }
             let official = CodexOfficialProfileSnapshot(
                 accountEmail: "managed@example.com",
                 displayName: "Managed",
@@ -1397,6 +1619,8 @@ enum CodexProfileStoreSelfTest {
                   restored.profiles.first(where: { $0.id == added.id })?.chromeProfile == chromeProfile,
                   restored.profiles.first(where: { $0.id == added.id })?.participatesInAutomaticSwitch == false,
                   restored.profiles.first(where: { $0.id == added.id })?.displayedProTierMultiplier == 20,
+                  restored.profiles.first(where: { $0.id == added.id })?.effectiveExecutionPreference
+                    == standardPreference,
                   restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.availableResetCredits == 2,
                   restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.resetCreditExpiries
                     == [Date(timeIntervalSince1970: 1_300)],
@@ -1425,6 +1649,7 @@ enum CodexProfileStoreSelfTest {
                 var profile = profile
                 profile.removeValue(forKey: "automaticSwitchParticipation")
                 profile.removeValue(forKey: "proTierMultiplier")
+                profile.removeValue(forKey: "executionPreference")
                 return profile
             }
             try JSONSerialization.data(withJSONObject: legacyState).write(to: stateURL, options: .atomic)
@@ -1434,9 +1659,41 @@ enum CodexProfileStoreSelfTest {
                 applicationSupportDirectory: support
             )
             guard legacyRestored.profiles.allSatisfy(\.participatesInAutomaticSwitch),
-                  legacyRestored.profiles.allSatisfy({ $0.displayedProTierMultiplier == nil })
+                  legacyRestored.profiles.allSatisfy({ $0.displayedProTierMultiplier == nil }),
+                  legacyRestored.profiles.allSatisfy({
+                      $0.effectiveExecutionPreference == .defaultValue
+                  })
             else {
                 print("Codex profile store self-test failed: automatic-switch scope migration")
+                return false
+            }
+            var invalidProfiles = legacyState["profiles"] as? [[String: Any]] ?? []
+            guard let invalidIndex = invalidProfiles.firstIndex(where: {
+                ($0["isSystemProfile"] as? Bool) == false
+            }) else {
+                print("Codex profile store self-test failed: invalid execution preference fixture")
+                return false
+            }
+            invalidProfiles[invalidIndex]["executionPreference"] = [
+                "model": "gpt-5.2",
+                "reasoningEffort": "ultra",
+                "serviceTier": "fast"
+            ]
+            legacyState["profiles"] = invalidProfiles
+            let invalidStateData = try JSONSerialization.data(withJSONObject: legacyState)
+            try invalidStateData.write(to: stateURL, options: .atomic)
+            let invalidRestored = CodexProfileStore(
+                fileManager: fileManager,
+                homeDirectory: home,
+                applicationSupportDirectory: support
+            )
+            do {
+                try invalidRestored.setRemark("must not persist", for: "system")
+                print("Codex profile store self-test failed: invalid execution preference mutation was accepted")
+                return false
+            } catch {}
+            guard try Data(contentsOf: stateURL) == invalidStateData else {
+                print("Codex profile store self-test failed: invalid execution preference was overwritten")
                 return false
             }
             try restored.moveProfile(added.id, relativeTo: "system", before: true)

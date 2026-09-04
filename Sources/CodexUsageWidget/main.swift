@@ -919,7 +919,8 @@ final class UsageStore: ObservableObject {
                 try await terminalLauncher.launch(
                     codexHome: profile.codexHomeURL,
                     workingDirectory: workingDirectory,
-                    accountName: accountName
+                    accountName: accountName,
+                    preference: try profile.validatedExecutionPreference()
                 )
                 let socketLength = TerminalAppLauncher.socketPathUTF8Length(codexHome: profile.codexHomeURL)
                 accountManagerMessage = socketLength > 100
@@ -940,7 +941,8 @@ final class UsageStore: ObservableObject {
             let command = try terminalLauncher.launchCommand(
                 codexHome: profile.codexHomeURL,
                 workingDirectory: nil,
-                accountName: AccountDisplay.profileName(profile, allProfiles: profiles)
+                accountName: AccountDisplay.profileName(profile, allProfiles: profiles),
+                preference: try profile.validatedExecutionPreference()
             )
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(command, forType: .string)
@@ -1168,6 +1170,23 @@ final class UsageStore: ObservableObject {
             accountManagerMessage = multiplier.map { "Pro 档位已设为 \($0)x" } ?? "Pro 档位已恢复为未指定"
         } catch {
             accountManagerMessage = "Pro 档位保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func setExecutionPreference(
+        _ preference: CodexExecutionPreference,
+        for id: String,
+        applyToAll: Bool
+    ) {
+        do {
+            try profileStore.setExecutionPreference(preference, for: id, applyToAll: applyToAll)
+            syncProfiles()
+            let summary = "\(preference.model.displayName) · \(preference.reasoningEffort.displayName) · \(preference.serviceTier.displayName)"
+            accountManagerMessage = applyToAll
+                ? "已将 \(summary) 应用到所有独立账号"
+                : "该账号后续 CLI 与任务派单将使用 \(summary)"
+        } catch {
+            accountManagerMessage = "执行偏好保存失败：\(error.localizedDescription)"
         }
     }
 

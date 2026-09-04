@@ -2,7 +2,12 @@ import AppKit
 import Foundation
 
 protocol TerminalLaunching {
-    func launch(codexHome: URL, workingDirectory: URL?, accountName: String) async throws
+    func launch(
+        codexHome: URL,
+        workingDirectory: URL?,
+        accountName: String,
+        preference: CodexExecutionPreference
+    ) async throws
 }
 
 enum TerminalLauncherError: LocalizedError {
@@ -35,11 +40,17 @@ struct TerminalAppLauncher: TerminalLaunching {
         self.fileManager = fileManager
     }
 
-    func launch(codexHome: URL, workingDirectory: URL?, accountName: String) async throws {
+    func launch(
+        codexHome: URL,
+        workingDirectory: URL?,
+        accountName: String,
+        preference: CodexExecutionPreference
+    ) async throws {
         let command = try launchCommand(
             codexHome: codexHome,
             workingDirectory: workingDirectory,
-            accountName: accountName
+            accountName: accountName,
+            preference: preference
         )
         let source = "tell application \"Terminal\"\nactivate\ndo script \"\(Self.appleScriptLiteral(command))\"\nend tell"
         var errorInfo: NSDictionary?
@@ -53,7 +64,13 @@ struct TerminalAppLauncher: TerminalLaunching {
         }
     }
 
-    func launchCommand(codexHome: URL, workingDirectory: URL?, accountName: String) throws -> String {
+    func launchCommand(
+        codexHome: URL,
+        workingDirectory: URL?,
+        accountName: String,
+        preference: CodexExecutionPreference
+    ) throws -> String {
+        let preference = try preference.validated()
         let profileID = codexHome.lastPathComponent
         guard !profileID.isEmpty,
               profileID.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains)
@@ -74,18 +91,27 @@ struct TerminalAppLauncher: TerminalLaunching {
             "unset CODEX_ACCESS_TOKEN CODEX_API_KEY",
             directoryCommand,
             "echo \(Self.shellQuote("Codex 账号: \(accountName) · CODEX_HOME=\(codexHome.path)"))",
-            Self.configuredCodexCommand(executable: executable)
+            try Self.configuredCodexCommand(executable: executable, preference: preference)
         ].joined(separator: "\n")
     }
 
-    private static func configuredCodexCommand(executable: String) -> String {
-        [
+    static func configuredCodexCommand(
+        executable: String,
+        preference: CodexExecutionPreference
+    ) throws -> String {
+        let preference = try preference.validated()
+        var arguments = [
             shellQuote(executable),
-            "--model", shellQuote("gpt-5.6-sol"),
-            "-c", shellQuote("model_reasoning_effort=\"high\""),
-            "-c", shellQuote("agents.default_subagent_model=\"gpt-5.6-terra\""),
-            "-c", shellQuote("agents.default_subagent_reasoning_effort=\"xhigh\"")
-        ].joined(separator: " ")
+            "--model", shellQuote(preference.model.rawValue),
+            "-c", shellQuote("model_reasoning_effort=\"\(preference.reasoningEffort.rawValue)\""),
+            "-c", shellQuote("agents.default_subagent_model=\"\(preference.model.rawValue)\""),
+            "-c", shellQuote(
+                "agents.default_subagent_reasoning_effort=\"\(preference.reasoningEffort.rawValue)\""
+            ),
+            "-c", shellQuote("service_tier=\"\(preference.serviceTier.rawValue)\"")
+        ]
+        arguments.append(preference.serviceTier == .fast ? "--enable fast_mode" : "--disable fast_mode")
+        return arguments.joined(separator: " ")
     }
 
     static func codexExecutable(fileManager: FileManager = .default) -> String? {

@@ -44,7 +44,7 @@ macOS 也可以使用 Homebrew 官方 Cask：`brew install --cask uuremote`，�
 
 ### 需要准备
 
-- macOS 13 或更高版本。
+- macOS 13+（macOS 13 或更高版本）。
 - 已安装并能正常使用的 Codex App 或 Codex CLI。
 - Git、`make`、Swift 编译器和 macOS SDK。最简单的准备方式是运行：
 
@@ -232,8 +232,9 @@ build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-
 
 ## 版本、来源和许可
 
-- 正式版本：`0902v1`
-- Bundle 版本：`9.2.1 (10)`
+- 正式版本：`0904v1`
+- Bundle 版本：`9.4.1 (11)`
+- 相对 `0902v1`：账号卡新增模型、推理强度与标准/Fast 速度偏好；终端与 Hub 派单复用同一组 CLI 参数，并支持一次性应用到所有账号。
 - 相对 `0831v9`：Next 主窗口移除多 agent 远程控制台入口，保留本机账号池 CLI、额度巡检和派单后台；文档新增网易 UU 远程的官方搭配建议，并明确第三方 GitHub 项目边界。
 - 相对 `0831v8`：账号状态文件已存在但无法安全解码时进入只读阻断，不再用空白状态覆盖；身份回填完整保留重置卡字段；低额度触发只发送推荐通知，不再重复发送“自动切换失败”。
 - 相对 `0831v7`：全账号额度维护定时器不再被主界面的 3/5 分钟刷新反复重置，10/30 分钟纯刷新可按时执行。

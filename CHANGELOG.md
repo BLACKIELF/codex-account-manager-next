@@ -1,5 +1,17 @@
 # Changelog
 
+## 9.4.1 / 0904v1 - 2026-09-04
+
+- 账号卡新增蓝紫色任务执行偏好入口，可分别选择模型、推理强度与标准/Fast 速度，并支持一次性应用到所有账号。
+- “在终端中使用”与后续 Hub 派单统一携带同一组 CLI 参数；默认子 Agent 继承相同模型与推理强度。
+- 执行偏好按账号持久化；不支持的模型组合、损坏状态或保存失败均会阻断变更并保留上一份有效配置。
+
+### English
+
+- Added a blue-purple per-account execution preference control for model, reasoning effort, and Standard/Fast speed, with a one-time Apply to All action.
+- Terminal launch and subsequent Hub dispatch now carry the same CLI parameters; default subagents inherit the selected model and reasoning effort.
+- Preferences persist per account, while unsupported combinations, invalid stored state, and save failures fail closed without replacing the last valid configuration.
+
 ## 8.26.1 / 0826v1 - 2026-08-26
 
 - 自动切换阈值调整为 5 小时剩余 `<= 5%`、7 天剩余 `< 10%`；候选账号对应触发窗口仍需 `>= 30%`。

@@ -1,4 +1,4 @@
-# Codex Account Manager Next 0902v1
+# Codex Account Manager Next 0904v1
 
 [中文](README.md) | **English**
 
@@ -73,8 +73,9 @@ build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-
 
 ## Version and provenance
 
-- Release: `0902v1`
-- Bundle version: `9.2.1 (10)`
+- Release: `0904v1`
+- Bundle version: `9.4.1 (11)`
+- Since `0902v1`: account cards can choose a model, reasoning effort, and Standard/Fast speed; terminal launch and Hub dispatch reuse the same CLI parameters, with a one-time Apply to All action.
 - Since `0831v9`: the main window no longer exposes the multi-agent remote console; local account-pool CLI, quota inspection, and Hub dispatch remain available. The documentation now recommends NetEase UU Remote as an optional companion and distinguishes official downloads from third-party GitHub projects.
 - Since `0831v8`: an existing state file that cannot be decoded safely is now read-only and cannot be overwritten by fallback state; credential identity backfill preserves reset-credit fields; a low-quota trigger emits only the recommendation notification instead of a duplicate automatic-switch failure.
 - Since `0831v7`: the 10/30-minute all-account quota maintenance timer is no longer reset by the main view's 3/5-minute refresh cycle.
