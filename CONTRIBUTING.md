@@ -21,4 +21,4 @@ Keep changes focused, preserve the local-first boundary, and update documentatio
 
 Windows runtime captures and probe output must remain under the Git-ignored `.local-artifacts/` directory. Any public visual evidence must be regenerated from fully synthetic fixtures under the rules in [`docs/windows-port/README.md`](docs/windows-port/README.md).
 
-Palette packages remain declarative under `Resources/Palettes/<stable-id>/` and must pass `make test-palettes`. The Windows workspace under `windows/` retains its inherited `codexU` internal package names for compatibility.
+Palette packages remain declarative under `Resources/Palettes/<stable-id>/` and must pass `make test-palettes`. Historical palette IDs, project-local tool IDs and Windows package paths remain internal compatibility details, not current product names. Public product copy, issue routing and releases use Next.

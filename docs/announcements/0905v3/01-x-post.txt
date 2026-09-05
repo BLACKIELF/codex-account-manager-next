@@ -1,0 +1,6 @@
+Next 0905v3 更新了。
+单账号看官方额度、按需暖号；多账号看 Hub 任务状态、分设模型与速度。设置改成 5 个直达页。
+macOS 源码构建，暖号需配置且会耗额。
+
+给 Agent 复制这句
+请从 https://github.com/BLACKIELF/codex-account-manager-next 安装 Next；已有版本先备份并原位升级。

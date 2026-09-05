@@ -1,15 +1,15 @@
-# Reference implementations
+# Next 实现与第三方边界
 
-Checked on 2026-08-24. These projects informed mechanisms and threat modeling; no dependency or source file was copied into Next.
+Next 的当前产品结构、交互与发布渠道独立维护。代码来源、开源许可证和产品关联是不同问题。适用的来源与完整许可保留在 [THIRD_PARTY_NOTICES](../Resources/THIRD_PARTY_NOTICES.txt) 及各资源包许可证中。
 
-| Project | Snapshot | What was adopted | Boundary |
-|---|---:|---|---|
-| [shanggqm/codexU](https://github.com/shanggqm/codexU) | 331 stars, MIT | Existing SwiftUI shell, menu bar, local usage, task, palette, update, and Windows foundations | Direct upstream lineage; Next preserves attribution and MIT license |
-| [Loongphy/codex-auth](https://github.com/Loongphy/codex-auth) | 2,531 stars, MIT | Realtime per-account validation as a product requirement | Implemented independently through this project's existing Codex app-server reader |
-| [steipete/CodexBar](https://github.com/steipete/CodexBar) | 20,487 stars, MIT | Same-origin HTTPS thinking, explicit retry/cooldown policy, adaptive refresh discipline | Concepts only; no source copied and no new package added |
-| [Lampese/codex-switcher](https://github.com/Lampese/codex-switcher) | 657 stars, license not declared | Multi-account switching and quota-routing threat model | Concepts only because repository licensing was not explicit |
-| [777genius/claude-notifications-go](https://github.com/777genius/claude-notifications-go) | 792 stars, license not declared | Notification result separation and operational event shape | Concepts only; no source copied because licensing was not explicit |
+## 当前实现
 
-Feishu webhook constraints follow the official [custom bot documentation](https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot): HTTPS webhook, explicit user configuration, bounded sanitized card fields, and independent delivery failure.
+- 工作台与设置使用 SwiftUI/AppKit，沿用项目的 Domain、Providers、Services 和 UI 分层。
+- 隔离账号、执行偏好、Hub 状态与启动门禁由 Next 自己的服务组合负责，不向外部账号管理器转发控制操作。
+- 暖号使用有界的 Foundation 网络会话与最小 SSE 请求。相关参考协议的 MIT 声明随包保留。
+- 安全切换使用现有身份校验、文件锁、原子写入与回滚事务。
+- 飞书只允许显式配置的官方 Bot Webhook，凭据存于 Keychain，通知字段按既有脱敏模型发送。
 
-Next deliberately uses Foundation, Security.framework, SwiftUI/AppKit, POSIX file locking, and existing project services. No third-party runtime dependency was added for automatic switching or Feishu.
+## 维护原则
+
+不以品牌重命名为理由删除代码版权，不把历史目录名当成运行时依赖，也不声称整个项目从零原创。历史调研的热度数字与旧版产品架构不作为当前选型或功能证据。具体公开能力以 [README](../README.md) 与 [架构](../BLUEPRINT.md) 为准。

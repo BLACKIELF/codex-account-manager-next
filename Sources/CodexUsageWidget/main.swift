@@ -17,7 +17,7 @@ struct CodexAccountManagerNextMain {
         }
 
         if CommandLine.arguments.contains("--self-test-status-item") {
-            exit(StatusItemPresentationSelfTest.run() ? 0 : 1)
+            exit(StatusItemPresentationSelfTest.run() && SettingsPresentationSelfTest.run() ? 0 : 1)
         }
 
         if CommandLine.arguments.contains("--self-test-palettes") {
@@ -38,6 +38,14 @@ struct CodexAccountManagerNextMain {
             _ = NSApplication.shared
             let outputURL = URL(fileURLWithPath: CommandLine.arguments[screenshotIndex + 1])
             exit(PalettePreviewRenderer.renderDocumentationSettings(to: outputURL) ? 0 : 1)
+        }
+
+        if let previewIndex = CommandLine.arguments.firstIndex(of: "--render-settings-previews"),
+            CommandLine.arguments.indices.contains(previewIndex + 1)
+        {
+            _ = NSApplication.shared
+            let outputURL = URL(fileURLWithPath: CommandLine.arguments[previewIndex + 1], isDirectory: true)
+            exit(PalettePreviewRenderer.renderSettingsCatalog(to: outputURL) ? 0 : 1)
         }
 
         if let previewIndex = CommandLine.arguments.firstIndex(of: "--render-workspace-previews"),

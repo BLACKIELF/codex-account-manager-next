@@ -4,16 +4,20 @@
 
 [![CI](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml/badge.svg)](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml)
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111111?logo=apple)
-![Version 0905v1](https://img.shields.io/badge/version-0905v1-6C4DFF)
+![Version 0905v3](https://img.shields.io/badge/version-0905v3-6C4DFF)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-面向 macOS 的本地优先 Codex 工作台。一个账号也能清楚查看额度、选择任务模型；多个账号可以集中管理隔离环境、监控任务占用。支持 GPT-6 Astra，模型、思考强度和 Standard/Fast 速度会一起传给后续 CLI。
+Next 是面向 macOS 的本地优先 Codex 工作台，以独立产品名称、界面与发布渠道维护。一个账号也能清楚查看额度、按需自动暖号、选择任务模型；多个账号可以集中管理隔离环境、监控任务占用。支持 GPT-6 Astra，模型、思考强度和 Standard/Fast 速度会一起传给后续 CLI。
 
-当前版本：`0905v1` · `9.5.1 (13)`。项目非 OpenAI 官方产品，不提供账号、不增加额度，也不绕过登录、MFA 或平台限制。
+当前版本：`0905v3` · `9.5.3 (15)`。项目非 OpenAI 官方产品，不提供账号、不增加额度，也不绕过登录、MFA 或平台限制。
 
-![0905v1 单账号专注工作台，原生 SwiftUI 2× 预览](docs/images/0905v1/single-account-dark@2x.png)
+0905v3 重新设计设置界面：外观、菜单栏、自动化、工作区、关于五个分区直接切换；可点击主题预览和分段选择取代长表单。原有设置、账号数据和自动化规则不变。详见 [0905v3 更新说明](docs/release-notes-v9.5.3.md)。
 
-> 0905v1 图片由实际生产 SwiftUI 组件以 2× 渲染，工作台为 2160 × 1520 px。账号、额度、订阅日期均为演示数据，截图过程不连接 Hub、不读取真实凭据或 Keychain；“状态待确认”是未连接的真实界面表现。下文保留的 0904v2 局部截图对应未改动功能。
+0905v2 相比 0905v1：点击模型名或思考强度即可直接看到选项，不再经过同名二级菜单；账号卡、单账号工作台和菜单栏使用同一套修正。保存与 CLI 参数不变。详见 [0905v2 更新说明](docs/release-notes-v9.5.2.md)。
+
+![01 · Next 单账号工作台 · 2× 原生组件预览](docs/images/0905v3/01-next-single-account-workspace-zh-dark@2x.png)
+
+> 当前素材按 01–24 连续编号，来自 0905v3 的实际 SwiftUI 组件，使用原生 2× 渲染。工作台为 2160 × 1520 px，设置页为 760 × 1220 px。所有账号、额度与订阅日期均为演示数据，不连接 Hub、不读取真实凭据或 Keychain；“状态待确认”是未连接的真实界面表现。查看[高清图片与中文用途索引](docs/images/0905v3/README.md)。保留的 0904v2 提醒局部图会单独标记版本。
 
 ## 0905v1 更新重点
 
@@ -26,7 +30,7 @@
 
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。
 
-只有一个账号，还是同时管理多个账号？欢迎参与[下一版优化讨论](docs/feedback/0905v1-discussion.md)，告诉我们最希望省掉哪一步。这里也有可单独使用的 [0905v1 推文](docs/announcements/0905v1-social-post.md)。
+只有一个账号，还是同时管理多个账号？欢迎参与[下一版优化讨论](docs/feedback/0905v1-discussion.md)，告诉我们最希望省掉哪一步。这里有 [0905v3 的 X、小红书与公众号文案](docs/announcements/0905v3/README.md)，每份末尾都附项目地址与可复制的 Agent 安装指令。
 
 ## 功能地图
 
@@ -42,7 +46,7 @@
 
 ## 一个账号也能使用
 
-![0905v1 单账号菜单栏](docs/images/0905v1/single-account-menu-dark@2x.png)
+![03 · Next 单账号菜单栏](docs/images/0905v3/03-next-single-account-menu-zh-dark@2x.png)
 
 - 只有当前 Codex 登录时，直接查看额度，不要求注册第二个账号，不修改系统登录。
 - 单账号同样支持自动暖号。主动启用后，Next 按账号窗口与空闲状态发送最小请求，尝试启动下一轮计时；5 小时和 7 天分别控制，不必每轮手动发消息。暖号会消耗额度，条件与时间规律见[智能暖号](#智能暖号)。
@@ -50,7 +54,7 @@
 - 同一身份的系统入口与独立入口不会被算成两个账号。单账号模式隐藏无意义的批量按钮，原有高级功能保留在“账号管理与自动化”。
 - CLI 与暖号仍需要下面的 Hub 映射与新鲜状态；未配置 Hub 的单账号用户可以先只读监控。专注模式不会把“状态未知”伪装成“空闲”。
 
-![0905v1 多账号浅色工作台](docs/images/0905v1/multi-account-light@2x.png)
+![02 · Next 多账号浅色工作台](docs/images/0905v3/02-next-multi-account-workspace-zh-light@2x.png)
 
 ## 五个常用账号动作，边界完全不同
 
@@ -66,7 +70,7 @@
 
 ## 每账号执行偏好
 
-![0905v1 Astra 模型、思考强度、Fast 与应用到所有账号](docs/images/0905v1/astra-model-dark@2x.png)
+![04 · Next 模型、思考强度、Fast 与应用到所有账号](docs/images/0905v3/04-next-model-preferences-zh-dark@2x.png)
 
 每个独立账号保存一份执行偏好；修改后立即用于该账号后续启动的 CLI 及其默认子 Agent，不写入账号的 `config.toml`。
 
@@ -143,7 +147,7 @@ Next 从本机 `http://127.0.0.1:8787/api/overview` 读取 Hub 概览，以账�
 
 ## 智能暖号
 
-![0904v2 智能暖号 5 小时与 7 天独立开关](docs/images/0904v2/warm-up-controls@2x.png)
+![07 · Next 自动化设置，5 小时与 7 天独立开关](docs/images/0905v3/07-next-settings-automation-zh-dark@2x.png)
 
 5 小时与 7 天暖号分别开关，默认关闭，必须主动启用。
 
@@ -222,7 +226,21 @@ Next 读取官方 `windowDurationMins` 与 `resetsAt`。前者是窗口分钟数
 
 ## 个性化设置
 
-![0904v2 通用设置、主题与配色 Retina 功能截图](docs/images/0904v2/settings-general@2x.png)
+![05 · Next 外观设置，一级分区、主题预览和直接选择](docs/images/0905v3/05-next-settings-appearance-zh-dark@2x.png)
+
+设置按使用目的拆成五个一级分区，不再把暖号、外观和系统信息混在同一张长表中。
+
+| 分区 | 包含设置 |
+|---|---|
+| 外观 | 自动／浅色／深色主题预览、配色库、语言、面板透明度、额度环动效 |
+| 菜单栏 | 实时预览、恢复默认、显示样式、额度口径、指标与重置倒计时 |
+| 自动化 | 5 小时与 7 天暖号开关，以及额度消耗和忙碌保护说明 |
+| 工作区 | Runtime 来源、统计时区、置顶、后台驻留、全局快捷键 |
+| 关于 | 当前版本、Runtime、订阅计划、更新检查与开源来源 |
+
+![06 · Next 菜单栏设置，实时预览与直接选择](docs/images/0905v3/06-next-settings-menu-bar-zh-dark@2x.png)
+
+设置图为真实 SwiftUI 组件的 760 × 1220 px 原生 2× 渲染，使用隔离演示数据，不读取用户凭据或触发暖号。中文／English、浅色／深色共 20 个分区预览用于布局验收。
 
 - 菜单栏主要页面与设置页支持中文 / English；完整工作台、模型偏好编辑器和自动化中心目前仍以中文显示。
 - 跟随系统、浅色、深色。
@@ -245,7 +263,7 @@ Next 读取官方 `windowDurationMins` 与 `resetsAt`。前者是窗口分钟数
 
 ## 安装
 
-当前仓库未发布经过 Apple Developer ID 签名与公证的 `9.4.2` GitHub Release 安装包。最可靠的安装方式是从源码在目标 Mac 本机构建；不要把 Actions 产物当成已公证发行版。
+当前仓库未发布 `0905v3 / 9.5.3` GitHub Release 安装包，也未提供经过 Apple Developer ID 签名与公证的该版安装包。当前安装方式是从源码在目标 Mac 本机构建；不要把 Actions 产物当成已公证发行版。
 
 ```bash
 xcode-select --install
@@ -269,6 +287,12 @@ open "$HOME/Applications/CodexAccountManagerNext.app"
 ```
 
 如果已有 Next，请先退出正在运行的同一个 App，确认没有重复安装，再备份并覆盖该路径。不要把 Next 安装成第二个同名副本，也不要覆盖名称不同的旧版管理器。
+
+也可以把这句话交给有本机执行能力的 Agent：
+
+```text
+请从 https://github.com/BLACKIELF/codex-account-manager-next 安装 Codex Account Manager Next。先阅读 README 并检查系统要求与已有安装；已有 Next 就备份后原位升级，不新增副本；保留账号数据与当前 Codex 登录。完成后验证版本和启动。缺少权限、依赖或官方登录时告诉我，不绕过安全检查。
+```
 
 本地源码构建使用 ad-hoc 签名，不等于 Apple 公证。可检查完整性：
 
@@ -375,16 +399,16 @@ git diff --check
 
 `make run`、`make probe`、`make install`、真实登录、真实暖号、真实账号切换与真实飞书发送会接触本机或外部状态，必须在可信环境中由用户明确触发。纯测试通过也不能证明这些真实行为已经完成。
 
-## 版本、来源与许可
+## 版本与许可
 
-- 版本名称：`0905v1`
-- Marketing Version：`9.5.1`
-- Build：`13`
-- 基线设计：[docs/0826v1-IMPLEMENTATION.md](docs/0826v1-IMPLEMENTATION.md)
+- 版本名称：`0905v3`
+- Marketing Version：`9.5.3`
+- Build：`15`
+- 产品设计：[docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
+- 架构与边界：[BLUEPRINT.md](BLUEPRINT.md)
 - 安全边界：[SECURITY.md](SECURITY.md)
 - 完整历史：[CHANGELOG.md](CHANGELOG.md)
-- 上游：基于 [codexU](https://github.com/shanggqm/codexU) 的 SwiftUI 项目
-- 暖号协议参考：[qxcnm/Codex-Manager](https://github.com/qxcnm/Codex-Manager)，MIT 声明见 [THIRD_PARTY_NOTICES.txt](Resources/THIRD_PARTY_NOTICES.txt)
 - 许可证：[MIT](LICENSE)
+- 第三方代码与资源声明：[THIRD_PARTY_NOTICES.txt](Resources/THIRD_PARTY_NOTICES.txt)。独立品牌不改变保留适用版权与许可证的要求。
 
 欢迎通过 [Issue](https://github.com/BLACKIELF/codex-account-manager-next/issues) 报告可复现问题。提交前请移除账号邮箱、Token、Webhook、任务正文、日志中的私有路径和截图里的个人信息。

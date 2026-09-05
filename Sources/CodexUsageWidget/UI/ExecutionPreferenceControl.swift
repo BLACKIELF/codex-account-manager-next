@@ -108,6 +108,8 @@ struct ExecutionPreferenceControl: View {
                                     Text("\(effort.localizedTitle) · \(effort.displayName)").tag(effort)
                                 }
                             }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
                         } label: {
                             Text(draft.reasoningEffort.localizedTitle)
                                 .font(.system(size: 22, weight: .semibold))
@@ -125,6 +127,8 @@ struct ExecutionPreferenceControl: View {
                                     Text(model.displayName).tag(model)
                                 }
                             }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
                         } label: {
                             Text(draft.model.displayName)
                                 .font(.system(size: 15, weight: .medium))

@@ -45,14 +45,14 @@ struct PaletteSettingsView: View {
         let tokens = settings.paletteCatalog.resolve(id: descriptor.id, appearance: PaletteAppearance(colorScheme))
         return Button(action: onOpenLibrary) {
             HStack(spacing: 9) {
-                PaletteSwatches(tokens: tokens, diameter: 10)
+                PaletteSwatches(tokens: tokens, diameter: 13)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(descriptor.displayName)
+                    Text(settings.language.text("配色 · \(descriptor.displayName)", "Palette · \(descriptor.displayName)"))
                         .font(.system(size: settingsControlFontSize, weight: .semibold))
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
                     Text(settings.language.text("查看与选择配色", "Browse and choose palettes"))
-                        .font(.system(size: 8.5, weight: .medium))
+                        .font(.system(size: 10))
                         .foregroundStyle(Color.secondary)
                 }
                 Spacer(minLength: 4)
@@ -60,18 +60,18 @@ struct PaletteSettingsView: View {
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(Color.secondary)
             }
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 14)
             .frame(
                 maxWidth: .infinity,
-                minHeight: settingsControlVisualHeight,
+                minHeight: 52,
                 alignment: .leading
             )
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(FixedVisualPalette.controlFill(colorScheme))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(tokens.accent.primary.color.opacity(0.07))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .strokeBorder(tokens.selection.stroke.color, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(tokens.accent.primary.color.opacity(0.16), lineWidth: 1)
                     )
             )
         }

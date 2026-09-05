@@ -1,6 +1,6 @@
 # Palette Package v1
 
-codexU palettes are reviewed, built-in resource plugins. Adding a directory that satisfies this contract is enough for the app to discover it and expose it in General settings; no Swift registration is required.
+Next palettes are reviewed, built-in resource plugins. Adding a directory that satisfies this contract is enough for the app to discover it and expose it in Appearance settings; no Swift registration is required. Historical stable IDs remain unchanged for saved-preference compatibility.
 
 Start a contribution with the repository template:
 
@@ -96,7 +96,7 @@ SVGs are static data. Scripts, animation, text/fonts, images, foreign objects, e
 
 The entire package is whitelist validated. Root files are limited to `manifest.json`, `README.md`, and `LICENSE`; Token JSON belongs in `tokens/`, localization JSON in `localizations/`, the asset index at `assets/manifest.json`, and optional SVG files under `assets/light`, `assets/dark`, or `assets/shared`. `README.md` and `LICENSE` must be present and non-empty. Hidden, unknown, executable, linked, or out-of-layout files invalidate the whole package.
 
-Ring assets contain a complete transparent ring and no baked percentage. codexU applies the progress mask and positions caps. The primary and secondary rings must remain visually distinct rather than scaling one texture for both roles.
+Ring assets contain a complete transparent ring and no baked percentage. Next applies the progress mask and positions caps. The primary and secondary rings must remain visually distinct rather than scaling one texture for both roles.
 
 ## Review checklist
 

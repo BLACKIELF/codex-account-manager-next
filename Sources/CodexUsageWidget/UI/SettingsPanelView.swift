@@ -6,12 +6,9 @@ let settingsAccessoryColumnWidth: CGFloat = 184
 let settingsControlCornerRadius: CGFloat = 8
 let settingsSegmentHeight: CGFloat = 30
 let settingsControlVisualHeight: CGFloat = settingsSegmentHeight + 6
-let settingsSectionTitleFontSize: CGFloat = 12.5
-let settingsSectionDetailFontSize: CGFloat = 10
 let settingsRowTitleFontSize: CGFloat = 11.5
 let settingsRowDetailFontSize: CGFloat = 9.5
 let settingsControlFontSize: CGFloat = 11
-private let settingsContentTopInset: CGFloat = 12
 private let settingsSwitchWidth: CGFloat = 56
 private let settingsShortcutControlSpacing: CGFloat = 8
 private let settingsShortcutRecorderWidth: CGFloat = 108
@@ -134,6 +131,86 @@ struct TitlebarToolbarView: View {
     }
 }
 
+enum SettingsPage: String, CaseIterable, Identifiable {
+    case appearance
+    case menuBar
+    case automation
+    case workspace
+    case about
+
+    var id: String { rawValue }
+
+    func title(_ language: WidgetLanguage) -> String {
+        switch self {
+        case .appearance: return language.text("外观", "Look")
+        case .menuBar: return language.text("菜单栏", "Menu Bar")
+        case .automation: return language.text("自动化", "Automation")
+        case .workspace: return language.text("工作区", "Workspace")
+        case .about: return language.text("关于", "About")
+        }
+    }
+
+    func detail(_ language: WidgetLanguage) -> String {
+        switch self {
+        case .appearance: return language.text("让 Next 看起来、用起来都适合你。", "Make Next feel like your workspace.")
+        case .menuBar: return language.text("重要的额度，抬头就能看见。", "Keep the numbers that matter in sight.")
+        case .automation: return language.text("按你的节奏运行，由你决定是否开启。", "Your schedule. Automation stays opt-in.")
+        case .workspace: return language.text("数据口径、窗口行为与快捷入口。", "Data, window behavior and shortcuts.")
+        case .about: return language.text("本地优先。账号隔离。你保持控制。", "Local first. Isolated accounts. Your control.")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .appearance: return "paintpalette"
+        case .menuBar: return "menubar.rectangle"
+        case .automation: return "bolt.badge.clock"
+        case .workspace: return "rectangle.3.group"
+        case .about: return "info.circle"
+        }
+    }
+}
+
+struct NextSettingsHeader: View {
+    let language: WidgetLanguage
+    var onBack: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("NEXT")
+                        .font(.system(size: 23, weight: .black, design: .rounded))
+                        .tracking(1)
+                    Text(language.text("设置", "Settings"))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                Text("MAKE IT YOURS")
+                    .font(.system(size: 8, weight: .semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let onBack {
+                Button(action: onBack) {
+                    Label(language.text("返回", "Back"), systemImage: "arrow.left")
+                        .font(.system(size: 11, weight: .medium))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(language.text("返回账号概览", "Back to account overview"))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 17)
+        .padding(.bottom, 14)
+    }
+}
+
 struct SettingsPanelView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var store: UsageStore
@@ -142,292 +219,54 @@ struct SettingsPanelView: View {
     var compact = false
     var showsHeader = true
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.visualTokens) private var visualTokens
+    @State private var selectedPage: SettingsPage
+
+    init(
+        settings: AppSettings,
+        store: UsageStore,
+        updateStore: AppUpdateStore,
+        onOpenPaletteLibrary: @escaping () -> Void,
+        compact: Bool = false,
+        showsHeader: Bool = true,
+        initialPage: SettingsPage = .appearance
+    ) {
+        self.settings = settings
+        self.store = store
+        self.updateStore = updateStore
+        self.onOpenPaletteLibrary = onOpenPaletteLibrary
+        self.compact = compact
+        self.showsHeader = showsHeader
+        _selectedPage = State(initialValue: initialPage)
+    }
 
     private var language: WidgetLanguage { settings.language }
 
     var body: some View {
-        ZStack {
-            if !compact {
-                LiquidGlassWindowBackdrop(colorScheme: colorScheme)
+        VStack(spacing: 0) {
+            if showsHeader {
+                NextSettingsHeader(language: language)
             }
-
-            ScrollView(.vertical, showsIndicators: false) {
+            pageNavigation
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 12) {
-                    if showsHeader {
-                        settingsHeader
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(selectedPage.title(language))
+                            .font(.system(size: 20, weight: .bold))
+                        Text(selectedPage.detail(language))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    settingsSection(
-                        title: language.text("通用", "General"),
-                        detail: language.text("界面偏好", "Interface"),
-                        symbol: "slider.horizontal.3"
-                    ) {
-                        SettingsPickerRow(
-                            title: language.text("语言", "Language"),
-                            detail: language.text("影响主窗口、浮窗和设置窗口", "Applies to the main window, menu popover, and settings")
-                        ) {
-                            SettingsSegmentedControl(
-                                selection: $settings.language,
-                                options: [
-                                    SettingsSegmentOption(value: .zh, title: "中文"),
-                                    SettingsSegmentOption(value: .en, title: "English"),
-                                ],
-                                width: settingsAccessoryColumnWidth
-                            )
-                        }
-
-                        SettingsPickerRow(
-                            title: language.text("外观", "Appearance"),
-                            detail: language.text("默认跟随系统", "System is the default")
-                        ) {
-                            SettingsSegmentedControl(
-                                selection: $settings.themeMode,
-                                options: [
-                                    SettingsSegmentOption(value: .system, title: language.text("自动", "System")),
-                                    SettingsSegmentOption(value: .light, title: language.text("浅色", "Light")),
-                                    SettingsSegmentOption(value: .dark, title: language.text("深色", "Dark")),
-                                ],
-                                width: settingsAccessoryColumnWidth
-                            )
-                        }
-
-                        SettingsPickerRow(
-                            title: language.text("配色", "Color palette"),
-                            detail: language.text("精选内置配色，同时适配浅色与深色", "Curated palettes for both Light and Dark appearances")
-                        ) {
-                            PaletteSettingsView(settings: settings, onOpenLibrary: onOpenPaletteLibrary)
-                                .frame(width: settingsAccessoryColumnWidth)
-                        }
-
-                        SettingsPickerRow(
-                            title: language.text("透明度", "Transparency"),
-                            detail: language.text("调节菜单栏账号面板的玻璃浓度", "Adjusts the glass density of the account popover")
-                        ) {
-                            SettingsSegmentedControl(
-                                selection: $settings.accountMenuTransparency,
-                                options: [
-                                    SettingsSegmentOption(value: .clear, title: language.text("清晰", "Clear")),
-                                    SettingsSegmentOption(value: .standard, title: language.text("标准", "Standard")),
-                                    SettingsSegmentOption(value: .frosted, title: language.text("磨砂", "Frosted")),
-                                ],
-                                width: settingsAccessoryColumnWidth
-                            )
-                        }
-
-                        SettingsPickerRow(
-                            title: language.text("额度环动效", "Quota ring motion"),
-                            detail: language.text(
-                                "默认仅窗口置前且聚焦；省电仅悬停环带",
-                                "Default: frontmost and focused; Power Saving: ring hover only"
-                            )
-                        ) {
-                            SettingsSegmentedControl(
-                                selection: $settings.particleAnimationMode,
-                                options: [
-                                    SettingsSegmentOption(value: .standard, title: language.text("默认", "Default")),
-                                    SettingsSegmentOption(value: .powerSaving, title: language.text("省电", "Power Saving")),
-                                ],
-                                width: settingsAccessoryColumnWidth
-                            )
-                        }
-
-                        SettingsToggleRow(
-                            title: language.text("5 小时暖号", "5-hour warm-up"),
-                            detail: language.text(
-                                "各账号按自己的重置时间串行执行；周额度不足时暂停",
-                                "Run accounts serially at their own reset times; pause on low weekly quota"
-                            )
-                        ) {
-                            SettingsSwitchToggle(
-                                isOn: Binding(
-                                    get: { store.warmUpSelection.fiveHour },
-                                    set: { store.setWarmUpFiveHourEnabled($0) }
-                                ))
-                        }
-
-                        SettingsToggleRow(
-                            title: language.text("7 天暖号", "7-day warm-up"),
-                            detail: language.text(
-                                "各账号分别跟随自己的 7 天窗口",
-                                "Follow each account's own 7-day window"
-                            )
-                        ) {
-                            SettingsSwitchToggle(
-                                isOn: Binding(
-                                    get: { store.warmUpSelection.sevenDay },
-                                    set: { store.setWarmUpSevenDayEnabled($0) }
-                                ))
-                        }
-                    }
-
-                    settingsSection(
-                        title: "Runtime",
-                        detail: language.text("展示范围", "Display"),
-                        symbol: "cpu"
-                    ) {
-                        SettingsPickerRow(
-                            title: language.text("展示 Runtime", "Visible runtimes"),
-                            detail: language.text("主窗口和菜单栏浮窗中的 Runtime 范围", "Runtime scope in the main window and menu popover")
-                        ) {
-                            SettingsRuntimeMultiSelectControl(
-                                selectedScopes: settings.visibleRuntimeScopes,
-                                language: language
-                            ) { scope in
-                                settings.setRuntime(scope, visible: !settings.isRuntimeVisible(scope))
-                            }
-                            .help(runtimeSelectionHelp)
-                            .accessibilityLabel(language.text("展示 Runtime", "Visible runtimes"))
-                            .accessibilityValue(
-                                settings.visibleRuntimeScopes
-                                    .map(\.displayName)
-                                    .joined(separator: ", ")
-                            )
-                        }
-                    }
-
-                    settingsSection(
-                        title: language.text("数据与统计", "Data & Statistics"),
-                        detail: language.text("自然日口径", "Calendar-day basis"),
-                        symbol: "clock"
-                    ) {
-                        SettingsPickerRow(
-                            title: language.text("统计时区", "Statistics time zone"),
-                            detail: statisticsTimeZoneDetail
-                        ) {
-                            SettingsSegmentedControl(
-                                selection: statisticsTimeZoneSelectionBinding,
-                                options: [
-                                    SettingsSegmentOption(value: .system, title: language.text("跟随系统", "System")),
-                                    SettingsSegmentOption(value: .utc, title: "UTC"),
-                                    SettingsSegmentOption(value: .fixed, title: language.text("固定", "Fixed")),
-                                ],
-                                width: settingsAccessoryColumnWidth
-                            )
-                        }
-
-                        if store.statisticsPreference.selection == .fixed {
-                            SettingsPickerRow(
-                                title: language.text("固定时区", "Fixed time zone"),
-                                detail: language.text("使用 IANA 时区，自动处理夏令时", "Uses an IANA zone and observes daylight saving time")
-                            ) {
-                                Picker("", selection: statisticsFixedIdentifierBinding) {
-                                    ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { identifier in
-                                        Text(identifier).tag(identifier)
-                                    }
-                                }
-                                .labelsHidden()
-                                .controlSize(.small)
-                                .frame(
-                                    width: settingsAccessoryColumnWidth,
-                                    height: settingsControlVisualHeight
-                                )
-                            }
-                        }
-                    }
-
-                    settingsSection(
-                        title: language.text("状态栏", "Menu Bar"),
-                        detail: language.text("内容与显示密度", "Content and density"),
-                        symbol: "menubar.rectangle"
-                    ) {
-                        StatusItemSettingsView(settings: settings, store: store)
-                    }
-
-                    settingsSection(
-                        title: language.text("窗口", "Window"),
-                        detail: language.text("主窗口行为", "Main window"),
-                        symbol: "macwindow"
-                    ) {
-                        SettingsToggleRow(
-                            title: language.text("保持主窗口置顶", "Keep main window on top"),
-                            detail: language.text("适合需要持续观察用量时开启", "Use this when you need the usage view visible")
-                        ) {
-                            SettingsSwitchToggle(isOn: $settings.keepMainWindowOnTop)
-                        }
-
-                        SettingsToggleRow(
-                            title: language.text("关闭后继续后台运行", "Keep running after closing the window"),
-                            detail: language.text("关闭主窗口会隐藏 Dock 图标，可从菜单栏或快捷键再次打开", "Closing the main window hides the Dock icon; reopen from the menu bar or shortcut")
-                        ) {
-                            SettingsSwitchToggle(isOn: $settings.keepRunningWhenMainWindowClosed)
-                        }
-
-                        SettingsPickerRow(
-                            title: language.text("快捷键", "Shortcut"),
-                            detail: language.text(
-                                "默认 ⌘U；自定义需两个修饰键（含 ⌘ 或 ⌃）；仅能检测独占冲突",
-                                "Default: ⌘U. Custom: two modifiers including ⌘ or ⌃; only exclusive conflicts are detected"
-                            )
-                        ) {
-                            HStack(spacing: settingsShortcutControlSpacing) {
-                                ShortcutRecorderView(
-                                    shortcut: settings.globalShortcut,
-                                    language: language,
-                                    onRecord: settings.requestGlobalShortcut,
-                                    onClear: settings.clearGlobalShortcut
-                                )
-                                .frame(
-                                    width: settingsShortcutRecorderWidth,
-                                    height: settingsControlVisualHeight
-                                )
-
-                                Button {
-                                    settings.resetGlobalShortcut()
-                                } label: {
-                                    Text(language.text("恢复默认", "Restore Default"))
-                                        .font(.system(size: settingsControlFontSize, weight: .medium))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.78)
-                                        .frame(
-                                            width: settingsShortcutActionWidth,
-                                            height: settingsControlVisualHeight
-                                        )
-                                }
-                                .buttonStyle(.borderless)
-                                .disabled(
-                                    settings.globalShortcut == .default
-                                        && settings.globalShortcutError == nil
-                                )
-                            }
-                            .frame(width: settingsAccessoryColumnWidth, alignment: .trailing)
-                        }
-
-                        if let error = settings.globalShortcutError {
-                            SettingsErrorRow(
-                                title: language.text("快捷键不可用", "Shortcut unavailable"),
-                                message: error.message(language: language),
-                                currentValue: settings.globalShortcut.map {
-                                    language.text("当前仍使用 \($0.displayName)", "Still using \($0.displayName)")
-                                } ?? language.text("当前未设置全局快捷键", "No global shortcut is currently set")
-                            )
-                        }
-                    }
-
-                    settingsSection(
-                        title: language.text("系统", "System"),
-                        detail: language.text("状态与更新", "Status"),
-                        symbol: "gearshape.2"
-                    ) {
-                        SettingsValueRow(
-                            title: language.text("当前 Runtime", "Current runtime"),
-                            detail: language.text("主窗口数据范围", "Main window data scope"),
-                            value: store.selectedRuntimeScope.displayName
-                        )
-                        SettingsValueRow(
-                            title: language.text("计划状态", "Plan"),
-                            detail: language.text("来自本机账户读取结果", "Read from the local account result"),
-                            value: planLabel
-                        )
-                        AppUpdateSettingsRows(
-                            settings: settings,
-                            updateStore: updateStore,
-                            language: language
-                        )
-                    }
+                    .accessibilityAddTraits(.isHeader)
+                    pageContent
                 }
-                .padding(.horizontal, compact ? 12 : 20)
-                .padding(.top, compact ? 12 : settingsContentTopInset)
-                .padding(.bottom, 20)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("next.settings.page.\(selectedPage.rawValue)")
             }
+            .id(selectedPage)
         }
         .frame(width: compact ? CodexAccountMenuView.preferredSize.width : 480, alignment: .topLeading)
         .appVisualEnvironment(
@@ -436,6 +275,258 @@ struct SettingsPanelView: View {
             appearance: PaletteAppearance(colorScheme)
         )
         .readableForegroundHierarchy(colorScheme)
+    }
+
+    private var pageNavigation: some View {
+        HStack(spacing: 3) {
+            ForEach(SettingsPage.allCases) { page in
+                Button {
+                    selectedPage = page
+                } label: {
+                    VStack(spacing: 6) {
+                        Image(systemName: page.symbol)
+                            .font(.system(size: 15, weight: .medium))
+                            .frame(height: 18)
+                        Text(page.title(language))
+                            .font(.system(size: 9.5, weight: selectedPage == page ? .semibold : .medium))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(selectedPage == page ? visualTokens.accent.primary.color : Color.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(selectedPage == page ? visualTokens.accent.primary.color.opacity(0.10) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(page.title(language))
+                .accessibilityAddTraits(selectedPage == page ? .isSelected : [])
+                .accessibilityIdentifier("next.settings.tab.\(page.rawValue)")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 1)
+                .padding(.horizontal, 20)
+        }
+    }
+
+    @ViewBuilder private var pageContent: some View {
+        switch selectedPage {
+        case .appearance: appearancePage
+        case .menuBar:
+            VStack(spacing: 4) {
+                StatusItemSettingsView(settings: settings, store: store)
+            }
+        case .automation: automationPage
+        case .workspace: workspacePage
+        case .about: aboutPage
+        }
+    }
+
+    private var appearancePage: some View {
+        VStack(spacing: 6) {
+            SettingsAppearanceChooser(selection: $settings.themeMode, language: language)
+                .padding(.bottom, 4)
+            PaletteSettingsView(settings: settings, onOpenLibrary: onOpenPaletteLibrary)
+                .padding(.bottom, 6)
+            SettingsPickerRow(
+                title: language.text("语言", "Language"),
+                detail: ""
+            ) {
+                SettingsSegmentedControl(
+                    selection: $settings.language,
+                    options: [
+                        SettingsSegmentOption(value: .zh, title: "中文"),
+                        SettingsSegmentOption(value: .en, title: "English"),
+                    ],
+                    width: settingsAccessoryColumnWidth
+                )
+            }
+            SettingsPickerRow(
+                title: language.text("面板透明度", "Panel opacity"),
+                detail: language.text("调整菜单栏面板的背景浓度", "Background density of the menu popover")
+            ) {
+                SettingsSegmentedControl(
+                    selection: $settings.accountMenuTransparency,
+                    options: [
+                        SettingsSegmentOption(value: .clear, title: language.text("清晰", "Clear")),
+                        SettingsSegmentOption(value: .standard, title: language.text("标准", "Standard")),
+                        SettingsSegmentOption(value: .frosted, title: language.text("磨砂", "Frosted")),
+                    ],
+                    width: settingsAccessoryColumnWidth
+                )
+            }
+            SettingsPickerRow(
+                title: language.text("额度环动效", "Ring motion"),
+                detail: language.text("默认仅前台聚焦时播放；省电仅悬停时播放", "Default: frontmost and focused. Power Saving: ring hover only.")
+            ) {
+                SettingsSegmentedControl(
+                    selection: $settings.particleAnimationMode,
+                    options: [
+                        SettingsSegmentOption(value: .standard, title: language.text("默认", "Default")),
+                        SettingsSegmentOption(value: .powerSaving, title: language.text("省电", "Power Saving")),
+                    ],
+                    width: settingsAccessoryColumnWidth
+                )
+            }
+        }
+    }
+
+    private var automationPage: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsWarmUpCard(
+                interval: "5h",
+                title: language.text("5 小时暖号", "5-hour warm-up"),
+                detail: language.text(
+                    "按各账号自己的重置时间串行执行；周额度不足时暂停。",
+                    "Run accounts serially at their own reset times. Pause on low weekly quota."
+                ),
+                isOn: Binding(get: { store.warmUpSelection.fiveHour }, set: { store.setWarmUpFiveHourEnabled($0) })
+            )
+            SettingsWarmUpCard(
+                interval: "7d",
+                title: language.text("7 天暖号", "7-day warm-up"),
+                detail: language.text("分别跟随各账号自己的 7 天窗口。", "Follow each account's own 7-day window."),
+                isOn: Binding(get: { store.warmUpSelection.sevenDay }, set: { store.setWarmUpSevenDayEnabled($0) })
+            )
+            Label(language.text("先确认空闲，再自动运行", "Idle first. Then automate."), systemImage: "lock.shield")
+                .font(.system(size: 12, weight: .semibold))
+            Text(
+                language.text(
+                    "暖号会发送最小请求并消耗额度。以官方返回的窗口时间为准；账号忙碌、映射缺失或状态不明确时，不会启动。打开这个分区不会触发暖号。",
+                    "Warm-up sends a minimal request and uses quota. Official window times are authoritative. Busy accounts, missing mappings or unverified state block execution. Opening this page does not start warm-up."
+                )
+            )
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var workspacePage: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingsPickerRow(
+                title: language.text("数据来源", "Data sources"),
+                detail: language.text("至少保留一个 Runtime；不重复导入历史记录", "Keep at least one runtime. History is not re-imported.")
+            ) {
+                SettingsRuntimeMultiSelectControl(
+                    selectedScopes: settings.visibleRuntimeScopes, language: language
+                ) { scope in
+                    settings.setRuntime(scope, visible: !settings.isRuntimeVisible(scope))
+                }
+            }
+            SettingsPickerRow(title: language.text("统计时区", "Statistics zone"), detail: statisticsTimeZoneDetail) {
+                SettingsSegmentedControl(
+                    selection: statisticsTimeZoneSelectionBinding,
+                    options: [
+                        SettingsSegmentOption(value: .system, title: language.text("系统", "System")),
+                        SettingsSegmentOption(value: .utc, title: "UTC"),
+                        SettingsSegmentOption(value: .fixed, title: language.text("固定", "Fixed")),
+                    ],
+                    width: settingsAccessoryColumnWidth
+                )
+            }
+            if store.statisticsPreference.selection == .fixed {
+                SettingsPickerRow(
+                    title: language.text("固定时区", "Fixed zone"),
+                    detail: language.text("IANA 时区，自动处理夏令时", "IANA time zone with daylight-saving support")
+                ) {
+                    Picker(language.text("固定时区", "Fixed zone"), selection: statisticsFixedIdentifierBinding) {
+                        ForEach(TimeZone.knownTimeZoneIdentifiers, id: \.self) { identifier in
+                            Text(identifier).tag(identifier)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .frame(width: settingsAccessoryColumnWidth)
+                }
+            }
+            SettingsToggleRow(
+                title: language.text("主窗口置顶", "Always on top"),
+                detail: language.text("持续观察额度时，保持窗口可见", "Keep quota in view while you work")
+            ) {
+                SettingsSwitchToggle(isOn: $settings.keepMainWindowOnTop)
+            }
+            SettingsToggleRow(
+                title: language.text("关闭后留在菜单栏", "Stay in menu bar"),
+                detail: language.text("关闭窗口后继续运行，可从菜单栏或快捷键重新打开", "Keep running after closing. Reopen from the menu bar or shortcut.")
+            ) {
+                SettingsSwitchToggle(isOn: $settings.keepRunningWhenMainWindowClosed)
+            }
+            SettingsPickerRow(
+                title: language.text("全局快捷键", "Global shortcut"),
+                detail: language.text(
+                    "默认 ⌘U；自定义需两个修饰键（含 ⌘ 或 ⌃），仅检测独占冲突。",
+                    "Default ⌘U. Custom shortcuts need two modifiers including ⌘ or ⌃. Only exclusive conflicts can be detected."
+                )
+            ) {
+                HStack(spacing: settingsShortcutControlSpacing) {
+                    ShortcutRecorderView(
+                        shortcut: settings.globalShortcut, language: language,
+                        onRecord: settings.requestGlobalShortcut, onClear: settings.clearGlobalShortcut
+                    )
+                    .frame(width: settingsShortcutRecorderWidth, height: settingsControlVisualHeight)
+                    Button(language.text("重置", "Reset")) {
+                        settings.resetGlobalShortcut()
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.system(size: settingsControlFontSize))
+                    .frame(width: settingsShortcutActionWidth)
+                    .disabled(settings.globalShortcut == .default && settings.globalShortcutError == nil)
+                }
+            }
+            if let error = settings.globalShortcutError {
+                SettingsErrorRow(
+                    title: language.text("快捷键不可用", "Shortcut unavailable"),
+                    message: error.message(language: language),
+                    currentValue: settings.globalShortcut.map {
+                        language.text("当前仍使用 \($0.displayName)", "Still using \($0.displayName)")
+                    } ?? language.text("当前未设置全局快捷键", "No global shortcut is currently set")
+                )
+            }
+        }
+    }
+
+    private var aboutPage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("NEXT")
+                    .font(.system(size: 32, weight: .black, design: .rounded))
+                    .tracking(2)
+                Spacer()
+                Text(updateStore.result.currentVersion)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            Text("Codex Account Manager Next")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+            SettingsValueRow(
+                title: language.text("当前 Runtime", "Current runtime"),
+                detail: language.text("当前工作台的数据范围", "Data scope of the current workspace"),
+                value: store.selectedRuntimeScope.displayName
+            )
+            SettingsValueRow(
+                title: language.text("订阅计划", "Plan"),
+                detail: language.text("来自本机账号读取结果", "Read from the local account result"),
+                value: store.snapshot.account?.planType?.uppercased() ?? "LOCAL"
+            )
+            AppUpdateSettingsRows(settings: settings, updateStore: updateStore, language: language)
+            Text(
+                language.text(
+                    "独立开源项目，非 OpenAI 官方产品。\n基于 codexU，遵循 MIT 许可。",
+                    "An independent open-source project, not an official OpenAI product.\nBased on codexU, under the MIT license."
+                )
+            )
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var statisticsTimeZoneSelectionBinding: Binding<StatisticsTimeZoneSelection> {
@@ -453,97 +544,125 @@ struct SettingsPanelView: View {
         Binding(
             get: { store.statisticsPreference.fixedIdentifier },
             set: { identifier in
-                store.updateStatisticsTimeZone(
-                    StatisticsTimeZonePreference(selection: .fixed, fixedIdentifier: identifier)
-                )
+                store.updateStatisticsTimeZone(StatisticsTimeZonePreference(selection: .fixed, fixedIdentifier: identifier))
             }
         )
     }
 
     private var statisticsTimeZoneDetail: String {
-        if let message = store.statisticsTransitionMessage {
-            return message
-        }
+        if let message = store.statisticsTransitionMessage { return message }
         let identity = store.multiRuntimeSnapshot.statisticsIdentity
         switch identity.preference.selection {
         case .system:
-            return language.text(
-                "默认按系统自然日统计 · \(identity.resolvedIdentifier)",
-                "Uses the system calendar day · \(identity.resolvedIdentifier)"
-            )
+            return language.text("跟随系统自然日 · \(identity.resolvedIdentifier)", "System calendar day · \(identity.resolvedIdentifier)")
         case .utc:
-            return language.text("UTC 日界线，便于对照官方", "UTC day boundary for easier official comparison")
+            return language.text("UTC 日界线，便于对照官方", "UTC day boundary for official comparison")
         case .fixed:
             return identity.resolvedIdentifier
         }
     }
+}
 
-    private var settingsHeader: some View {
-        HStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 38, height: 38)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(language.text("设置", "Settings"))
-                    .font(.system(size: 22, weight: .semibold))
-                Text(language.text("账号、额度与运行时控制", "Accounts, quotas, and runtimes"))
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Text("NEXT")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-    }
+private struct SettingsAppearanceChooser: View {
+    @Binding var selection: WidgetThemeMode
+    @Environment(\.visualTokens) private var visualTokens
+    let language: WidgetLanguage
 
-    private func settingsSection<Content: View>(
-        title: String,
-        detail: String,
-        symbol: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 9) {
-                Image(systemName: symbol)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.system(size: settingsSectionTitleFontSize, weight: .semibold))
-                    Text(detail)
-                        .font(.system(size: settingsSectionDetailFontSize, weight: .medium))
-                        .foregroundStyle(.secondary)
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(WidgetThemeMode.allCases, id: \.rawValue) { mode in
+                Button {
+                    selection = mode
+                } label: {
+                    VStack(spacing: 7) {
+                        preview(mode)
+                            .frame(height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 7))
+                        HStack(spacing: 4) {
+                            Text(title(mode))
+                            Image(systemName: selection == mode ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 10))
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(selection == mode ? visualTokens.accent.primary.color : Color.secondary)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 11)
+                            .fill(Color.primary.opacity(selection == mode ? 0.06 : 0.025))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11)
+                            .strokeBorder(selection == mode ? visualTokens.accent.primary.color : Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+                    .contentShape(Rectangle())
                 }
-                Spacer(minLength: 8)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-
-            Divider()
-                .padding(.leading, 43)
-
-            VStack(spacing: 0) {
-                content()
+                .buttonStyle(.plain)
+                .accessibilityLabel(language.text("外观：\(title(mode))", "Appearance: \(title(mode))"))
+                .accessibilityAddTraits(selection == mode ? .isSelected : [])
             }
         }
-        .cardBackground(cornerRadius: 12, elevated: false)
     }
 
-    private var planLabel: String {
-        store.snapshot.account?.planType?.uppercased() ?? "LOCAL"
+    private func title(_ mode: WidgetThemeMode) -> String {
+        switch mode {
+        case .system: return language.text("自动", "System")
+        case .light: return language.text("浅色", "Light")
+        case .dark: return language.text("深色", "Dark")
+        }
     }
 
-    private var runtimeSelectionHelp: String {
-        language.text(
-            "点击切换展示范围；至少需要保留一个 Runtime",
-            "Click to change visibility; at least one runtime must stay visible"
-        )
+    private func preview(_ mode: WidgetThemeMode) -> some View {
+        let dark = Color(red: 0.12, green: 0.14, blue: 0.19)
+        let light = Color(red: 0.92, green: 0.94, blue: 0.98)
+        return ZStack(alignment: .topLeading) {
+            HStack(spacing: 0) {
+                Rectangle().fill(mode == .dark ? dark : light)
+                Rectangle().fill(mode == .light ? light : dark)
+            }
+            HStack(alignment: .top, spacing: 6) {
+                RoundedRectangle(cornerRadius: 2).fill(visualTokens.accent.primary.color.opacity(0.65))
+                    .frame(width: 14)
+                VStack(alignment: .leading, spacing: 5) {
+                    Capsule().fill(visualTokens.accent.primary.color).frame(width: 30, height: 3)
+                    Capsule().fill(Color.gray.opacity(0.45)).frame(height: 3)
+                    Capsule().fill(Color.gray.opacity(0.3)).frame(width: 26, height: 3)
+                }
+                .padding(.top, 4)
+            }
+            .padding(8)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct SettingsWarmUpCard: View {
+    @Environment(\.visualTokens) private var visualTokens
+    let interval: String
+    let title: String
+    let detail: String
+    let isOn: Binding<Bool>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Text(interval)
+                    .font(.system(size: 26, weight: .light, design: .rounded))
+                    .foregroundStyle(visualTokens.accent.primary.color)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+                SettingsSwitchToggle(isOn: isOn)
+                    .accessibilityLabel(title)
+            }
+            Text(detail)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 14).fill(visualTokens.accent.primary.color.opacity(0.065)))
     }
 }
 
@@ -561,6 +680,7 @@ struct SettingsPickerRow<Control: View>: View {
     var body: some View {
         SettingsBaseRow(title: title, detail: detail) {
             control
+                .accessibilityLabel(title)
         }
     }
 }
@@ -584,8 +704,8 @@ struct SettingsSegmentedControl<Value: Hashable>: View {
             }
         }
         .labelsHidden()
-        .pickerStyle(.menu)
-        .controlSize(.small)
+        .pickerStyle(.segmented)
+        .controlSize(.regular)
         .frame(width: width, height: settingsControlVisualHeight)
     }
 }
@@ -689,6 +809,7 @@ struct SettingsToggleRow<Control: View>: View {
     var body: some View {
         SettingsBaseRow(title: title, detail: detail) {
             control
+                .accessibilityLabel(title)
         }
     }
 }
@@ -766,27 +887,24 @@ struct SettingsBaseRow<Accessory: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .center, spacing: 12) {
                 Text(title)
                     .font(.system(size: settingsRowTitleFontSize, weight: .semibold))
                     .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                accessory
+                    .frame(width: settingsAccessoryColumnWidth, alignment: .trailing)
+            }
+            if !detail.isEmpty {
                 Text(detail)
                     .font(.system(size: settingsRowDetailFontSize, weight: .regular))
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            accessory
-                .frame(width: settingsAccessoryColumnWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) {
-            Divider().padding(.leading, 12)
-        }
     }
 }
 

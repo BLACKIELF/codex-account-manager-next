@@ -93,7 +93,7 @@ enum WorkspacePreviewRenderer {
         }
     }
 
-    private static func renderView<Content: View>(_ view: Content, size: CGSize, scheme: ColorScheme, to url: URL) throws {
+    static func renderView<Content: View>(_ view: Content, size: CGSize, scheme: ColorScheme, to url: URL) throws {
         let host = NSHostingView(rootView: view)
         // An unattached host rasterizes its SwiftUI layers at 1x. Attach to a
         // non-presented window so AppKit supplies the display's backing scale.

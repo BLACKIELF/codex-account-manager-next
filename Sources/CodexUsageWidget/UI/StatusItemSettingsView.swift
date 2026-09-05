@@ -4,7 +4,6 @@ struct StatusItemSettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var store: UsageStore
     @State private var preferenceError: StatusItemPreferenceError?
-    @Environment(\.visualTokens) private var visualTokens
 
     private var language: WidgetLanguage { settings.language }
     private var preferences: StatusItemPreferences { settings.statusItemPreferences }
@@ -12,7 +11,11 @@ struct StatusItemSettingsView: View {
     var body: some View {
         StatusItemPreviewRow(
             settings: settings,
-            store: store
+            store: store,
+            onRestore: {
+                settings.resetStatusItemPreferences()
+                preferenceError = nil
+            }
         )
 
         SettingsPickerRow(
@@ -69,25 +72,6 @@ struct StatusItemSettingsView: View {
             )
         }
 
-        SettingsBaseRow(
-            title: language.text("默认设置", "Defaults"),
-            detail: language.text("恢复单一 7 天剩余额度圆环", "Restore the single 7-day remaining-quota ring")
-        ) {
-            Button {
-                settings.resetStatusItemPreferences()
-                preferenceError = nil
-            } label: {
-                Label(language.text("恢复默认", "Restore"), systemImage: "arrow.counterclockwise")
-                    .font(.system(size: settingsControlFontSize, weight: .semibold))
-                    .foregroundStyle(visualTokens.selection.foreground.color)
-                    .frame(width: settingsAccessoryColumnWidth, height: settingsControlVisualHeight)
-                    .background(
-                        RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous)
-                            .fill(visualTokens.selection.fill.color)
-                    )
-            }
-            .buttonStyle(.plain)
-        }
     }
 
     private var displayModeBinding: Binding<StatusItemDisplayMode> {
@@ -166,6 +150,7 @@ struct StatusItemSettingsView: View {
 private struct StatusItemPreviewRow: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var store: UsageStore
+    let onRestore: () -> Void
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.visualTokens) private var visualTokens
 
@@ -173,12 +158,22 @@ private struct StatusItemPreviewRow: View {
     private let renderer = StatusItemRenderer()
 
     var body: some View {
-        SettingsBaseRow(
-            title: settings.language.text("实时预览", "Live preview"),
-            detail: settings.language.text("与菜单栏使用同一套绘制器", "Uses the same renderer as the menu bar")
-        ) {
+        VStack(spacing: 9) {
+            HStack {
+                Text(settings.language.text("实时预览", "Live preview"))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(action: onRestore) {
+                    Label(settings.language.text("恢复默认", "Restore"), systemImage: "arrow.counterclockwise")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .buttonStyle(.borderless)
+                .help(settings.language.text("恢复单一 7 天剩余额度圆环", "Restore the single 7-day remaining-quota ring"))
+                .accessibilityLabel(settings.language.text("恢复菜单栏默认设置", "Restore menu bar defaults"))
+            }
             ZStack {
-                RoundedRectangle(cornerRadius: settingsControlCornerRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(previewBackground)
                 Image(nsImage: renderer.render(presentation, tokens: visualTokens, appearance: previewAppearance))
                     .interpolation(.high)
@@ -187,10 +182,11 @@ private struct StatusItemPreviewRow: View {
                         height: presentation.imageSize.height
                     )
             }
-            .frame(width: settingsAccessoryColumnWidth, height: settingsControlVisualHeight)
-            .accessibilityLabel("Codex Control")
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .accessibilityLabel(settings.language.text("Next 菜单栏预览", "Next menu bar preview"))
             .accessibilityValue(presentation.accessibilityValue)
         }
+        .padding(.bottom, 8)
     }
 
     private var source: StatusItemSourceSnapshot {

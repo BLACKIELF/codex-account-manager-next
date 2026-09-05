@@ -1138,6 +1138,7 @@ struct CodexAccountMenuView: View {
     let openFullWindow: () -> Void
     let openPaletteLibrary: () -> Void
     let quit: () -> Void
+    let initialSettingsPage: SettingsPage
 
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -1153,6 +1154,7 @@ struct CodexAccountMenuView: View {
         updateStore: AppUpdateStore,
         paletteCatalog: PaletteCatalog,
         initialScreen: Screen = .home,
+        initialSettingsPage: SettingsPage = .appearance,
         openFullWindow: @escaping () -> Void,
         openPaletteLibrary: @escaping () -> Void,
         quit: @escaping () -> Void
@@ -1164,6 +1166,7 @@ struct CodexAccountMenuView: View {
         self.openFullWindow = openFullWindow
         self.openPaletteLibrary = openPaletteLibrary
         self.quit = quit
+        self.initialSettingsPage = initialSettingsPage
         _screen = State(initialValue: initialScreen)
     }
 
@@ -1192,7 +1195,11 @@ struct CodexAccountMenuView: View {
         ZStack {
             menuBackdrop
             VStack(spacing: 0) {
-                header
+                if screen == .settings {
+                    NextSettingsHeader(language: settings.language) { changeScreen(.home) }
+                } else {
+                    header
+                }
                 Group {
                     switch screen {
                     case .home:
@@ -1280,6 +1287,11 @@ struct CodexAccountMenuView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            if screen == .settings {
+                colorScheme == .dark
+                    ? Color(red: 0.085, green: 0.095, blue: 0.12)
+                    : Color(red: 0.97, green: 0.98, blue: 0.99)
+            }
         }
         .ignoresSafeArea()
     }
@@ -1320,16 +1332,8 @@ struct CodexAccountMenuView: View {
                     Image(systemName: "chevron.left")
                 }
                 .buttonStyle(AccountMenuIconButtonStyle())
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(screen == .accounts ? text("账号", "Accounts") : text("设置", "Settings"))
-                        .font(.system(size: 17, weight: .semibold))
-                    if screen == .settings {
-                        Text("NEXT CONTROL")
-                            .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                            .tracking(1.1)
-                            .foregroundStyle(.tint)
-                    }
-                }
+                Text(text("账号", "Accounts"))
+                    .font(.system(size: 17, weight: .semibold))
             }
 
             Spacer(minLength: 8)
@@ -1854,30 +1858,33 @@ struct CodexAccountMenuView: View {
                 updateStore: updateStore,
                 onOpenPaletteLibrary: openPaletteLibrary,
                 compact: true,
-                showsHeader: false
+                showsHeader: false,
+                initialPage: initialSettingsPage
             )
             .frame(maxHeight: .infinity)
 
-            HStack(spacing: 9) {
+            HStack(spacing: 12) {
                 Button {
                     openFullWindow()
                 } label: {
-                    Label(text("打开完整窗口", "Open Full Window"), systemImage: "macwindow")
+                    Label(text("打开工作台", "Open workspace"), systemImage: "arrow.up.right.square")
                 }
-                .buttonStyle(AccountGlassButtonStyle(tint: .blue, foreground: .white))
+                .buttonStyle(.plain)
+                Spacer()
                 Button {
                     quit()
                 } label: {
-                    Image(systemName: "power")
+                    Label(text("退出 Next", "Quit Next"), systemImage: "power")
                 }
-                .buttonStyle(AccountGlassButtonStyle(tint: .clear, foreground: .primary))
-                .frame(width: 44)
-                .help(text("退出", "Quit"))
-                .accessibilityLabel(text("退出", "Quit"))
+                .buttonStyle(.plain)
             }
-            .padding(14)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 15)
             .overlay(alignment: .top) {
-                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 0.5)
+                Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 1)
+                    .padding(.horizontal, 20)
             }
         }
     }

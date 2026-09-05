@@ -1,5 +1,7 @@
 # 只有一个 Codex 账号，也能看额度、自动暖号
 
+> 本页保留 0905v1 历史文案。当前版本请使用 [0905v3 的 X、小红书与公众号文案](0905v3/README.md)。
+
 Codex Account Manager Next 更新到 0905v1，加入了 GPT-6 Astra，也重新整理了单账号和多账号的界面。这是一款 macOS 原生工具，源码和高清界面图已经放在 GitHub。
 
 如果你只有一个账号，最实用的功能很直接。
@@ -36,3 +38,7 @@ Codex Account Manager Next 更新到 0905v1，加入了 GPT-6 Astra，也重新�
 你现在用一个账号，还是多个账号？如果下一版只能帮你少做一步，你最希望省掉哪一步？欢迎带着具体场景留言，或到 GitHub 提 Issue。反馈前记得去掉邮箱、凭据和任务正文。
 
 https://github.com/BLACKIELF/codex-account-manager-next
+
+给 Agent 复制这句
+
+请从 https://github.com/BLACKIELF/codex-account-manager-next 安装 Next。先读 README 并检查已有安装；已有版本先备份再原位升级，保留账号数据和当前 Codex 登录，不新增副本。

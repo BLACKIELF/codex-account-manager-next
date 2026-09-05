@@ -2,6 +2,45 @@ import AppKit
 import SwiftUI
 
 enum PalettePreviewRenderer {
+    static func renderSettingsCatalog(to directory: URL) -> Bool {
+        let suiteName = "CodexManagerNext.settings-catalog.\(UUID().uuidString)"
+        let fixtureRoot = FileManager.default.temporaryDirectory.appendingPathComponent("next-settings-catalog-\(UUID().uuidString)")
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return false }
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+            try? FileManager.default.removeItem(at: fixtureRoot)
+        }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let catalog = PaletteCatalog.loadFromMainBundle()
+            let settings = AppSettings(defaults: defaults, paletteCatalog: catalog)
+            let store = WorkspacePreviewRenderer.fixtureStore(accountCount: 0, root: fixtureRoot)
+            let updateStore = AppUpdateStore(settings: settings)
+            for language in WidgetLanguage.allCases {
+                settings.language = language
+                for scheme in [ColorScheme.dark, .light] {
+                    settings.themeMode = scheme == .dark ? .dark : .light
+                    let appearance = scheme == .dark ? "dark" : "light"
+                    for page in SettingsPage.allCases {
+                        let view = CodexAccountMenuView(
+                            store: store, settings: settings, updateStore: updateStore, paletteCatalog: catalog,
+                            initialScreen: .settings, initialSettingsPage: page,
+                            openFullWindow: {}, openPaletteLibrary: {}, quit: {}
+                        )
+                        try WorkspacePreviewRenderer.renderView(
+                            view, size: CodexAccountMenuView.preferredSize, scheme: scheme,
+                            to: directory.appendingPathComponent("settings-\(page.rawValue)-\(language.rawValue)-\(appearance)@2x.png")
+                        )
+                    }
+                }
+            }
+            return true
+        } catch {
+            print("settings catalog render failed")
+            return false
+        }
+    }
+
     static func renderBuiltIns(to outputDirectory: URL) -> Bool {
         let catalog = PaletteCatalog.loadFromMainBundle()
         do {

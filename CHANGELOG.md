@@ -1,5 +1,34 @@
 # Changelog
 
+## 9.5.3 / 0905v3 - 2026-09-05
+
+- 重新设计设置界面：Next 品牌页头、五个一级分区与轻量页脚，取代继承的长表单和层叠卡片。
+- 外观新增三种可点击主题预览；语言、透明度、动效、菜单栏样式及统计时区的小范围选项直接展示。
+- 菜单栏预览与恢复默认放在同一区域；暖号独立成页，明确窗口规则、额度消耗与空闲保护；工作区集中数据来源、时区、窗口及快捷键。
+- 保留全部设置、原有持久化键与业务回调；补齐偏好往返测试、五个分区的中英文标签检查及 20 张原生 Retina 2× 隔离预览。
+- 保留 0905v2 的模型与思考强度一级菜单修正。
+- 公开素材统一为 Next 品牌，24 张原生 2× 图片按序编号并附用途索引；新增 X、小红书、公众号发布稿与 Agent 安装指令。
+- 当前产品设计与架构说明改为 Next 实际能力，清理过时的宣传素材；适用版权、许可证与内部兼容标识保留。
+
+### English
+
+- Rebuilt Settings around a Next-branded header, five direct sections and a quiet footer instead of the inherited long form.
+- Added clickable appearance previews and inline segmented choices for common settings.
+- Grouped menu-bar preview/reset, isolated warm-up controls with their safeguards, and consolidated workspace preferences without changing persistence or business callbacks.
+- Added preference round-trip regression checks and 20 isolated 2× native previews across both languages and appearances.
+
+## 9.5.2 / 0905v2 - 2026-09-05
+
+- 模型和思考强度菜单直接展开选项，去除原生 Picker 自动生成的同名二级菜单；保留当前选中标记和键盘导航。
+- 共享控件同步覆盖账号卡、单账号工作台和菜单栏；不改变即时保存、CLI 参数、Fast、恢复默认或应用到所有账号的行为。
+- 检查其余菜单与选择器，保留目录、登录方式等有效选择，以及现有账号安全门禁。
+
+### English
+
+- Flattened the model and reasoning-effort menus while retaining native selection marks and keyboard navigation.
+- Applied the shared-control fix to account cards, the single-account workspace and menu bar without changing persistence, CLI arguments, Fast, reset or Apply to All.
+- Audited remaining selectors and preserved meaningful directory/login choices and account safety gates.
+
 ## 9.5.1 / 0905v1 - 2026-09-05
 
 - 新增 GPT-6 Astra：六档 CLI 思考强度、Standard/Fast、主 Agent 与默认子 Agent 参数一致；已有设置和默认 Sol/High 保持不变。
@@ -256,7 +285,7 @@
 - Added local analytics JSON output for trend, project, and tool data in `--dump-json`.
 - Added foreground pin mode while keeping `Command + U` as a temporary foreground toggle.
 - Fixed heatmap month labels so each month starts on the week column containing that month's first day.
-- Documented the v0.3.0 product requirements in `docs/PRD-v0.3.0.md`.
+- Documented the historical v0.3.0 product requirements; that superseded document remains available in Git history.
 
 ## 0.2.0 - 2026-07-01
 

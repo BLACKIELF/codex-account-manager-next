@@ -4,16 +4,20 @@
 
 [![CI](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml/badge.svg)](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml)
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111111?logo=apple)
-![Version 0905v1](https://img.shields.io/badge/version-0905v1-6C4DFF)
+![Version 0905v3](https://img.shields.io/badge/version-0905v3-6C4DFF)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A local-first macOS workspace for one or multiple Codex accounts. Inspect official quota, choose GPT-6 Astra or another task model, and pass the model, reasoning effort and Standard/Fast speed to an isolated CLI. Multiple accounts retain occupancy monitoring and isolated account homes.
+Next is a local-first macOS workspace for one or multiple Codex accounts, maintained under its own product identity, interface and release channel. Inspect official quota, opt into warm-up, choose GPT-6 Astra or another task model, and pass model, reasoning effort and Standard/Fast speed to an isolated CLI. Multiple accounts retain occupancy monitoring and isolated account homes.
 
-Current version: `0905v1` · `9.5.1 (13)`. This is not an official OpenAI product. It does not provide accounts, increase quota, or bypass login, MFA, or platform restrictions.
+Current version: `0905v3` · `9.5.3 (15)`. This is not an official OpenAI product. It does not provide accounts, increase quota, or bypass login, MFA, or platform restrictions.
 
-![0905v1 single-account workspace, production SwiftUI at 2x](docs/images/0905v1/single-account-dark@2x.png)
+0905v3 rebuilds Settings into five direct sections: Look, Menu Bar, Automation, Workspace and About. Clickable appearance previews and segmented choices replace the long form while retaining existing preferences, account data and automation rules. See the [0905v3 notes](docs/release-notes-v9.5.3.md).
 
-> 0905v1 images render the production SwiftUI components at 2×; workspace images are 2160 × 1520 px. Accounts, quota and dates are synthetic. The renderer does not connect to Hub or read real credentials or Keychain. Unconfirmed task status accurately represents the disconnected fixture. Older 0904v2 detail captures below document unchanged features.
+0905v2 versus 0905v1: clicking the model name or reasoning effort opens its choices directly, removing the redundant submenu in account cards, the single-account workspace and menu bar. Persistence and CLI arguments are unchanged. See the [0905v2 notes](docs/release-notes-v9.5.2.md).
+
+![01 · Next single-account workspace, production SwiftUI at 2x](docs/images/0905v3/01-next-single-account-workspace-zh-dark@2x.png)
+
+> The current 01–24 media set renders production 0905v3 SwiftUI at native 2×. Workspace images are 2160 × 1520 px and Settings are 760 × 1220 px. Accounts, quota and dates are synthetic; rendering does not connect to Hub or read real credentials or Keychain. Unconfirmed status accurately represents the disconnected fixture. See the [numbered high-resolution image index](docs/images/0905v3/README.md). Retained 0904v2 alert details are labelled separately.
 
 ## What changed in 0905v1
 
@@ -26,7 +30,7 @@ Current version: `0905v1` · `9.5.1 (13)`. This is not an official OpenAI produc
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.
 
-Using one account or several? Join the [next-version feedback discussion](docs/feedback/0905v1-discussion.md) and tell us which repeated step you would most like to remove. A [Chinese social post](docs/announcements/0905v1-social-post.md) is also available. The discussion contains proposals, not shipped features or a committed roadmap.
+Using one account or several? Join the [next-version feedback discussion](docs/feedback/0905v1-discussion.md) and tell us which repeated step you would most like to remove. [0905v3 copy for X, Xiaohongshu and WeChat](docs/announcements/0905v3/README.md) includes the project URL and an Agent installation prompt. The discussion contains proposals, not shipped features or a committed roadmap.
 
 ## Feature map
 
@@ -42,7 +46,7 @@ The full window is a unified workspace, without a duplicate Inspection page or p
 
 ## Using one account
 
-![0905v1 single-account menu bar](docs/images/0905v1/single-account-menu-dark@2x.png)
+![03 · Next single-account menu bar](docs/images/0905v3/03-next-single-account-menu-zh-dark@2x.png)
 
 - Monitor the existing Codex login without registering a second account or changing system identity.
 - Enable automatic warm-up for that one account to attempt starting the next quota window without sending a message manually each time. Five-hour and seven-day controls are independent; warm-up consumes allowance and requires the safeguards explained under [Smart warm-up](#smart-warm-up).
@@ -50,7 +54,7 @@ The full window is a unified workspace, without a duplicate Inspection page or p
 - System and managed copies of the same identity count as one account. Statistics and advanced management remain accessible; redundant bulk controls are hidden.
 - CLI and warm-up still require the Hub mapping and fresh state described below. Without Hub, single-account monitoring remains read-only; unknown availability never becomes an artificial idle state.
 
-![0905v1 multi-account light workspace](docs/images/0905v1/multi-account-light@2x.png)
+![02 · Next multi-account light workspace](docs/images/0905v3/02-next-multi-account-workspace-zh-light@2x.png)
 
 ## Five common account actions with different boundaries
 
@@ -66,7 +70,7 @@ Low-quota automation exposes no launch or switch action. It displays a candidate
 
 ## Per-account execution preference
 
-![0905v1 Astra, effort, Fast and Apply to All](docs/images/0905v1/astra-model-dark@2x.png)
+![04 · Next Astra, effort, Fast and Apply to All](docs/images/0905v3/04-next-model-preferences-zh-dark@2x.png)
 
 Each independent account stores one execution preference. A change immediately affects later CLI launches and their default subagents without editing the account's `config.toml`.
 
@@ -143,7 +147,7 @@ The old fixed `gpt-5.6-sol + high` configuration baseline has been removed so a 
 
 ## Smart warm-up
 
-![0904v2 independent five-hour and seven-day Smart Warm-up controls](docs/images/0904v2/warm-up-controls@2x.png)
+![07 · Next independent five-hour and seven-day warm-up controls](docs/images/0905v3/07-next-settings-automation-zh-dark@2x.png)
 
 The 5-hour and 7-day warm-up controls are independent, off by default, and opt-in.
 
@@ -220,7 +224,19 @@ The legacy manager does not share Next's switch lock. Do not switch accounts in 
 
 ## Personalization
 
-![0904v2 General Settings, appearance, and palette Retina feature capture](docs/images/0904v2/settings-general@2x.png)
+![15 · Next Settings: direct sections, theme previews and inline choices](docs/images/0905v3/15-next-settings-appearance-en-light@2x.png)
+
+Settings are grouped by purpose rather than one long mixed form.
+
+| Section | Controls |
+|---|---|
+| Look | System/Light/Dark appearance previews, palettes, language, opacity and ring motion |
+| Menu Bar | Live preview/reset, display style, quota direction, metrics and reset countdown |
+| Automation | Independent 5-hour/7-day warm-up controls with quota and occupancy safeguards |
+| Workspace | Runtime sources, statistics zone, always-on-top, background residency and shortcut |
+| About | Version, current runtime, plan, update checks and open-source provenance |
+
+The settings captures render production SwiftUI at 760 × 1220 px, native 2×, with isolated synthetic data. They do not read user credentials or start warm-up. Twenty section previews cover both languages and appearances.
 
 - The menu-bar popover and Settings support Chinese/English; the full workspace, model editor and Automation Center are currently Chinese-only.
 - System, Light, and Dark appearance.
@@ -243,7 +259,7 @@ The legacy manager does not share Next's switch lock. Do not switch accounts in 
 
 ## Installation
 
-The repository currently has no public `9.4.2` GitHub Release package signed with Apple Developer ID and notarized by Apple. The reliable path is a local source build on the target Mac. Do not treat an Actions artifact as a notarized distribution.
+The repository currently has no `0905v3 / 9.5.3` GitHub Release installer, and no Apple Developer ID-signed and notarized installer for this version. Install from a local source build on the target Mac. Do not treat an Actions artifact as a notarized distribution.
 
 ```bash
 xcode-select --install
@@ -267,6 +283,12 @@ open "$HOME/Applications/CodexAccountManagerNext.app"
 ```
 
 For an existing Next installation, quit that exact app, check for duplicates, retain a recoverable backup, and overwrite the same path. Do not create a second same-named copy or replace a differently named legacy manager.
+
+You can give an Agent with local execution access this prompt:
+
+```text
+Install Codex Account Manager Next from https://github.com/BLACKIELF/codex-account-manager-next. Read the README and check system requirements and existing installations first. If Next is already installed, back it up and upgrade in place without creating a duplicate. Preserve account data and the current Codex login. Verify the installed version and launch. Ask me when permissions, dependencies or official login are needed; do not bypass security checks.
+```
 
 Local builds use an ad-hoc signature, which is not Apple notarization. Verify structural integrity with:
 
@@ -373,16 +395,16 @@ git diff --check
 
 `make run`, `make probe`, `make install`, real login, real warm-up, real account switching, and real Feishu sends touch local or external state and require an explicit user action in a trusted environment. Pure tests do not prove those live behaviors were exercised.
 
-## Version, provenance, and license
+## Version and license
 
-- Version name: `0905v1`
-- Marketing version: `9.5.1`
-- Build: `13`
-- Baseline design: [docs/0826v1-IMPLEMENTATION.md](docs/0826v1-IMPLEMENTATION.md)
+- Version name: `0905v3`
+- Marketing version: `9.5.3`
+- Build: `15`
+- Product design: [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
+- Architecture and boundaries: [BLUEPRINT.md](BLUEPRINT.md)
 - Security boundary: [SECURITY.md](SECURITY.md)
 - Full history: [CHANGELOG.md](CHANGELOG.md)
-- Upstream: a SwiftUI project derived from [codexU](https://github.com/shanggqm/codexU)
-- Warm-up protocol reference: [qxcnm/Codex-Manager](https://github.com/qxcnm/Codex-Manager); MIT notice in [THIRD_PARTY_NOTICES.txt](Resources/THIRD_PARTY_NOTICES.txt)
 - License: [MIT](LICENSE)
+- Third-party code and resource notices: [THIRD_PARTY_NOTICES.txt](Resources/THIRD_PARTY_NOTICES.txt). Independent branding does not remove applicable copyright or license requirements.
 
 Reproducible reports are welcome through [Issues](https://github.com/BLACKIELF/codex-account-manager-next/issues). Before posting, remove account email, tokens, webhooks, task bodies, private paths from logs, and personal details from screenshots.
