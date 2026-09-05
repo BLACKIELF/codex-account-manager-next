@@ -27,7 +27,7 @@ enum PaletteCatalogSelfTest {
             "codexu.forbidden-city-red",
             "codexu.thousand-li-landscape",
             "codexu.dunhuang-apsara",
-            "codexu.orchid-dawn"
+            "codexu.orchid-dawn",
         ]
         for paletteID in builtInPaletteIDs {
             expect(catalog.contains(paletteID), "\(paletteID) should load")
@@ -79,7 +79,8 @@ enum PaletteCatalogSelfTest {
                 expect(tokens.identity.paletteID == paletteID, "\(paletteID) should preserve its resolved identity")
                 expect(tokens.identity.appearance == appearance, "\(paletteID) should resolve both appearances")
                 expect(tokens.assets.isEmpty, "\(paletteID) should remain color-token-only in this phase")
-                expect(tokens.data.series.count == 3 && tokens.data.modelSeries?.count == 9 && tokens.data.valueProgress.count == 3, "\(paletteID) should expose complete data roles")
+                expect(
+                    tokens.data.series.count == 3 && tokens.data.modelSeries?.count == 9 && tokens.data.valueProgress.count == 3, "\(paletteID) should expose complete data roles")
             }
         }
 
@@ -216,10 +217,14 @@ enum PaletteCatalogSelfTest {
             expect(!invalidCatalog.contains("community.forbidden"), "a package containing Swift should be isolated")
             expect(invalidCatalog.diagnostics.contains(where: { $0.paletteID == "community.forbidden" && $0.ruleID == "PAL008" }), "forbidden files should emit PAL008")
             expect(!invalidCatalog.contains("community.missing-docs"), "a package missing README and LICENSE should be isolated")
-            expect(invalidCatalog.diagnostics.contains(where: { $0.paletteID == "community.missing-docs" && $0.ruleID == "PAL010" }), "missing package documentation should emit PAL010")
+            expect(
+                invalidCatalog.diagnostics.contains(where: { $0.paletteID == "community.missing-docs" && $0.ruleID == "PAL010" }),
+                "missing package documentation should emit PAL010")
             expect(invalidCatalog.contains("community.deprecated"), "deprecated packages should remain resolvable for existing preferences")
             expect(!invalidCatalog.descriptors(language: "en").contains(where: { $0.id == "community.deprecated" }), "deprecated packages should not be offered for new selection")
-            expect(invalidCatalog.descriptors(language: "en", includingDeprecatedID: "community.deprecated").contains(where: { $0.id == "community.deprecated" }), "the currently selected deprecated package should remain visible")
+            expect(
+                invalidCatalog.descriptors(language: "en", includingDeprecatedID: "community.deprecated").contains(where: { $0.id == "community.deprecated" }),
+                "the currently selected deprecated package should remain visible")
         } catch {
             failures.append("could not construct invalid package fixture: \(error.localizedDescription)")
         }

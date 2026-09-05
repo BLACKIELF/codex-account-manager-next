@@ -16,11 +16,38 @@ fail() {
   FAILURES=$((FAILURES + 1))
 }
 
+SWIFT_SOURCES=()
+while IFS= read -r -d '' source; do
+  if [[ -f "$source" ]]; then
+    SWIFT_SOURCES+=("$source")
+  fi
+done < <(git ls-files -z --cached --others --exclude-standard -- \
+  'Sources/CodexUsageWidget/*.swift' 'Sources/CodexUsageWidget/**/*.swift')
+
+if (( ${#SWIFT_SOURCES[@]} == 0 )); then
+  printf 'Memory risk gate: no Swift sources found\n' >&2
+  exit 2
+fi
+
+scan_regex() {
+  local pattern="$1"
+  local matches
+  local status=0
+  matches="$(/usr/bin/grep -nH -E -- "$pattern" "${SWIFT_SOURCES[@]}")" || status=$?
+  if (( status > 1 )); then
+    printf 'Memory risk gate: source scan failed for pattern: %s\n' "$pattern" >&2
+    return "$status"
+  fi
+  printf '%s' "$matches"
+}
+
 forbid_regex() {
   local pattern="$1"
   local description="$2"
   local matches
-  matches="$(rg -n "$pattern" Sources/CodexUsageWidget -g '*.swift' || true)"
+  if ! matches="$(scan_regex "$pattern")"; then
+    exit 2
+  fi
   if [[ -n "$matches" ]]; then
     fail "$description"
     printf '%s\n' "$matches" >"$REPORT_DIR/forbidden-$FAILURES.txt"
@@ -36,10 +63,20 @@ require_literal() {
   fi
 }
 
+require_swift_literal() {
+  local literal="$1"
+  local description="$2"
+  if ! /usr/bin/grep -Fq -- "$literal" "${SWIFT_SOURCES[@]}"; then
+    fail "$description"
+  fi
+}
+
 count_regex() {
   local pattern="$1"
   local matches
-  matches="$(rg -n "$pattern" Sources/CodexUsageWidget -g '*.swift' || true)"
+  if ! matches="$(scan_regex "$pattern")"; then
+    return 2
+  fi
   if [[ -z "$matches" ]]; then
     printf '0'
   else
@@ -55,7 +92,9 @@ forbid_regex 'readDataToEndOfFile' '发现无界 readDataToEndOfFile；必须改
 forbid_regex 'standardError[[:space:]]*=[[:space:]]*Pipe\(' '发现未证明会被排空的 stderr Pipe；必须消费或重定向到 nullDevice'
 forbid_regex 'read\(upToCount: self\.maximumReadChunkBytes\)' '发现 app-server 使用 Foundation 定长 pipe 读取；长连接必须使用能立即返回部分数据的 POSIX read'
 
-repeating_timers="$(rg -n 'Timer\.scheduledTimer\(.*repeats: true' Sources/CodexUsageWidget -g '*.swift' || true)"
+if ! repeating_timers="$(scan_regex 'Timer\.scheduledTimer\(.*repeats: true')"; then
+  exit 2
+fi
 if [[ -n "$repeating_timers" ]]; then
   while IFS= read -r timer_line; do
     if [[ "$timer_line" != *'[weak self]'* ]]; then
@@ -72,37 +111,29 @@ require_literal Sources/CodexUsageWidget/Services/AFUnixWebSocket.swift \
   'payloadLength == 127' '共享 daemon WebSocket 缺少 64 位帧长度处理'
 require_literal Sources/CodexUsageWidget/Services/AFUnixWebSocket.swift \
   'SecRandomCopyBytes' '共享 daemon WebSocket 客户端帧缺少安全随机掩码'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'POSIXPipeReader.readChunk(' '一次性额度读取没有使用可返回部分数据的 POSIX 分块读取'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'from: outputDescriptor' '一次性额度读取没有连接到独立的 POSIX pipe descriptor'
-require_literal Sources/CodexUsageWidget/main.swift \
-  '--self-test-app-server-pipe' '缺少 app-server 部分响应读取自测入口'
+require_swift_literal 'POSIXPipeReader.readChunk(' '一次性额度读取没有使用可返回部分数据的 POSIX 分块读取'
+require_swift_literal 'from: outputDescriptor' '一次性额度读取没有连接到独立的 POSIX pipe descriptor'
+require_swift_literal '--self-test-app-server-pipe' '缺少 app-server 部分响应读取自测入口'
+require_literal scripts/self-tests.txt \
+  '--self-test-app-server-pipe' '统一自测清单没有包含 app-server 部分响应读取回归测试'
 require_literal scripts/build-release-artifacts.sh \
-  '--self-test-app-server-pipe' '发布包装没有执行 app-server 部分响应读取回归测试'
+  'make test' '发布包装没有复用统一自测入口'
 require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
   'pendingThreadListIDs.first' 'thread/list 缺少单一在途请求约束'
 require_literal Sources/CodexUsageWidget/Services/CodexAppServerTaskClient.swift \
   'threadListTimeoutSeconds' 'thread/list 缺少超时回收'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'private static let memorySessionUsageCacheLimit' 'session 内存缓存缺少独立数量上限'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'private static let maximumPersistentCacheBytes' '持久缓存读取缺少字节上限'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'releaseSessionUsageWorkingSet()' '完成聚合后没有释放 session 工作集'
+require_swift_literal 'private static let memorySessionUsageCacheLimit' 'session 内存缓存缺少独立数量上限'
+require_swift_literal 'private static let maximumPersistentCacheBytes' '持久缓存读取缺少字节上限'
+require_swift_literal 'releaseSessionUsageWorkingSet()' '完成聚合后没有释放 session 工作集'
 forbid_regex 'let parsedSessions:.*SessionUsageCacheEntry' '发现全量保留 SessionUsageCacheEntry；session 聚合必须依赖有界缓存并逐项处理'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'let sourceByThreadId = Dictionary(' '分支去重缺少轻量 source 索引，可能退化为全量保留 session entry'
+require_swift_literal 'let sourceByThreadId = Dictionary(' '分支去重缺少轻量 source 索引，可能退化为全量保留 session entry'
 require_literal Sources/CodexUsageWidget/Services/PerformanceMonitor.swift \
   'summary.samples.removeFirst' '性能操作样本缺少淘汰逻辑'
 require_literal Sources/CodexUsageWidget/Services/PerformanceMonitor.swift \
   'self.resources.removeFirst' '性能资源样本缺少淘汰逻辑'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'NotificationCenter.default.removeObserver(systemTimeZoneObserver)' 'UsageStore observer 缺少对应清理'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'windowObservers.forEach(NotificationCenter.default.removeObserver)' '窗口 observer 集合缺少统一清理'
-require_literal Sources/CodexUsageWidget/main.swift \
-  'NSEvent.removeMonitor(monitor)' '全局/局部事件 monitor 缺少对应清理'
+require_swift_literal 'NotificationCenter.default.removeObserver(systemTimeZoneObserver)' 'UsageStore observer 缺少对应清理'
+require_swift_literal 'windowObservers.forEach(NotificationCenter.default.removeObserver)' '窗口 observer 集合缺少统一清理'
+require_swift_literal 'NSEvent.removeMonitor(monitor)' '全局/局部事件 monitor 缺少对应清理'
 
 if ! git diff --check >/dev/null; then
   fail 'git diff --check 未通过'

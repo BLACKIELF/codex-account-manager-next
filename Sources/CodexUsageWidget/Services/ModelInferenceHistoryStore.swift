@@ -27,11 +27,11 @@ enum ModelInferenceHistoryStore {
 
     static func load(fileManager: FileManager = .default, now: Date) -> ModelInferenceHistoryArchive {
         guard let url = archiveURL(fileManager: fileManager),
-              let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
-              Int64(values.fileSize ?? 0) <= maximumArchiveBytes,
-              let data = try? Data(contentsOf: url),
-              let envelope = try? JSONDecoder().decode(DiskEnvelope.self, from: data),
-              envelope.version == schemaVersion
+            let values = try? url.resourceValues(forKeys: [.fileSizeKey]),
+            Int64(values.fileSize ?? 0) <= maximumArchiveBytes,
+            let data = try? Data(contentsOf: url),
+            let envelope = try? JSONDecoder().decode(DiskEnvelope.self, from: data),
+            envelope.version == schemaVersion
         else {
             return ModelInferenceHistoryArchive(recordingStartedAt: now)
         }
@@ -45,15 +45,11 @@ enum ModelInferenceHistoryStore {
     ) -> Bool {
         guard let url = archiveURL(fileManager: fileManager) else { return false }
         do {
-            try fileManager.createDirectory(
-                at: url.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.sortedKeys]
             let data = try encoder.encode(DiskEnvelope(version: schemaVersion, archive: archive))
             guard Int64(data.count) <= maximumArchiveBytes else { return false }
-            try data.write(to: url, options: .atomic)
+            try PrivateLocalFileStore.write(data, to: url, fileManager: fileManager)
             return true
         } catch {
             return false

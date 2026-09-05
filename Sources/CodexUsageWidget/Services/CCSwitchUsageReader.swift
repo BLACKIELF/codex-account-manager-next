@@ -21,9 +21,9 @@ func replacingGrokSessionShare(
 
 func customTokenCount(fromWanText text: String) -> Int64? {
     guard let wan = Double(text.replacingOccurrences(of: ",", with: ".")),
-          wan.isFinite,
-          wan > 0,
-          wan <= Double(Int64.max) / 10_000
+        wan.isFinite,
+        wan > 0,
+        wan <= Double(Int64.max) / 10_000
     else { return nil }
     return Int64(wan * 10_000)
 }
@@ -105,7 +105,7 @@ enum CCSwitchUsageError: LocalizedError, Equatable {
             return "未找到本机历史数据"
         case .sqliteMissing:
             return "未找到系统 sqlite3"
-        case let .unsupportedSchema(version):
+        case .unsupportedSchema(let version):
             return "本机历史数据版本为 \(version)，当前暂不支持"
         case .incompatibleSchema:
             return "本机历史数据格式不兼容"
@@ -125,10 +125,11 @@ final class CCSwitchUsageReader {
 
     init(databaseURL: URL? = nil, sqliteURL: URL? = nil) {
         let environment = ProcessInfo.processInfo.environment
-        self.databaseURL = databaseURL
+        self.databaseURL =
+            databaseURL
             ?? environment["CAMNEXT_CC_SWITCH_DB_OVERRIDE"].map(URL.init(fileURLWithPath:))
             ?? FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".cc-switch/cc-switch.db")
+            .appendingPathComponent(".cc-switch/cc-switch.db")
         if let sqliteURL {
             self.sqliteURL = sqliteURL
         } else {
@@ -145,13 +146,13 @@ final class CCSwitchUsageReader {
         guard sqliteURL != nil else { return .failure(.sqliteMissing) }
 
         guard let schema = try? query(schemaQuery).first,
-              let version = int(schema["user_version"])
+            let version = int(schema["user_version"])
         else { return .failure(.queryFailed) }
         guard version == Self.supportedSchemaVersion else {
             return .failure(.unsupportedSchema(version))
         }
         guard int(schema["log_columns"]) == 10,
-              int(schema["rollup_columns"]) == 9
+            int(schema["rollup_columns"]) == 9
         else { return .failure(.incompatibleSchema) }
 
         let calendar = context.statistics.calendar
@@ -171,10 +172,13 @@ final class CCSwitchUsageReader {
         )
         guard let row = try? query(queryText).first else { return .failure(.queryFailed) }
         guard int(row["overlap_days"]) == 0 else { return .failure(.overlappingSources) }
-        guard let allAgentsRows = try? query(allAgentsQuery(
-            todayEpoch: Int64(todayStart.timeIntervalSince1970),
-            todayKey: formatter.string(from: todayStart)
-        )) else { return .failure(.queryFailed) }
+        guard
+            let allAgentsRows = try? query(
+                allAgentsQuery(
+                    todayEpoch: Int64(todayStart.timeIntervalSince1970),
+                    todayKey: formatter.string(from: todayStart)
+                ))
+        else { return .failure(.queryFailed) }
         let allAgentsShares = allAgentsRows.compactMap { shareRow -> AgentTokenShare? in
             guard let name = shareRow["agent"] as? String else { return nil }
             return AgentTokenShare(name: name, tokens: int64(shareRow["real_total"]) ?? 0)
@@ -183,21 +187,22 @@ final class CCSwitchUsageReader {
         let detailRecordAt = int64(row["latest_created_at"])
             .flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil }
         let rollupRecordAt = (row["latest_rollup_date"] as? String).flatMap(formatter.date(from:))
-        return .success(CCSwitchUsageSummary(
-            requestCount: int64(row["request_count"]) ?? 0,
-            freshInputTokens: int64(row["fresh_input_tokens"]) ?? 0,
-            outputTokens: int64(row["output_tokens"]) ?? 0,
-            cacheReadTokens: int64(row["cache_read_tokens"]) ?? 0,
-            cacheCreationTokens: int64(row["cache_creation_tokens"]) ?? 0,
-            realTotalTokens: int64(row["real_total_tokens"]) ?? 0,
-            todayTokens: int64(row["today_tokens"]) ?? 0,
-            sevenDayTokens: int64(row["seven_day_tokens"]) ?? 0,
-            schemaVersion: version,
-            recordedAt: [detailRecordAt, rollupRecordAt].compactMap { $0 }.max(),
-            allAgentsRealTotalTokens: allAgentsShares.reduce(Int64(0)) { $0 + $1.tokens },
-            allAgentsTodayTokens: allAgentsToday,
-            allAgentsShares: allAgentsShares.sorted { $0.tokens > $1.tokens }
-        ))
+        return .success(
+            CCSwitchUsageSummary(
+                requestCount: int64(row["request_count"]) ?? 0,
+                freshInputTokens: int64(row["fresh_input_tokens"]) ?? 0,
+                outputTokens: int64(row["output_tokens"]) ?? 0,
+                cacheReadTokens: int64(row["cache_read_tokens"]) ?? 0,
+                cacheCreationTokens: int64(row["cache_creation_tokens"]) ?? 0,
+                realTotalTokens: int64(row["real_total_tokens"]) ?? 0,
+                todayTokens: int64(row["today_tokens"]) ?? 0,
+                sevenDayTokens: int64(row["seven_day_tokens"]) ?? 0,
+                schemaVersion: version,
+                recordedAt: [detailRecordAt, rollupRecordAt].compactMap { $0 }.max(),
+                allAgentsRealTotalTokens: allAgentsShares.reduce(Int64(0)) { $0 + $1.tokens },
+                allAgentsTodayTokens: allAgentsToday,
+                allAgentsShares: allAgentsShares.sorted { $0.tokens > $1.tokens }
+            ))
     }
 
     private var schemaQuery: String {
@@ -391,16 +396,16 @@ enum CCSwitchUsageReaderSelfTest {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
             try createFixture(at: database)
             let context = RuntimeLoadContext.live(now: Date())
-            guard case let .success(summary) = CCSwitchUsageReader(databaseURL: database).load(context: context),
-                  summary.requestCount == 5,
-                  summary.realTotalTokens == 1_397,
-                  summary.allAgentsRealTotalTokens == 1_547,
-                  summary.allAgentsTodayTokens == 1_317,
-                  summary.allAgentsShares.map(\.name) == ["codex", "claude"],
-                  summary.allAgentsShares.map(\.tokens) == [1_397, 150],
-                  summary.todayTokens == 1_167,
-                  summary.sevenDayTokens == 1_397,
-                  summary.recordedAt.map({ abs($0.timeIntervalSince(context.now)) < 2 }) == true
+            guard case .success(let summary) = CCSwitchUsageReader(databaseURL: database).load(context: context),
+                summary.requestCount == 5,
+                summary.realTotalTokens == 1_397,
+                summary.allAgentsRealTotalTokens == 1_547,
+                summary.allAgentsTodayTokens == 1_317,
+                summary.allAgentsShares.map(\.name) == ["codex", "claude"],
+                summary.allAgentsShares.map(\.tokens) == [1_397, 150],
+                summary.todayTokens == 1_167,
+                summary.sevenDayTokens == 1_397,
+                summary.recordedAt.map({ abs($0.timeIntervalSince(context.now)) < 2 }) == true
             else {
                 print("CC Switch reader self-test failed: unexpected summary")
                 return false
@@ -426,14 +431,14 @@ enum CCSwitchUsageReaderSelfTest {
             try execute(
                 database: zcodeDatabase,
                 sql: """
-                CREATE TABLE turn_usage (
-                  session_id TEXT PRIMARY KEY, turn_id TEXT, status TEXT, started_at INTEGER,
-                  input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER,
-                  cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER
-                );
-                INSERT INTO turn_usage VALUES ('s1','t1','ok',\(Int64(Date().timeIntervalSince1970 * 1000)),1000,100,0,0,600);
-                INSERT INTO turn_usage VALUES ('s2','t2','ok',1,50,10,5,2,3);
-                """
+                    CREATE TABLE turn_usage (
+                      session_id TEXT PRIMARY KEY, turn_id TEXT, status TEXT, started_at INTEGER,
+                      input_tokens INTEGER, output_tokens INTEGER, reasoning_tokens INTEGER,
+                      cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER
+                    );
+                    INSERT INTO turn_usage VALUES ('s1','t1','ok',\(Int64(Date().timeIntervalSince1970 * 1000)),1000,100,0,0,600);
+                    INSERT INTO turn_usage VALUES ('s2','t2','ok',1,50,10,5,2,3);
+                    """
             )
             let zcodeUsage = ZCodeUsageReader.usage(
                 todayStart: Calendar.current.startOfDay(for: Date()),
@@ -444,32 +449,34 @@ enum CCSwitchUsageReaderSelfTest {
                 print("CC Switch reader self-test failed: zcode usage totals")
                 return false
             }
-            guard ZCodeUsageReader.usage(
-                todayStart: Date(),
-                fileManager: fileManager,
-                homeDirectory: directory.appendingPathComponent("empty-home", isDirectory: true)
-            ) == nil else {
+            guard
+                ZCodeUsageReader.usage(
+                    todayStart: Date(),
+                    fileManager: fileManager,
+                    homeDirectory: directory.appendingPathComponent("empty-home", isDirectory: true)
+                ) == nil
+            else {
                 print("CC Switch reader self-test failed: zcode missing database must stay nil")
                 return false
             }
             let grokMerged = replacingGrokSessionShare(
                 in: [
                     AgentTokenShare(name: "codex", tokens: 100),
-                    AgentTokenShare(name: "grokbuild", tokens: 25)
+                    AgentTokenShare(name: "grokbuild", tokens: 25),
                 ],
                 with: 80
             )
             guard grokMerged.map(\.name) == ["codex", "Grok"],
-                  grokMerged.map(\.tokens) == [100, 80]
+                grokMerged.map(\.tokens) == [100, 80]
             else {
                 print("CC Switch reader self-test failed: Grok session source replacement")
                 return false
             }
             guard customTokenCount(fromWanText: "5000") == 50_000_000,
-                  customTokenCount(fromWanText: "1,5") == 15_000,
-                  customTokenCount(fromWanText: "inf") == nil,
-                  customTokenCount(fromWanText: "1e999") == nil,
-                  AgentTokenShare(name: "codex", tokens: 1).id
+                customTokenCount(fromWanText: "1,5") == 15_000,
+                customTokenCount(fromWanText: "inf") == nil,
+                customTokenCount(fromWanText: "1e999") == nil,
+                AgentTokenShare(name: "codex", tokens: 1).id
                     != AgentTokenShare(name: "codex", tokens: 1, manual: true).id
             else {
                 print("CC Switch reader self-test failed: custom token input boundary")
@@ -486,25 +493,27 @@ enum CCSwitchUsageReaderSelfTest {
     private static func createFixture(at database: URL) throws {
         let now = Int64(Date().timeIntervalSince1970)
         let key = dayKey(for: Date().addingTimeInterval(-24 * 60 * 60))
-        try execute(database: database, sql: """
-        PRAGMA user_version=16;
-        CREATE TABLE proxy_request_logs (
-          request_id TEXT PRIMARY KEY, app_type TEXT, model TEXT, input_tokens INTEGER,
-          output_tokens INTEGER, cache_read_tokens INTEGER, cache_creation_tokens INTEGER,
-          input_token_semantics INTEGER, data_source TEXT, status_code INTEGER, created_at INTEGER
-        );
-        CREATE TABLE usage_daily_rollups (
-          date TEXT, app_type TEXT, request_count INTEGER, success_count INTEGER,
-          input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
-          cache_creation_tokens INTEGER, input_token_semantics INTEGER
-        );
-        INSERT INTO proxy_request_logs VALUES
-          ('proxy','codex','gpt-test',1000,100,600,0,1,'proxy',200,\(now)),
-          ('duplicate','codex','gpt-test',1000,100,600,0,1,'codex_session',200,\(now)),
-          ('fresh','codex','gpt-fresh',50,10,5,2,2,'codex_session',200,\(now)),
-          ('claude-proxy','claude','claude-test',100,50,0,0,0,'proxy',200,\(now));
-        INSERT INTO usage_daily_rollups VALUES ('\(key)','codex',3,3,200,30,20,0,0);
-        """)
+        try execute(
+            database: database,
+            sql: """
+                PRAGMA user_version=16;
+                CREATE TABLE proxy_request_logs (
+                  request_id TEXT PRIMARY KEY, app_type TEXT, model TEXT, input_tokens INTEGER,
+                  output_tokens INTEGER, cache_read_tokens INTEGER, cache_creation_tokens INTEGER,
+                  input_token_semantics INTEGER, data_source TEXT, status_code INTEGER, created_at INTEGER
+                );
+                CREATE TABLE usage_daily_rollups (
+                  date TEXT, app_type TEXT, request_count INTEGER, success_count INTEGER,
+                  input_tokens INTEGER, output_tokens INTEGER, cache_read_tokens INTEGER,
+                  cache_creation_tokens INTEGER, input_token_semantics INTEGER
+                );
+                INSERT INTO proxy_request_logs VALUES
+                  ('proxy','codex','gpt-test',1000,100,600,0,1,'proxy',200,\(now)),
+                  ('duplicate','codex','gpt-test',1000,100,600,0,1,'codex_session',200,\(now)),
+                  ('fresh','codex','gpt-fresh',50,10,5,2,2,'codex_session',200,\(now)),
+                  ('claude-proxy','claude','claude-test',100,50,0,0,0,'proxy',200,\(now));
+                INSERT INTO usage_daily_rollups VALUES ('\(key)','codex',3,3,200,30,20,0,0);
+                """)
     }
 
     private static func dayKey(for date: Date) -> String {
@@ -543,20 +552,21 @@ enum ZCodeUsageReader {
         let home = homeDirectory ?? fileManager.homeDirectoryForCurrentUser
         let database = home.appendingPathComponent(".zcode/cli/db/db.sqlite")
         guard fileManager.fileExists(atPath: database.path) else { return nil }
-        guard let sqlitePath = ["/usr/bin/sqlite3", "/opt/homebrew/bin/sqlite3"]
-            .first(where: { fileManager.isExecutableFile(atPath: $0) })
+        guard
+            let sqlitePath = ["/usr/bin/sqlite3", "/opt/homebrew/bin/sqlite3"]
+                .first(where: { fileManager.isExecutableFile(atPath: $0) })
         else { return nil }
 
         let todayEpochMs = Int64(todayStart.timeIntervalSince1970 * 1000)
         let sql = """
-        SELECT COALESCE(SUM(input_tokens),0) + COALESCE(SUM(output_tokens),0)
-             + COALESCE(SUM(reasoning_tokens),0) + COALESCE(SUM(cache_read_input_tokens),0)
-             + COALESCE(SUM(cache_creation_input_tokens),0) AS real_total,
-          COALESCE(SUM(CASE WHEN started_at >= \(todayEpochMs)
-            THEN input_tokens + output_tokens + reasoning_tokens
-                 + cache_read_input_tokens + cache_creation_input_tokens ELSE 0 END), 0) AS today_total
-        FROM turn_usage;
-        """
+            SELECT COALESCE(SUM(input_tokens),0) + COALESCE(SUM(output_tokens),0)
+                 + COALESCE(SUM(reasoning_tokens),0) + COALESCE(SUM(cache_read_input_tokens),0)
+                 + COALESCE(SUM(cache_creation_input_tokens),0) AS real_total,
+              COALESCE(SUM(CASE WHEN started_at >= \(todayEpochMs)
+                THEN input_tokens + output_tokens + reasoning_tokens
+                     + cache_read_input_tokens + cache_creation_input_tokens ELSE 0 END), 0) AS today_total
+            FROM turn_usage;
+            """
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: sqlitePath)
@@ -571,8 +581,8 @@ enum ZCodeUsageReader {
         let data = (try? output.fileHandleForReading.read(upToCount: 1 << 20)) ?? Data()
         process.waitUntilExit()
         guard process.terminationStatus == 0,
-              let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
-              let first = rows.first
+            let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+            let first = rows.first
         else { return nil }
         return Usage(
             lifetimeTokens: (first["real_total"] as? NSNumber)?.int64Value ?? 0,
@@ -602,15 +612,15 @@ enum CustomTokenSourceStore {
             raw = nil
         }
         guard let raw,
-              let data = raw.data(using: .utf8),
-              let entries = try? JSONDecoder().decode([Entry].self, from: data)
+            let data = raw.data(using: .utf8),
+            let entries = try? JSONDecoder().decode([Entry].self, from: data)
         else { return [] }
         return entries
     }
 
     static func save(_ entries: [Entry], defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(entries),
-              let raw = String(data: data, encoding: .utf8)
+            let raw = String(data: data, encoding: .utf8)
         else { return }
         defaults.set(raw, forKey: storageKey)
     }
@@ -647,12 +657,12 @@ enum GrokUsageReader {
         for sessionDirectory in workDirectories {
             let updates = sessionDirectory.appendingPathComponent("updates.jsonl")
             guard fileManager.fileExists(atPath: updates.path),
-                  let data = try? Data(contentsOf: updates, options: .mappedIfSafe)
+                let data = try? Data(contentsOf: updates, options: .mappedIfSafe)
             else { continue }
             for lineSubdata in splitLines(data) {
                 guard lineSubdata.contains(Data("\"usage\"".utf8)),
-                      let object = try? JSONSerialization.jsonObject(with: lineSubdata) as? [String: Any],
-                      let usage = findUsage(in: object)
+                    let object = try? JSONSerialization.jsonObject(with: lineSubdata) as? [String: Any],
+                    let usage = findUsage(in: object)
                 else { continue }
                 let input = (usage["inputTokens"] as? NSNumber)?.int64Value ?? 0
                 let output = (usage["outputTokens"] as? NSNumber)?.int64Value ?? 0
@@ -683,12 +693,14 @@ enum GrokUsageReader {
 
     private static func findUsage(in object: [String: Any]) -> [String: Any]? {
         if let usage = object["usage"] as? [String: Any],
-           usage["totalTokens"] != nil {
+            usage["totalTokens"] != nil
+        {
             return usage
         }
         for value in object.values {
             if let dictionary = value as? [String: Any],
-               let usage = findUsage(in: dictionary) {
+                let usage = findUsage(in: dictionary)
+            {
                 return usage
             }
             if let array = value as? [[String: Any]] {

@@ -27,13 +27,13 @@ enum LeadershipModelSelfTest {
             (64, "硅基领主"), (65, "硅基统帅"),
             (79, "硅基统帅"), (80, "超级个体"),
             (92, "超级个体"), (93, "人类最强者"),
-            (99, "人类最强者"), (100, "人类最强者")
+            (99, "人类最强者"), (100, "人类最强者"),
         ].allSatisfy { LeadershipScoreModel.title(for: $0.0).name == $0.1 }
         let englishTitleCases = [
             (1, "Carbon Laborer"), (2, "Cyber Overseer"),
             (3, "Clone Captain"), (4, "Silicon Lord"),
             (5, "Silicon Marshal"), (6, "Super Individual"),
-            (7, "Humanity's Apex")
+            (7, "Humanity's Apex"),
         ].allSatisfy { item in
             let (level, name) = item
             let score = [0, 20, 35, 50, 65, 80, 93][level - 1]
@@ -48,14 +48,14 @@ enum LeadershipModelSelfTest {
             worker("a", project: "p1", kind: .main),
             worker("b", project: "p1", kind: .subagent),
             worker("c", project: "p2", kind: .automation),
-            worker("ignored", project: "p3", kind: .main)
+            worker("ignored", project: "p3", kind: .main),
         ]
         let intervals = [
             interval("a1", worker: workers[0], start: day.addingTimeInterval(9 * 3600), end: day.addingTimeInterval(10 * 3600)),
             interval("a2", worker: workers[0], start: day.addingTimeInterval(9.75 * 3600), end: day.addingTimeInterval(10.25 * 3600)),
             interval("b1", worker: workers[1], start: day.addingTimeInterval(9.5 * 3600), end: day.addingTimeInterval(10.5 * 3600), autonomous: true),
             interval("c1", worker: workers[2], start: day.addingTimeInterval(15 * 3600), end: day.addingTimeInterval(16 * 3600), autonomous: true),
-            interval("e1", worker: workers[3], start: day.addingTimeInterval(8 * 3600), end: day.addingTimeInterval(17 * 3600), quality: .estimated)
+            interval("e1", worker: workers[3], start: day.addingTimeInterval(8 * 3600), end: day.addingTimeInterval(17 * 3600), quality: .estimated),
         ]
         let dashboard = LeadershipAggregator().makeDashboard(
             workers: workers,
@@ -77,18 +77,15 @@ enum LeadershipModelSelfTest {
             calendar: calendar
         )
         let rootAutonomy = rootOnlyDashboard.todayReport?.dimensions.first { $0.kind == .autonomy }?.score
-        let confidenceSeparate = today?.evidenceCoverage == 1
+        let confidenceSeparate =
+            today?.evidenceCoverage == 1
             && LeadershipScoreModel.finalScore(
                 dimensions: oneDayDimensions,
                 activeDays: 1,
                 evidenceCoverage: 0.69
             ) == nil
-        let commandRadiusHandlesMissingRank = LeadershipCommandRadiusLayout.ringCount(for: 0) == 0
-            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 1, ringCount: 0) == 0
-            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 12, ringCount: 3) == 12
-            && LeadershipCommandRadiusLayout.visibleNodeCount(agentCount: 13, ringCount: 3) == 12
-
-        let passed = oneDayScore != nil
+        let passed =
+            oneDayScore != nil
             && oneDayScore! <= 33
             && matureScore == 100
             && titleCases
@@ -101,7 +98,6 @@ enum LeadershipModelSelfTest {
             && autonomyPositive
             && rootAutonomy == 0
             && confidenceSeparate
-            && commandRadiusHandlesMissingRank
         print(passed ? "leadership model self-test passed" : "leadership model self-test failed")
         return passed
     }

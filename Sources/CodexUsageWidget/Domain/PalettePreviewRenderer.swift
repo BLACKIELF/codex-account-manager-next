@@ -41,7 +41,9 @@ enum PalettePreviewRenderer {
         let settings = AppSettings(defaults: defaults, paletteCatalog: catalog)
         settings.language = .zh
         settings.themeMode = .dark
-        let store = UsageStore()
+        let fixtureRoot = FileManager.default.temporaryDirectory.appendingPathComponent("next-settings-preview-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+        let store = WorkspacePreviewRenderer.fixtureStore(accountCount: 0, root: fixtureRoot)
         let updateStore = AppUpdateStore(settings: settings)
         let root = CodexAccountMenuView(
             store: store,

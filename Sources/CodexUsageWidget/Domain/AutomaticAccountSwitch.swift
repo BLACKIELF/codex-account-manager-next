@@ -77,7 +77,7 @@ enum CodexAutomaticSwitchPolicy {
         now: Date = Date()
     ) -> Bool {
         guard !legacyManagerRunning,
-              snapshot.connectionMode != .disconnected
+            snapshot.connectionMode != .disconnected
         else { return false }
         let snapshotAge = now.timeIntervalSince(snapshot.refreshedAt)
         guard snapshotAge >= -5, snapshotAge <= taskSnapshotMaximumAge else { return false }
@@ -98,7 +98,7 @@ enum CodexAutomaticSwitchPolicy {
         now: Date = Date()
     ) -> Bool {
         guard let codexInactiveSince,
-              now.timeIntervalSince(codexInactiveSince) >= codexInactivePeriod
+            now.timeIntervalSince(codexInactiveSince) >= codexInactivePeriod
         else { return false }
         return hasNoActiveTasks(
             snapshot,
@@ -120,22 +120,24 @@ enum CodexAutomaticSwitchPolicy {
     ) -> Bool {
         let quotaAge = now.timeIntervalSince(sourceRefreshedAt)
         guard enabled,
-              quotaAge >= -5,
-              quotaAge <= quotaSnapshotMaximumAge,
-              !sourceQuota.triggeredWindows().isEmpty,
-              hasSafeTaskState(
+            quotaAge >= -5,
+            quotaAge <= quotaSnapshotMaximumAge,
+            !sourceQuota.triggeredWindows().isEmpty,
+            hasSafeTaskState(
                 taskSnapshot,
                 codexInactiveSince: codexInactiveSince,
                 legacyManagerRunning: legacyManagerRunning,
                 now: now
-              )
+            )
         else { return false }
         if let lastSucceededAt,
-           now.timeIntervalSince(lastSucceededAt) < successCooldown {
+            now.timeIntervalSince(lastSucceededAt) < successCooldown
+        {
             return false
         }
         if let lastAttemptAt,
-           now.timeIntervalSince(lastAttemptAt) < failureRetryInterval {
+            now.timeIntervalSince(lastAttemptAt) < failureRetryInterval
+        {
             return false
         }
         return true
@@ -149,8 +151,8 @@ enum CodexAutomaticSwitchPolicy {
         return candidates.compactMap { candidate -> (Candidate, Double)? in
             let remaining = triggeredWindows.compactMap(candidate.quota.remaining(for:))
             guard remaining.count == triggeredWindows.count,
-                  let score = remaining.min(),
-                  score >= minimumCandidateRemainingPercent
+                let score = remaining.min(),
+                score >= minimumCandidateRemainingPercent
             else { return nil }
             return (candidate, score)
         }.max { lhs, rhs in
@@ -190,130 +192,133 @@ enum CodexAutomaticSwitchPolicySelfTest {
         let lowSevenDay = AutomaticSwitchQuotaState(fiveHourRemaining: 90, sevenDayRemaining: 9)
         let exactSevenDayThreshold = AutomaticSwitchQuotaState(fiveHourRemaining: 90, sevenDayRemaining: 10)
         let safeSince = now.addingTimeInterval(-CodexAutomaticSwitchPolicy.codexInactivePeriod)
-        let selected = CodexAutomaticSwitchPolicy.preferredCandidate([
-            .init(profileID: "first", quota: .init(fiveHourRemaining: 65, sevenDayRemaining: 80)),
-            .init(profileID: "second", quota: .init(fiveHourRemaining: 90, sevenDayRemaining: 45)),
-            .init(profileID: "third", quota: .init(fiveHourRemaining: 20, sevenDayRemaining: 99))
-        ], for: [.fiveHour])
+        let selected = CodexAutomaticSwitchPolicy.preferredCandidate(
+            [
+                .init(profileID: "first", quota: .init(fiveHourRemaining: 65, sevenDayRemaining: 80)),
+                .init(profileID: "second", quota: .init(fiveHourRemaining: 90, sevenDayRemaining: 45)),
+                .init(profileID: "third", quota: .init(fiveHourRemaining: 20, sevenDayRemaining: 99)),
+            ], for: [.fiveHour])
 
-        guard CodexAutomaticSwitchPolicy.hasNoActiveTasks(
-            idle,
-            legacyManagerRunning: false,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
-            active,
-            legacyManagerRunning: false,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
-            .disconnected,
-            legacyManagerRunning: false,
-            now: now
-        ),
-        CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: aboveFiveHourThreshold,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: lowSevenDay,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: exactSevenDayThreshold,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now,
-            taskSnapshot: active,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now,
-            taskSnapshot: .disconnected,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: true,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now,
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: now.addingTimeInterval(-300),
-            lastSucceededAt: nil,
-            now: now
-        ),
-        !CodexAutomaticSwitchPolicy.shouldEvaluate(
-            enabled: true,
-            sourceQuota: low,
-            sourceRefreshedAt: now.addingTimeInterval(-46),
-            taskSnapshot: idle,
-            codexInactiveSince: safeSince,
-            legacyManagerRunning: false,
-            lastAttemptAt: nil,
-            lastSucceededAt: nil,
-            now: now
-        ),
-        selected?.profileID == "second",
-        CodexAutomaticSwitchPolicy.preferredCandidate([
-            .init(profileID: "missing", quota: .init(fiveHourRemaining: 99, sevenDayRemaining: nil))
-        ], for: [.fiveHour, .sevenDay]) == nil
+        guard
+            CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+                idle,
+                legacyManagerRunning: false,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+                active,
+                legacyManagerRunning: false,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.hasNoActiveTasks(
+                .disconnected,
+                legacyManagerRunning: false,
+                now: now
+            ),
+            CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: aboveFiveHourThreshold,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: lowSevenDay,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: exactSevenDayThreshold,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now,
+                taskSnapshot: active,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now,
+                taskSnapshot: .disconnected,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: true,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now,
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: now.addingTimeInterval(-300),
+                lastSucceededAt: nil,
+                now: now
+            ),
+            !CodexAutomaticSwitchPolicy.shouldEvaluate(
+                enabled: true,
+                sourceQuota: low,
+                sourceRefreshedAt: now.addingTimeInterval(-46),
+                taskSnapshot: idle,
+                codexInactiveSince: safeSince,
+                legacyManagerRunning: false,
+                lastAttemptAt: nil,
+                lastSucceededAt: nil,
+                now: now
+            ),
+            selected?.profileID == "second",
+            CodexAutomaticSwitchPolicy.preferredCandidate(
+                [
+                    .init(profileID: "missing", quota: .init(fiveHourRemaining: 99, sevenDayRemaining: nil))
+                ], for: [.fiveHour, .sevenDay]) == nil
         else {
             print("Codex automatic account switch policy self-test failed")
             return false

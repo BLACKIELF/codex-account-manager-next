@@ -25,10 +25,12 @@ enum CodexSessionOpener {
     private static let focusedLogTailBytes: UInt64 = 512 * 1_024
 
     static func visibleThreadID(in taskBoard: TaskBoard?, now: Date = Date()) -> String? {
-        let applications = NSRunningApplication
+        let applications =
+            NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.openai.codex")
             .filter { !$0.isTerminated }
-        let menuTitles = applications
+        let menuTitles =
+            applications
             .flatMap { windowMenuItemTitles(processID: $0.processIdentifier) }
         if let threadID = uniqueThreadID(in: taskBoard, matchingWindowTitles: menuTitles) {
             return threadID
@@ -60,40 +62,41 @@ enum CodexSessionOpener {
         var evidence: [(date: Date, threadID: String, isFocused: Bool)] = []
         for line in logText.split(separator: "\n") {
             guard line.contains(" [electron-message-handler] "),
-                  line.contains(" rendererWindowVisible=true "),
-                  let firstSpace = line.firstIndex(of: " "),
-                  let lastSpace = line.lastIndex(of: " "),
-                  firstSpace < lastSpace
+                line.contains(" rendererWindowVisible=true "),
+                let firstSpace = line.firstIndex(of: " "),
+                let lastSpace = line.lastIndex(of: " "),
+                firstSpace < lastSpace
             else { continue }
             let beforeTurn = line[..<lastSpace]
             guard let threadSpace = beforeTurn.lastIndex(of: " ") else { continue }
             let threadField = beforeTurn[beforeTurn.index(after: threadSpace)...]
             let turnField = line[line.index(after: lastSpace)...]
             guard threadField.hasPrefix("threadId="),
-                  turnField.hasPrefix("turnId=")
+                turnField.hasPrefix("turnId=")
             else { continue }
             let threadID = String(threadField.dropFirst("threadId=".count))
             let turnID = String(turnField.dropFirst("turnId=".count))
             guard CodexSessionLink.url(threadID: threadID) != nil,
-                  CodexSessionLink.url(threadID: turnID) != nil,
-                  let date = formatter.date(from: String(line[..<firstSpace]))
+                CodexSessionLink.url(threadID: turnID) != nil,
+                let date = formatter.date(from: String(line[..<firstSpace]))
             else { continue }
             evidence.append((date, threadID, line.contains(" rendererWindowFocused=true ")))
         }
 
         guard let latest = evidence.max(by: { $0.date < $1.date }),
-              let latestFocused = evidence.filter(\.isFocused).max(by: { $0.date < $1.date })
+            let latestFocused = evidence.filter(\.isFocused).max(by: { $0.date < $1.date })
         else { return nil }
         let age = now.timeIntervalSince(latest.date)
         let focusedAge = now.timeIntervalSince(latestFocused.date)
         guard age >= -5, age <= maximumAge,
-              focusedAge >= -5, focusedAge <= focusedProofMaximumAge,
-              latest.threadID == latestFocused.threadID
+            focusedAge >= -5, focusedAge <= focusedProofMaximumAge,
+            latest.threadID == latestFocused.threadID
         else { return nil }
-        let threadIDs = Set(evidence.compactMap { item in
-            let distance = latest.date.timeIntervalSince(item.date)
-            return distance >= 0 && distance <= evidenceWindow ? item.threadID : nil
-        })
+        let threadIDs = Set(
+            evidence.compactMap { item in
+                let distance = latest.date.timeIntervalSince(item.date)
+                return distance >= 0 && distance <= evidenceWindow ? item.threadID : nil
+            })
         guard threadIDs.count == 1, let threadID = threadIDs.first else { return nil }
         return containsThread(threadID, in: taskBoard) ? threadID : nil
     }
@@ -103,15 +106,16 @@ enum CodexSessionOpener {
         matchingWindowTitles windowTitles: [String]
     ) -> String? {
         guard let taskBoard else { return nil }
-        let matches = Set(taskBoard.columns
-            .flatMap(\.items)
-            .filter { item in
-                item.sourceKind == .codexThread
-                    && item.displayState != .archived
-                    && item.threadID.flatMap(CodexSessionLink.url(threadID:)) != nil
-                    && windowTitles.contains { windowTitleMatchesTaskTitle($0, item.title) }
-            }
-            .compactMap(\.threadID))
+        let matches = Set(
+            taskBoard.columns
+                .flatMap(\.items)
+                .filter { item in
+                    item.sourceKind == .codexThread
+                        && item.displayState != .archived
+                        && item.threadID.flatMap(CodexSessionLink.url(threadID:)) != nil
+                        && windowTitles.contains { windowTitleMatchesTaskTitle($0, item.title) }
+                }
+                .compactMap(\.threadID))
         return matches.count == 1 ? matches.first : nil
     }
 
@@ -121,7 +125,8 @@ enum CodexSessionOpener {
         now: Date = Date()
     ) -> String? {
         guard let taskBoard else { return nil }
-        let titles = windowTitles
+        let titles =
+            windowTitles
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !titles.isEmpty else { return nil }
@@ -130,11 +135,11 @@ enum CodexSessionOpener {
             .flatMap(\.items)
             .filter { item in
                 guard item.sourceKind == .codexThread,
-                      item.displayState != .archived,
-                      let threadID = item.threadID,
-                      let updatedAt = item.updatedAt,
-                      updatedAt >= cutoff,
-                      CodexSessionLink.url(threadID: threadID) != nil
+                    item.displayState != .archived,
+                    let threadID = item.threadID,
+                    let updatedAt = item.updatedAt,
+                    updatedAt >= cutoff,
+                    CodexSessionLink.url(threadID: threadID) != nil
                 else { return false }
                 return !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -185,18 +190,19 @@ enum CodexSessionOpener {
     ) -> String? {
         let snapshotAge = now.timeIntervalSince(snapshot.refreshedAt)
         guard snapshot.connectionMode != .disconnected,
-              snapshotAge >= -5,
-              snapshotAge <= CodexAutomaticSwitchPolicy.taskSnapshotMaximumAge
+            snapshotAge >= -5,
+            snapshotAge <= CodexAutomaticSwitchPolicy.taskSnapshotMaximumAge
         else { return nil }
         let cutoff = now.addingTimeInterval(-TaskActivityClassifier.activeWindow)
-        let matches = Set(snapshot.records.values
-            .filter {
-                ($0.state == .running || $0.state == .waitingInput)
-                    && $0.connectionMode != .disconnected
-                    && ($0.updatedAt ?? .distantPast) >= cutoff
-                    && CodexSessionLink.url(threadID: $0.threadID) != nil
-            }
-            .map(\.threadID))
+        let matches = Set(
+            snapshot.records.values
+                .filter {
+                    ($0.state == .running || $0.state == .waitingInput)
+                        && $0.connectionMode != .disconnected
+                        && ($0.updatedAt ?? .distantPast) >= cutoff
+                        && CodexSessionLink.url(threadID: $0.threadID) != nil
+                }
+                .map(\.threadID))
         return matches.count == 1 ? matches.first : nil
     }
 
@@ -259,27 +265,30 @@ enum CodexSessionOpener {
         }
         let root = library.appendingPathComponent("Logs/com.openai.codex", isDirectory: true)
         let keys: [URLResourceKey] = [.isRegularFileKey, .contentModificationDateKey, .fileSizeKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: keys,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { return nil }
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: keys,
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            )
+        else { return nil }
 
         var candidates: [(url: URL, modifiedAt: Date)] = []
         for case let url as URL in enumerator {
             guard url.pathExtension == "log",
-                  url.lastPathComponent.hasPrefix("codex-desktop-"),
-                  let values = try? url.resourceValues(forKeys: Set(keys)),
-                  values.isRegularFile == true,
-                  (values.fileSize ?? 0) > 0,
-                  let modifiedAt = values.contentModificationDate,
-                  now.timeIntervalSince(modifiedAt) >= -5,
-                  now.timeIntervalSince(modifiedAt) <= focusedLogMaximumAge + 60
+                url.lastPathComponent.hasPrefix("codex-desktop-"),
+                let values = try? url.resourceValues(forKeys: Set(keys)),
+                values.isRegularFile == true,
+                (values.fileSize ?? 0) > 0,
+                let modifiedAt = values.contentModificationDate,
+                now.timeIntervalSince(modifiedAt) >= -5,
+                now.timeIntervalSince(modifiedAt) <= focusedLogMaximumAge + 60
             else { continue }
             candidates.append((url, modifiedAt))
         }
 
-        let logText = candidates
+        let logText =
+            candidates
             .sorted { $0.modifiedAt > $1.modifiedAt }
             .prefix(4)
             .compactMap { readTail(of: $0.url, maximumBytes: focusedLogTailBytes) }
@@ -301,23 +310,26 @@ enum CodexSessionOpener {
     }
 
     private static func visibleCodexWindowTitles() -> [String] {
-        guard let windows = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] else { return [] }
+        guard
+            let windows = CGWindowListCopyWindowInfo(
+                [.optionOnScreenOnly, .excludeDesktopElements],
+                kCGNullWindowID
+            ) as? [[String: Any]]
+        else { return [] }
 
         return windows.compactMap { window in
             guard (window[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
-                  let owner = window[kCGWindowOwnerName as String] as? String,
-                  let name = window[kCGWindowName as String] as? String
+                let owner = window[kCGWindowOwnerName as String] as? String,
+                let name = window[kCGWindowName as String] as? String
             else { return nil }
             let normalizedOwner = owner.lowercased()
             guard normalizedOwner.contains("codex") || normalizedOwner.contains("chatgpt") else {
                 return nil
             }
             if let processID = (window[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
-               NSRunningApplication(processIdentifier: pid_t(processID))?.bundleIdentifier
-                == "com.blackielf.codex-account-manager-next" {
+                NSRunningApplication(processIdentifier: pid_t(processID))?.bundleIdentifier
+                    == "com.blackielf.codex-account-manager-next"
+            {
                 return nil
             }
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -334,17 +346,20 @@ enum CodexSessionOpener {
             guard visitedHashes.insert(CFHash(element)).inserted else { continue }
             var roleValue: CFTypeRef?
             if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue) == .success,
-               roleValue as? String == kAXMenuItemRole as String {
+                roleValue as? String == kAXMenuItemRole as String
+            {
                 var titleValue: CFTypeRef?
                 if AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleValue) == .success,
-                   let title = titleValue as? String {
+                    let title = titleValue as? String
+                {
                     let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !trimmed.isEmpty { titles.append(trimmed) }
                 }
             }
             var childrenValue: CFTypeRef?
             if AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenValue) == .success,
-               let children = childrenValue as? [AXUIElement] {
+                let children = childrenValue as? [AXUIElement]
+            {
                 queue.append(contentsOf: children)
             }
         }

@@ -5,7 +5,6 @@ protocol TerminalLaunching {
     func launch(
         codexHome: URL,
         workingDirectory: URL?,
-        accountName: String,
         preference: CodexExecutionPreference
     ) async throws
 }
@@ -46,13 +45,11 @@ struct TerminalAppLauncher: TerminalLaunching {
     func launch(
         codexHome: URL,
         workingDirectory: URL?,
-        accountName: String,
         preference: CodexExecutionPreference
     ) async throws {
         let command = try launchCommand(
             codexHome: codexHome,
             workingDirectory: workingDirectory,
-            accountName: accountName,
             preference: preference
         )
         let source = "tell application \"Terminal\"\nactivate\ndo script \"\(Self.appleScriptLiteral(command))\"\nend tell"
@@ -69,13 +66,12 @@ struct TerminalAppLauncher: TerminalLaunching {
     func launchCommand(
         codexHome: URL,
         workingDirectory: URL?,
-        accountName: String,
         preference: CodexExecutionPreference
     ) throws -> String {
         let preference = try preference.validated()
         let profileID = codexHome.lastPathComponent
         guard !profileID.isEmpty,
-              profileID.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains)
+            profileID.unicodeScalars.allSatisfy(CharacterSet.alphanumerics.contains)
         else { throw TerminalLauncherError.invalidProfileID }
 
         let expectedHome = fileManager.homeDirectoryForCurrentUser
@@ -94,19 +90,22 @@ struct TerminalAppLauncher: TerminalLaunching {
             throw TerminalLauncherError.codexExecutableMissing
         }
 
-        let directoryCommand = workingDirectory.map {
-            "cd \(Self.shellPathExpression($0.path, homeDirectory: fileManager.homeDirectoryForCurrentUser)) || cd \"$HOME\""
-        }
+        let directoryCommand =
+            workingDirectory.map {
+                "cd \(Self.shellPathExpression($0.path, homeDirectory: fileManager.homeDirectoryForCurrentUser)) || cd \"$HOME\""
+            }
             ?? "cd \"$HOME\""
-        let managedHomeExpression = "\"$HOME\"/" + Self.shellQuote(
-            ".codex-account-manager-next/profiles/\(profileID)"
-        )
+        let managedHomeExpression =
+            "\"$HOME\"/"
+            + Self.shellQuote(
+                ".codex-account-manager-next/profiles/\(profileID)"
+            )
         return [
             "export CODEX_HOME=\(managedHomeExpression)",
             "unset CODEX_ACCESS_TOKEN CODEX_API_KEY",
             directoryCommand,
             "echo \(Self.shellQuote("Codex 独立账号环境已就绪"))",
-            try Self.configuredCodexCommand(executable: executable, preference: preference)
+            try Self.configuredCodexCommand(executable: executable, preference: preference),
         ].joined(separator: "\n")
     }
 
@@ -120,20 +119,69 @@ struct TerminalAppLauncher: TerminalLaunching {
             "--model", shellQuote(preference.model.rawValue),
             "-c", shellQuote("model_reasoning_effort=\"\(preference.reasoningEffort.rawValue)\""),
             "-c", shellQuote("agents.default_subagent_model=\"\(preference.model.rawValue)\""),
-            "-c", shellQuote(
+            "-c",
+            shellQuote(
                 "agents.default_subagent_reasoning_effort=\"\(preference.reasoningEffort.rawValue)\""
             ),
-            "-c", shellQuote("service_tier=\"\(preference.serviceTier.rawValue)\"")
+            "-c", shellQuote("service_tier=\"\(preference.serviceTier.rawValue)\""),
         ]
         arguments.append(preference.serviceTier == .fast ? "--enable fast_mode" : "--disable fast_mode")
         return arguments.joined(separator: " ")
+    }
+
+    static func selfTest() -> Bool {
+        do {
+            let standard = try configuredCodexCommand(
+                executable: "/Applications/ChatGPT.app/Contents/Resources/codex",
+                preference: .init(model: .sol, reasoningEffort: .high, serviceTier: .standard)
+            )
+            let fast = try configuredCodexCommand(
+                executable: "/Applications/ChatGPT.app/Contents/Resources/codex",
+                preference: .init(model: .terra, reasoningEffort: .xhigh, serviceTier: .fast)
+            )
+            guard standard.contains("--model 'gpt-5.6-sol'"),
+                try CodexExecutionPreference.Model.astra.supportedReasoningEfforts.allSatisfy({ effort in
+                    try CodexExecutionPreference.ServiceTier.allCases.allSatisfy { tier in
+                        let command = try configuredCodexCommand(
+                            executable: "/usr/local/bin/codex",
+                            preference: .init(model: .astra, reasoningEffort: effort, serviceTier: tier)
+                        )
+                        return command.contains("--model 'gpt-6-astra'")
+                            && command.contains("model_reasoning_effort=\"\(effort.rawValue)\"")
+                            && command.contains("agents.default_subagent_model=\"gpt-6-astra\"")
+                            && command.contains("agents.default_subagent_reasoning_effort=\"\(effort.rawValue)\"")
+                            && command.contains("service_tier=\"\(tier.rawValue)\"")
+                            && command.contains(tier == .fast ? "--enable fast_mode" : "--disable fast_mode")
+                    }
+                }),
+                standard.contains("model_reasoning_effort=\"high\""),
+                standard.contains("agents.default_subagent_model=\"gpt-5.6-sol\""),
+                standard.contains("agents.default_subagent_reasoning_effort=\"high\""),
+                standard.contains("service_tier=\"default\""),
+                standard.contains("--disable fast_mode"),
+                fast.contains("--model 'gpt-5.6-terra'"),
+                fast.contains("model_reasoning_effort=\"xhigh\""),
+                fast.contains("agents.default_subagent_model=\"gpt-5.6-terra\""),
+                fast.contains("agents.default_subagent_reasoning_effort=\"xhigh\""),
+                fast.contains("service_tier=\"fast\""),
+                fast.contains("--enable fast_mode")
+            else {
+                print("Terminal launcher self-test failed: CLI preference arguments")
+                return false
+            }
+            print("Terminal launcher self-test passed")
+            return true
+        } catch {
+            print("Terminal launcher self-test failed: \(error)")
+            return false
+        }
     }
 
     static func codexExecutable(fileManager: FileManager = .default) -> String? {
         let independentCandidates = [
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
-            "/usr/bin/codex"
+            "/usr/bin/codex",
         ]
         return independentCandidates.first(where: fileManager.isExecutableFile(atPath:))
             ?? CodexExecutable.path(fileManager: fileManager)

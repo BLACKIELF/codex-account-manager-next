@@ -49,9 +49,9 @@ struct FeishuMaskedAccount: Equatable {
             CharacterSet(charactersIn: " ._-*•()（）")
         )
         guard !trimmed.isEmpty,
-              trimmed.count <= 64,
-              trimmed.unicodeScalars.allSatisfy(allowed.contains),
-              trimmed.contains("***") || trimmed.contains("•••")
+            trimmed.count <= 64,
+            trimmed.unicodeScalars.allSatisfy(allowed.contains),
+            trimmed.contains("***") || trimmed.contains("•••")
         else {
             throw FeishuWebhookError.invalidMaskedAccount
         }
@@ -108,7 +108,7 @@ struct FeishuSwitchNotification {
     ) throws {
         let percentages = [fiveHourRemainingPercent, sevenDayRemainingPercent].compactMap { $0 }
         guard (1...100).contains(triggerThresholdPercent),
-              percentages.allSatisfy({ (0...100).contains($0) })
+            percentages.allSatisfy({ (0...100).contains($0) })
         else {
             throw FeishuWebhookError.invalidNotification
         }
@@ -181,7 +181,7 @@ final class FeishuWebhookService {
         let query = Self.keychainQuery
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
         let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updateStatus == errSecSuccess { return }
@@ -269,20 +269,20 @@ final class FeishuWebhookService {
     static func validatedWebhookURL(from rawValue: String) throws -> URL {
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
-              trimmed.count <= 512,
-              trimmed.unicodeScalars.allSatisfy({
-                  !$0.properties.isWhitespace && $0.properties.generalCategory != .control
-              }),
-              let components = URLComponents(string: trimmed),
-              components.scheme?.lowercased() == "https",
-              let host = components.host?.lowercased(),
-              allowedHosts.contains(host),
-              components.user == nil,
-              components.password == nil,
-              components.port == nil || components.port == 443,
-              components.query == nil,
-              components.fragment == nil,
-              components.percentEncodedPath.hasPrefix(webhookPathPrefix)
+            trimmed.count <= 512,
+            trimmed.unicodeScalars.allSatisfy({
+                !$0.properties.isWhitespace && $0.properties.generalCategory != .control
+            }),
+            let components = URLComponents(string: trimmed),
+            components.scheme?.lowercased() == "https",
+            let host = components.host?.lowercased(),
+            allowedHosts.contains(host),
+            components.user == nil,
+            components.password == nil,
+            components.port == nil || components.port == 443,
+            components.query == nil,
+            components.fragment == nil,
+            components.percentEncodedPath.hasPrefix(webhookPathPrefix)
         else {
             throw FeishuWebhookError.invalidWebhook
         }
@@ -290,8 +290,8 @@ final class FeishuWebhookService {
         let token = String(components.percentEncodedPath.dropFirst(webhookPathPrefix.count))
         let tokenCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         guard (16...256).contains(token.count),
-              token.unicodeScalars.allSatisfy(tokenCharacters.contains),
-              let endpoint = components.url
+            token.unicodeScalars.allSatisfy(tokenCharacters.contains),
+            let endpoint = components.url
         else {
             throw FeishuWebhookError.invalidWebhook
         }
@@ -303,7 +303,7 @@ final class FeishuWebhookService {
         var lines = [
             "**结果**：\(presentation.result)",
             "**原账号**：`\(notification.sourceAccount.value)`",
-            "**触发规则**：5 小时 ≤ 5%；7 天 < \(notification.triggerThresholdPercent)%"
+            "**触发规则**：5 小时 ≤ 5%；7 天 < \(notification.triggerThresholdPercent)%",
         ]
         if let target = notification.targetAccount {
             lines.append("**目标账号**：`\(target.value)`")
@@ -324,15 +324,17 @@ final class FeishuWebhookService {
                 "config": ["wide_screen_mode": true],
                 "header": [
                     "title": ["tag": "plain_text", "content": presentation.title],
-                    "template": presentation.template
+                    "template": presentation.template,
                 ],
                 "body": [
-                    "elements": [[
-                        "tag": "markdown",
-                        "content": lines.joined(separator: "\n")
-                    ]]
-                ]
-            ]
+                    "elements": [
+                        [
+                            "tag": "markdown",
+                            "content": lines.joined(separator: "\n"),
+                        ]
+                    ]
+                ],
+            ],
         ]
         guard JSONSerialization.isValidJSONObject(payload) else {
             throw FeishuWebhookError.encodingFailed
@@ -346,16 +348,17 @@ final class FeishuWebhookService {
 
     static func parseResponse(_ data: Data) -> Result<Void, FeishuWebhookError> {
         guard data.count <= maximumResponseBytes,
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             return .failure(.invalidResponse)
         }
         let rawCode = object["code"] ?? object["StatusCode"]
         let code: Int?
         if let number = rawCode as? NSNumber,
-           CFGetTypeID(number) != CFBooleanGetTypeID(),
-           number.doubleValue.isFinite,
-           number.doubleValue.rounded() == number.doubleValue {
+            CFGetTypeID(number) != CFBooleanGetTypeID(),
+            number.doubleValue.isFinite,
+            number.doubleValue.rounded() == number.doubleValue
+        {
             code = number.intValue
         } else if let string = rawCode as? String {
             code = Int(string)
@@ -375,7 +378,7 @@ final class FeishuWebhookService {
         if status == errSecItemNotFound { throw FeishuWebhookError.missingWebhook }
         guard status == errSecSuccess else { throw FeishuWebhookError.keychain(status) }
         guard let data = result as? Data,
-              let value = String(data: data, encoding: .utf8)
+            let value = String(data: data, encoding: .utf8)
         else {
             throw FeishuWebhookError.invalidWebhook
         }
@@ -387,7 +390,7 @@ final class FeishuWebhookService {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount,
-            kSecAttrSynchronizable as String: kCFBooleanFalse as Any
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any,
         ]
     }
 
@@ -425,7 +428,7 @@ enum FeishuWebhookServiceSelfTest {
 
         let valid = [
             "https://open.feishu.cn/open-apis/bot/v2/hook/12345678-1234-1234-1234-123456789abc",
-            "https://open.larksuite.com/open-apis/bot/v2/hook/abcdefghijklmnop"
+            "https://open.larksuite.com/open-apis/bot/v2/hook/abcdefghijklmnop",
         ]
         valid.forEach {
             expect((try? FeishuWebhookService.validatedWebhookURL(from: $0)) != nil, "valid endpoint rejected")
@@ -437,7 +440,7 @@ enum FeishuWebhookServiceSelfTest {
             "https://open.feishu.cn/open-apis/bot/v2/hook/1234567890abcdef?copy=1",
             "https://open.feishu.cn/open-apis/bot/v2/hook/short",
             "https://user@open.feishu.cn/open-apis/bot/v2/hook/1234567890abcdef",
-            "https://open.feishu.cn/open-apis/bot/v2/hook/1234567890abcdef/extra"
+            "https://open.feishu.cn/open-apis/bot/v2/hook/1234567890abcdef/extra",
         ]
         invalid.forEach {
             expect((try? FeishuWebhookService.validatedWebhookURL(from: $0)) == nil, "unsafe endpoint accepted")

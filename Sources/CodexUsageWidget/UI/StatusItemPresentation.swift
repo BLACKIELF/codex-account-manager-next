@@ -200,8 +200,10 @@ enum StatusItemLayoutMetrics {
                 + 2
         case .rich:
             if quotaCount > 0 || showsNoActiveQuota {
-                let quotaWidth = normalized.showsResetCountdown
-                    && !showsNoActiveQuota ? richQuotaWidthWithReset
+                let quotaWidth =
+                    normalized.showsResetCountdown
+                        && !showsNoActiveQuota
+                    ? richQuotaWidthWithReset
                     : richQuotaWidthWithoutReset
                 return quotaWidth + (showsToday ? richTokenExtensionWidth : 0)
             }
@@ -239,7 +241,8 @@ struct StatusItemPresentationBuilder {
                 )
             }
             .filter(\.isAvailable)
-        let showsNoActiveQuota = source.status == .available
+        let showsNoActiveQuota =
+            source.status == .available
             && availableQuotaMetrics.isEmpty
             && preferences.hasVisibleQuota
         let metrics = effectiveMetrics(
@@ -308,7 +311,7 @@ struct StatusItemPresentationBuilder {
             return configuredAvailable
         }
         guard configuredMetrics.contains(where: \.isQuota),
-              let fallbackQuota = availableQuotaMetrics.first
+            let fallbackQuota = availableQuotaMetrics.first
         else { return configuredAvailable }
         return [fallbackQuota] + configuredAvailable
     }
@@ -394,7 +397,8 @@ struct StatusItemPresentationBuilder {
         let compactValue = roundedValue.map(String.init) ?? "--"
         let value = roundedValue.map { "\($0)%" } ?? "--"
         let fraction = displayPercent.map { CGFloat($0 / 100) }
-        let resetText = preferences.showsResetCountdown
+        let resetText =
+            preferences.showsResetCountdown
             ? formatResetCountdown(resetsAt, now: now)
             : nil
 
@@ -428,7 +432,8 @@ struct StatusItemPresentationBuilder {
         showsNoActiveQuota: Bool,
         language: WidgetLanguage
     ) -> String {
-        let quotaTerm = preferences.quotaMode == .remaining
+        let quotaTerm =
+            preferences.quotaMode == .remaining
             ? language.text("剩余", "remaining")
             : language.text("已用", "used")
         let unavailable = language.text("不可用", "unavailable")
@@ -475,7 +480,7 @@ struct StatusItemPresentationBuilder {
 
     private func localizedResetCountdown(_ compact: String, language: WidgetLanguage) -> String {
         guard let unit = compact.last,
-              let amount = Int(compact.dropLast())
+            let amount = Int(compact.dropLast())
         else {
             return language.text("\(compact) 后重置", "resets in \(compact)")
         }

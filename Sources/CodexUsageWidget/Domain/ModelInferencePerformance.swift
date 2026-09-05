@@ -93,7 +93,8 @@ struct ModelInferenceHistoryArchive: Equatable, Codable {
         retainingSince retentionStart: Date
     ) {
         guard !sourceID.isEmpty else { return }
-        let retained = samples
+        let retained =
+            samples
             .filter {
                 $0.completedAt >= retentionStart
                     && $0.durationSeconds >= modelInferenceMinimumCallDurationSeconds
@@ -171,12 +172,12 @@ struct ModelInferenceCallTracker {
         }
 
         guard let model = activeModel,
-              let effort = activeEffort,
-              let startedAt = callStartedAt,
-              observedModelOutput,
-              completedAt.timeIntervalSince(startedAt) >= modelInferenceMinimumCallDurationSeconds,
-              let lastUsage,
-              !lastUsage.hasNegativeValue
+            let effort = activeEffort,
+            let startedAt = callStartedAt,
+            observedModelOutput,
+            completedAt.timeIntervalSince(startedAt) >= modelInferenceMinimumCallDurationSeconds,
+            let lastUsage,
+            !lastUsage.hasNegativeValue
         else { return nil }
 
         let usage = lastUsage.snapshot()
@@ -207,22 +208,25 @@ enum ModelInferencePerformanceBuilder {
         dayStart: Date,
         calendar: Calendar
     ) -> ModelInferencePerformanceHistory? {
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)
+        let dayEnd =
+            calendar.date(byAdding: .day, value: 1, to: dayStart)
             ?? dayStart.addingTimeInterval(24 * 60 * 60)
 
         func performance(for period: ModelInferencePeriod) -> ModelInferencePerformance? {
-            let windowStart = calendar.date(
-                byAdding: .day,
-                value: 1 - period.dayCount,
-                to: dayStart
-            ) ?? dayStart
+            let windowStart =
+                calendar.date(
+                    byAdding: .day,
+                    value: 1 - period.dayCount,
+                    to: dayStart
+                ) ?? dayStart
             let recordingDayStart = calendar.startOfDay(for: recordingStartedAt)
             let coverageStart = max(windowStart, recordingDayStart)
-            let elapsedDays = calendar.dateComponents(
-                [.day],
-                from: coverageStart,
-                to: dayStart
-            ).day ?? 0
+            let elapsedDays =
+                calendar.dateComponents(
+                    [.day],
+                    from: coverageStart,
+                    to: dayStart
+                ).day ?? 0
             let coverageDayCount = min(max(elapsedDays + 1, 1), period.dayCount)
             return make(
                 samples: samples,

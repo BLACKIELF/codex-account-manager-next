@@ -9,7 +9,7 @@ enum TokenFormatter {
     private static let units = [
         Unit(divisor: 1_000, suffix: "K"),
         Unit(divisor: 1_000_000, suffix: "M"),
-        Unit(divisor: 1_000_000_000, suffix: "B")
+        Unit(divisor: 1_000_000_000, suffix: "B"),
     ]
 
     static func format(_ value: Int64?) -> String {

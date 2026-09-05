@@ -199,30 +199,30 @@ enum LeadershipScoreModel {
         autonomousDayShare: Double,
         confidence: Double
     ) -> [LeadershipDimension] {
-        let span = 100 * (
-            0.70 * normalize(effectiveWorkers, reference: effectiveWorkerReference)
-                + 0.30 * normalize(Double(peakConcurrency), reference: peakConcurrencyReference)
-        )
-        let leverage = 100 * (
-            0.70 * normalize(dailyAIHours, reference: dailyAIHoursReference)
-                + 0.30 * normalize(averageParallelism, reference: averageParallelismReference)
-        )
-        let orchestration = 100 * (
-            0.45 * normalizeLinear(delegatedShare, reference: delegatedShareReference)
+        let span =
+            100
+            * (0.70 * normalize(effectiveWorkers, reference: effectiveWorkerReference)
+                + 0.30 * normalize(Double(peakConcurrency), reference: peakConcurrencyReference))
+        let leverage =
+            100
+            * (0.70 * normalize(dailyAIHours, reference: dailyAIHoursReference)
+                + 0.30 * normalize(averageParallelism, reference: averageParallelismReference))
+        let orchestration =
+            100
+            * (0.45 * normalizeLinear(delegatedShare, reference: delegatedShareReference)
                 + 0.35 * normalizeLinear(parallelShare, reference: parallelShareReference)
-                + 0.20 * normalizeLinear(multiProjectShare, reference: multiProjectShareReference)
-        )
-        let autonomy = 100 * (
-            0.50 * normalizeLinear(autonomousShare, reference: autonomousShareReference)
+                + 0.20 * normalizeLinear(multiProjectShare, reference: multiProjectShareReference))
+        let autonomy =
+            100
+            * (0.50 * normalizeLinear(autonomousShare, reference: autonomousShareReference)
                 + 0.30 * normalize(longestAutonomousHours, reference: longestAutonomousHoursReference)
-                + 0.20 * normalizeLinear(autonomousDayShare, reference: autonomousDayShareReference)
-        )
+                + 0.20 * normalizeLinear(autonomousDayShare, reference: autonomousDayShareReference))
 
         return [
             LeadershipDimension(kind: .span, score: bounded(span), confidence: confidence, summaryValue: effectiveWorkers),
             LeadershipDimension(kind: .leverage, score: bounded(leverage), confidence: confidence, summaryValue: dailyAIHours),
             LeadershipDimension(kind: .orchestration, score: bounded(orchestration), confidence: confidence, summaryValue: delegatedShare),
-            LeadershipDimension(kind: .autonomy, score: bounded(autonomy), confidence: confidence, summaryValue: autonomousShare)
+            LeadershipDimension(kind: .autonomy, score: bounded(autonomy), confidence: confidence, summaryValue: autonomousShare),
         ]
     }
 
@@ -249,12 +249,12 @@ enum LeadershipScoreModel {
         evidenceCoverage: Double
     ) -> (score: Int, core: Double)? {
         guard evidenceCoverage >= minimumEvidenceCoverage,
-              let core = coreScore(dimensions),
-              activeDays > 0
+            let core = coreScore(dimensions),
+            activeDays > 0
         else { return nil }
         var score = Int((core * maturity(activeDays: activeDays)).rounded())
         score = min(max(score, 0), 100)
-        if score == 100, (activeDays < 28 || evidenceCoverage < 0.95) {
+        if score == 100, activeDays < 28 || evidenceCoverage < 0.95 {
             score = 99
         }
         return (score, core)
@@ -362,19 +362,21 @@ struct LeadershipAggregator {
         let autonomousDayCount = Set(autonomousIntervals.map { calendar.startOfDay(for: $0.startAt) }).count
         let autonomousDayShare = activeDayCount > 0 ? Double(autonomousDayCount) / Double(activeDayCount) : 0
         let confidence = durationWeightedConfidence(merged)
-        let dimensions = activeDayCount > 0 ? LeadershipScoreModel.dimensions(
-            effectiveWorkers: effectiveWorkers,
-            peakConcurrency: metrics.peakConcurrency,
-            dailyAIHours: dailyAIHours,
-            averageParallelism: metrics.averageParallelism,
-            delegatedShare: delegatedShare,
-            parallelShare: metrics.activeWindow > 0 ? metrics.parallelWindow / metrics.activeWindow : 0,
-            multiProjectShare: metrics.activeWindow > 0 ? metrics.multiProjectWindow / metrics.activeWindow : 0,
-            autonomousShare: autonomousShare,
-            longestAutonomousHours: longestAutonomousHours,
-            autonomousDayShare: autonomousDayShare,
-            confidence: confidence
-        ) : []
+        let dimensions =
+            activeDayCount > 0
+            ? LeadershipScoreModel.dimensions(
+                effectiveWorkers: effectiveWorkers,
+                peakConcurrency: metrics.peakConcurrency,
+                dailyAIHours: dailyAIHours,
+                averageParallelism: metrics.averageParallelism,
+                delegatedShare: delegatedShare,
+                parallelShare: metrics.activeWindow > 0 ? metrics.parallelWindow / metrics.activeWindow : 0,
+                multiProjectShare: metrics.activeWindow > 0 ? metrics.multiProjectWindow / metrics.activeWindow : 0,
+                autonomousShare: autonomousShare,
+                longestAutonomousHours: longestAutonomousHours,
+                autonomousDayShare: autonomousDayShare,
+                confidence: confidence
+            ) : []
         let evidenceCoverage = dimensions.reduce(0.0) { $0 + $1.kind.weight * $1.confidence }
         let final = LeadershipScoreModel.finalScore(
             dimensions: dimensions,
@@ -486,16 +488,18 @@ struct LeadershipAggregator {
 
         var boundaries: [Date: [Boundary]] = [:]
         for interval in intervals {
-            boundaries[interval.startAt, default: []].append(Boundary(
-                starts: true,
-                workerID: interval.workerID,
-                projectID: interval.projectID
-            ))
-            boundaries[interval.endAt, default: []].append(Boundary(
-                starts: false,
-                workerID: interval.workerID,
-                projectID: interval.projectID
-            ))
+            boundaries[interval.startAt, default: []].append(
+                Boundary(
+                    starts: true,
+                    workerID: interval.workerID,
+                    projectID: interval.projectID
+                ))
+            boundaries[interval.endAt, default: []].append(
+                Boundary(
+                    starts: false,
+                    workerID: interval.workerID,
+                    projectID: interval.projectID
+                ))
         }
 
         let times = boundaries.keys.sorted()
@@ -547,12 +551,13 @@ struct LeadershipAggregator {
             let nextDay = calendar.date(byAdding: .day, value: 1, to: day) ?? day.addingTimeInterval(24 * 3600)
             let clipped = intervals.compactMap { clip($0, start: day, end: min(nextDay, now)) }
             let metrics = timelineMetrics(clipped)
-            points.append(LeadershipDayPoint(
-                day: day,
-                agentCount: Set(clipped.map(\.workerID)).count,
-                aiHours: clipped.reduce(0.0) { $0 + $1.duration } / 3600,
-                peakConcurrency: metrics.peakConcurrency
-            ))
+            points.append(
+                LeadershipDayPoint(
+                    day: day,
+                    agentCount: Set(clipped.map(\.workerID)).count,
+                    aiHours: clipped.reduce(0.0) { $0 + $1.duration } / 3600,
+                    peakConcurrency: metrics.peakConcurrency
+                ))
             guard nextDay > day else { break }
             day = nextDay
         }

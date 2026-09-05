@@ -41,7 +41,8 @@ struct AgentUsageAggregator {
         let recentThreads = locals.flatMap(\.recentThreads)
             .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
             .prefix(12)
-        let allAgentsSource = locals
+        let allAgentsSource =
+            locals
             .filter { $0.allAgentsLifetimeTokens != nil }
             .max { ($0.allAgentsLifetimeTokens ?? 0) < ($1.allAgentsLifetimeTokens ?? 0) }
 
@@ -72,7 +73,8 @@ struct AgentUsageAggregator {
             current.tokens += bucket.tokens
             totals[bucket.id] = current
         }
-        return totals
+        return
+            totals
             .map { DailyTokenBucket(id: $0.key, label: $0.value.label, tokens: $0.value.tokens) }
             .sorted { $0.id < $1.id }
     }
@@ -210,11 +212,11 @@ private struct AggregatedProject {
 
 private func addOptional(_ lhs: Int64?, _ rhs: Int64?) -> Int64? {
     switch (lhs, rhs) {
-    case let (left?, right?):
+    case (let left?, let right?):
         return left + right
-    case let (left?, nil):
+    case (let left?, nil):
         return left
-    case let (nil, right?):
+    case (nil, let right?):
         return right
     case (nil, nil):
         return nil
@@ -223,11 +225,11 @@ private func addOptional(_ lhs: Int64?, _ rhs: Int64?) -> Int64? {
 
 private func addOptional(_ lhs: Double?, _ rhs: Double?) -> Double? {
     switch (lhs, rhs) {
-    case let (left?, right?):
+    case (let left?, let right?):
         return left + right
-    case let (left?, nil):
+    case (let left?, nil):
         return left
-    case let (nil, right?):
+    case (nil, let right?):
         return right
     case (nil, nil):
         return nil
@@ -236,11 +238,11 @@ private func addOptional(_ lhs: Double?, _ rhs: Double?) -> Double? {
 
 private func maxDate(_ lhs: Date?, _ rhs: Date?) -> Date? {
     switch (lhs, rhs) {
-    case let (left?, right?):
+    case (let left?, let right?):
         return max(left, right)
-    case let (left?, nil):
+    case (let left?, nil):
         return left
-    case let (nil, right?):
+    case (nil, let right?):
         return right
     case (nil, nil):
         return nil

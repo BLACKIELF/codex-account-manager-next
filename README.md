@@ -4,25 +4,25 @@
 
 [![CI](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml/badge.svg)](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml)
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111111?logo=apple)
-![Version 0904v2](https://img.shields.io/badge/version-0904v2-6C4DFF)
+![Version 0905v1](https://img.shields.io/badge/version-0905v1-6C4DFF)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-面向 macOS 的本地优先 Codex 多账号工作台：集中查看官方额度、维护隔离账号、为每个独立账号设置模型/推理强度/速度、启动独立 CLI，并在新鲜 Hub 概览显示同账号忙碌时阻止本 App 再启动任务，降低重复占用风险。
+面向 macOS 的本地优先 Codex 工作台。一个账号也能清楚查看额度、选择任务模型；多个账号可以集中管理隔离环境、监控任务占用。支持 GPT-6 Astra，模型、思考强度和 Standard/Fast 速度会一起传给后续 CLI。
 
-当前正式版本：`0904v2` · `9.4.2 (12)`。项目非 OpenAI 官方产品，不提供账号、不增加额度，也不绕过登录、MFA 或平台限制。
+当前版本：`0905v1` · `9.5.1 (13)`。项目非 OpenAI 官方产品，不提供账号、不增加额度，也不绕过登录、MFA 或平台限制。
 
-![0904v2 多账号巡检与 Hub 在线状态 Retina 功能截图](docs/images/0904v2/inspection-header@2x.png)
+![0905v1 单账号专注工作台，原生 SwiftUI 2× 预览](docs/images/0905v1/single-account-dark@2x.png)
 
-> 截图来自本机实际构建的 0904v2，并以原始 Retina 2× 像素做隐私安全裁剪；宽幅细节最高 2340 px。只保留功能控件，不包含真实账号别名、邮箱、额度、Token、订阅、重置时间、凭据、Webhook、任务正文或本机私有路径。
+> 0905v1 图片由实际生产 SwiftUI 组件以 2× 渲染，工作台为 2160 × 1520 px。账号、额度、订阅日期均为演示数据，截图过程不连接 Hub、不读取真实凭据或 Keychain；“状态待确认”是未连接的真实界面表现。下文保留的 0904v2 局部截图对应未改动功能。
 
-## 0904v2 更新重点
+## 0905v1 更新重点
 
-- 新增蓝紫色“任务执行偏好”：每个独立账号分别选择模型、推理强度与 Standard/Fast，也可一次性应用到所有独立账号。
-- “在终端中使用”会把选择写入启动命令；由该 CLI 启动的默认子 Agent 继承相同模型和推理强度。
-- 账号卡和巡检页每 10 秒读取 Hub：显示待批准、准备中、工作进行中、取消中、待确认和最终结果。
-- 同一账号被 Hub 占用、Hub 离线或状态过期时，终端入口默认关闭；暖号即使被点击也会在执行门禁处拒绝，避免重复占用。
-- 暖号不再依赖会固定超时且丢失错误的 CLI 子进程，改为向 ChatGPT Codex 后端地址直接发送有界 SSE 最小请求，并分类展示失败原因。
-- 新额度窗口会淘汰旧暖号失败；同一空闲窗口失败后不会自动重复消耗。
+- 新增 `gpt-6-astra`，支持 CLI 的六档思考强度与 Standard/Fast，已有账号设置不被替换。
+- 蓝紫色模型卡、原生分档滑杆、模型菜单、Fast 开关与恢复默认；多个独立账号时可“应用到所有账号”。
+- 自动识别单账号：主窗口和菜单栏优先呈现两段额度、任务模型与终端入口。统计、暖号、登录和高级设置可展开访问。
+- 重排多账号工作台、提高浅色／深色对比度，账号卡支持窄窗口排版；去掉重复的独立巡检页，将快照异常合并到账号卡。
+- 补齐 Astra 参数、持久化、批量应用、计价及单账号去重回归测试；统一纯测试入口和 Swift 格式检查。
+- 保留 Hub 占用保护、暖号协议、提醒、安全切换与账号隔离，不降低未知状态下的保护门槛。
 
 历史变更见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -32,11 +32,22 @@
 |---|---|
 | 工作台 | 当前监控账号、5 小时/7 天额度、重置时间、官方累计 Token、本机全 Agent Token 与费用估算 |
 | 账号卡 | 刷新、暖号、参与调度、执行偏好、独立 CLI、监控、重新登录、Chrome 会话、显式 Desktop 切换 |
-| 多账号巡检 | 模型配置、额度、Hub 状态、派单停用、快照过期、低额度与配置偏离检查 |
+| 就地状态提示 | Hub 任务状态、快照过期、刷新失败、低额度颜色与参与调度开关 |
 | 自动化中心 | 低额度账号推荐、飞书通知、安全门禁与最近审计事件 |
 | 菜单栏与设置 | 额度环、密度、语言、主题、配色、快捷键、置顶、后台驻留与更新检查 |
 
-当前完整窗口只有“工作台”和“巡检”两个一级页面。仓库保留的历史统计视图或 Windows 工作区，不代表新版 macOS 主界面已经提供等价入口。
+当前完整窗口统一为工作台，不再提供重复的巡检页或页面切换导航。Windows 工作区与历史统计模型不代表 macOS 已提供对应页面。
+
+## 一个账号也能使用
+
+![0905v1 单账号菜单栏](docs/images/0905v1/single-account-menu-dark@2x.png)
+
+- 只有当前 Codex 登录时，直接查看额度，不要求注册第二个账号，不修改系统登录。
+- 需要选择 Astra 等任务模型时，用“设置独立 CLI”把**同一个账号**登录到 Next 的隔离环境；这是隔离环境，不是切换当前 Desktop 身份。
+- 同一身份的系统入口与独立入口不会被算成两个账号。单账号模式隐藏无意义的批量按钮，原有高级功能保留在“账号管理与自动化”。
+- CLI 与暖号仍需要下面的 Hub 映射与新鲜状态；未配置 Hub 的单账号用户可以先只读监控。专注模式不会把“状态未知”伪装成“空闲”。
+
+![0905v1 多账号浅色工作台](docs/images/0905v1/multi-account-light@2x.png)
 
 ## 五个常用账号动作，边界完全不同
 
@@ -52,12 +63,13 @@
 
 ## 每账号执行偏好
 
-![0904v2 模型、推理强度、速度与应用到所有账号](docs/images/0904v2/execution-preference-control@2x.png)
+![0905v1 Astra 模型、思考强度、Fast 与应用到所有账号](docs/images/0905v1/astra-model-dark@2x.png)
 
 每个独立账号保存一份执行偏好；修改后立即用于该账号后续启动的 CLI 及其默认子 Agent，不写入账号的 `config.toml`。
 
 | 模型 | 推理强度 | 速度 |
 |---|---|---|
+| `gpt-6-astra` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-sol` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-terra` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-luna` | Low / Medium / High / XHigh / Max | Standard / Fast |
@@ -65,6 +77,8 @@
 | `gpt-5.2` | Low / Medium / High / XHigh | Standard |
 
 默认值为 `gpt-5.6-sol + high + Standard`。不兼容组合会被阻止，不会覆盖上一份有效设置。“应用到所有账号”只做一次批量覆盖，之后仍可逐个账号调整。
+
+Astra 的 CLI 参数以本机模型目录为准；账号是否已开放模型由服务端决定，不做静默降级。`最高` 对应 `max`，`Ultra` 是单独一档。CLI 提供的 Ultra 与公开 API 的 reasoning 参数范围不应混用。Astra 本地 API 等效估算采用其独立价格，不再落到旧模型参考价；该数字不等于订阅账单。参见 [OpenAI Astra 模型文档](https://developers.openai.com/api/docs/models/gpt-6-astra)。
 
 参数传播包括主模型、主推理强度、默认子 Agent 模型、默认子 Agent 推理强度，以及 Standard/Fast 服务等级。Hub 若从其他入口创建任务，必须显式复用这条生成命令或同一组参数；Next 当前只读取 Hub 状态，不替 Hub 创建任务。暖号是独立维护动作，固定使用轻量的 `gpt-5.6-luna`，不复用任务执行偏好。
 
@@ -83,7 +97,7 @@ Next 从本机 `http://127.0.0.1:8787/api/overview` 读取 Hub 概览，以账�
 
 ### Hub 集成前置配置
 
-0904v2 的 Hub 联动是由外部中枢预配置的集成，应用内还没有映射编辑器。公开源码不会自动发现账号别名，也不会自行创建这些配置。
+当前 Hub 联动是由外部中枢预配置的集成，应用内还没有映射编辑器。公开源码不会自动发现账号别名，也不会自行创建这些配置。外部派单器若使用模型白名单，也必须加入 `gpt-6-astra` 与六档强度；只更新 Next 不会自动部署另一套 Hub 服务。
 
 账号卡的调度编号与 Hub 别名在应用启动前写入：
 
@@ -106,27 +120,7 @@ Next 从本机 `http://127.0.0.1:8787/api/overview` 读取 Hub 概览，以账�
 
 `code` 必须是唯一的单个 `A`–`Z` 字母，`alias` 与 `profileId` 不能为空。该文件在进程启动时读取一次，修改后需要重启 Next。
 
-巡检页另从外部 Hub 配置读取账号列表。默认文件是：
-
-```text
-~/Library/Application Support/CodexAccountManagerNext/inspection-config-v1.json
-```
-
-也可以在 **App 进程环境** 中用 `CAMNEXT_INSPECTION_CONFIG` 指向其他 JSON 文件；内容格式为：
-
-```json
-{
-  "accounts": [
-    {
-      "alias": "account-a",
-      "home": "/absolute/path/to/account/CODEX_HOME",
-      "dispatchDisabled": false
-    }
-  ]
-}
-```
-
-`home` 必须指向该账号的独立 `CODEX_HOME`；巡检页从目录名关联 Profile，并只读解析其中 `config.toml` 的 `model` 与 `model_reasoning_effort`。普通 Finder 启动不会自动注入环境变量，因此通常应使用默认 Application Support 文件。巡检配置缺失或不可读时，仅巡检页显示不可用；账号卡的调度映射缺失、Hub 离线或概览过期时，CLI/暖号才会 fail-closed。Next 不写这两份外部配置，也不通过 Hub API 派发任务。
+独立巡检页已移除，`inspection-config-v1.json` / `CAMNEXT_INSPECTION_CONFIG` 不再由 Next 使用；已有本地配置文件不会被删除。账号卡继续依赖 `dispatch-codes-v1.json` 与新鲜 Hub 概览进行占用保护。
 
 ## 多账号与浏览器登录
 
@@ -138,19 +132,11 @@ Next 从本机 `http://127.0.0.1:8787/api/overview` 读取 Hub 概览，以账�
 - Pro `5x/20x` 是显示标记，不改变真实套餐或额度。
 - 本地 Reset 历史可手动校正，但不会冒充官方可用 Reset 次数。
 
-## 多账号巡检
+## 状态直接显示在账号卡
 
-巡检页把外部 Hub 配置中已映射的账号放在同一屏幕，显示：
+不再需要切换到单独的巡检页：主工作台集中显示官方额度、任务占用、最近结果和刷新状态。快照超过 30 分钟、时间异常或刷新失败会就地提示；低额度继续使用颜色表达，参与调度开关仍在原处。
 
-- 调度别名、脱敏邮箱、套餐、模型和推理强度。
-- 官方 5 小时与 7 天剩余额度。
-- 对应 Hub CLI 任务状态。
-- 额度快照超过 30 分钟。
-- 任一窗口剩余低于 20%。
-- 配置偏离 `gpt-5.6-sol + high`。
-- 账号未参与派单。
-
-巡检发现异常只展示状态，不会自行登录、修改配置或切换账号。
+旧巡检中固定对比 `gpt-5.6-sol + high` 的配置基线已移除，避免把用户主动选择的 Astra 等模型当成异常。提示不触发登录、配置改写、暖号或账号切换。
 
 ## 智能暖号
 
@@ -221,7 +207,7 @@ Next 从本机 `http://127.0.0.1:8787/api/overview` 读取 Hub 概览，以账�
 
 ![0904v2 通用设置、主题与配色 Retina 功能截图](docs/images/0904v2/settings-general@2x.png)
 
-- 菜单栏弹窗与设置页支持中文 / English；0904v2 的完整工作台、巡检和自动化中心目前仍为中文。
+- 菜单栏主要页面与设置页支持中文 / English；完整工作台、模型偏好编辑器和自动化中心目前仍以中文显示。
 - 跟随系统、浅色、深色。
 - 默认、青花瓷、故宫红、千里江山、敦煌飞天、兰曙、液态键帽等内置配色及明暗变体。
 - 菜单栏 Minimal / Classic / Rich 三种样式，可选已用/剩余、5h、7d、月度、今日 Token 和重置倒计时。
@@ -347,7 +333,7 @@ Next 没有拿到 30 秒内的 Hub 概览、账号调度映射缺失、Hub 返�
 
 ### 工作台为什么没有旧版“趋势/项目/Skill/领导力”页面？
 
-0904v2 当前完整窗口只挂载“工作台”和“巡检”。仓库中仍有部分历史视图代码，但没有用户可达入口，因此本 README 不把它们列为当前功能。
+0905v1 聚焦统一工作台。重复巡检页和未挂载的旧视图已清理；底层统计数据模型仍服务于现有用量与菜单栏展示，不把未提供入口的页面列为当前功能。
 
 ## 开发与验证
 
@@ -374,9 +360,9 @@ git diff --check
 
 ## 版本、来源与许可
 
-- 正式版本：`0904v2`
-- Marketing Version：`9.4.2`
-- Build：`12`
+- 版本名称：`0905v1`
+- Marketing Version：`9.5.1`
+- Build：`13`
 - 基线设计：[docs/0826v1-IMPLEMENTATION.md](docs/0826v1-IMPLEMENTATION.md)
 - 安全边界：[SECURITY.md](SECURITY.md)
 - 完整历史：[CHANGELOG.md](CHANGELOG.md)

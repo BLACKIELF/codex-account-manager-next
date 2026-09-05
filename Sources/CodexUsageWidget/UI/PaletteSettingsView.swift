@@ -95,7 +95,7 @@ struct PaletteLibraryView: View {
     private let columns = [
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
+        GridItem(.flexible(), spacing: 12),
     ]
 
     var body: some View {
@@ -194,7 +194,8 @@ private struct PaletteArtworkCard: View {
     private var darkTokens: ResolvedVisualTokens { catalog.resolve(id: descriptor.id, appearance: .dark) }
 
     private var sourceLabel: String {
-        let source = descriptor.isOfficial
+        let source =
+            descriptor.isOfficial
             ? language.text("内置主题", "Built-in")
             : language.text("社区贡献 · \(descriptor.authorName)", "Community · \(descriptor.authorName)")
         if descriptor.lifecycle == .deprecated {
@@ -226,12 +227,12 @@ private struct PaletteArtworkCard: View {
                         .foregroundStyle(Color.white.opacity(0.84))
                         .lineLimit(1)
                 }
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4.5)
-                    .background(Color.black.opacity(0.20), in: Capsule())
-                    .overlay(Capsule().strokeBorder(Color.white.opacity(0.30), lineWidth: 0.7))
-                    .shadow(color: Color.black.opacity(0.24), radius: 5, y: 2)
+                .foregroundStyle(Color.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4.5)
+                .background(Color.black.opacity(0.20), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.30), lineWidth: 0.7))
+                .shadow(color: Color.black.opacity(0.24), radius: 5, y: 2)
 
                 if selected {
                     Image(systemName: "checkmark")
@@ -293,38 +294,46 @@ private struct PaletteArtworkHalf: View {
                 )
 
                 Circle()
-                    .fill(RadialGradient(
-                        colors: [tokens.accent.highlight.color.opacity(0.92), tokens.accent.primary.color.opacity(0)],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: max(size.width, size.height) * 0.44
-                    ))
+                    .fill(
+                        RadialGradient(
+                            colors: [tokens.accent.highlight.color.opacity(0.92), tokens.accent.primary.color.opacity(0)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: max(size.width, size.height) * 0.44
+                        )
+                    )
                     .frame(width: size.width * 1.18, height: size.width * 1.18)
                     .offset(x: -size.width * 0.34, y: -size.height * 0.28)
                     .blur(radius: 8)
 
                 PaletteFlowBand(amplitude: 0.20, verticalPosition: 0.34)
-                    .fill(LinearGradient(
-                        colors: [tokens.accent.secondary.color.opacity(0.22), tokens.accent.secondaryStrong.color.opacity(0.92)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ))
+                    .fill(
+                        LinearGradient(
+                            colors: [tokens.accent.secondary.color.opacity(0.22), tokens.accent.secondaryStrong.color.opacity(0.92)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                     .blur(radius: 1.2)
 
                 PaletteFlowBand(amplitude: 0.15, verticalPosition: 0.63)
-                    .fill(LinearGradient(
-                        colors: [tokens.quota.primary.start.color.opacity(0.35), tokens.quota.primary.end.color.opacity(0.94)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ))
+                    .fill(
+                        LinearGradient(
+                            colors: [tokens.quota.primary.start.color.opacity(0.35), tokens.quota.primary.end.color.opacity(0.94)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
                     .offset(y: size.height * 0.10)
 
                 Ellipse()
-                    .fill(LinearGradient(
-                        colors: [tokens.ornament.metal.color.opacity(0.76), tokens.accent.highlight.color.opacity(0.08)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ))
+                    .fill(
+                        LinearGradient(
+                            colors: [tokens.ornament.metal.color.opacity(0.76), tokens.accent.highlight.color.opacity(0.08)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .frame(width: size.width * 0.76, height: size.height * 0.23)
                     .rotationEffect(.degrees(-23))
                     .offset(x: size.width * 0.30, y: -size.height * 0.26)
@@ -334,7 +343,7 @@ private struct PaletteArtworkHalf: View {
                     colors: [
                         Color.white.opacity(appearance == .light ? 0.48 : 0.16),
                         Color.clear,
-                        Color.black.opacity(appearance == .dark ? 0.20 : 0.04)
+                        Color.black.opacity(appearance == .dark ? 0.20 : 0.04),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -351,13 +360,13 @@ private struct PaletteArtworkHalf: View {
             return [
                 Color.white.opacity(0.98),
                 tokens.accent.primaryLight.color.opacity(0.78),
-                tokens.surfaceTint.color.color.opacity(0.52)
+                tokens.surfaceTint.color.color.opacity(0.52),
             ]
         }
         return [
             Color(red: 0.035, green: 0.04, blue: 0.06),
             tokens.accent.primaryStrong.color.opacity(0.76),
-            tokens.accent.secondaryStrong.color.opacity(0.90)
+            tokens.accent.secondaryStrong.color.opacity(0.90),
         ]
     }
 }

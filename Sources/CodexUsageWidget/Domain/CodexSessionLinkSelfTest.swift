@@ -61,7 +61,7 @@ enum CodexSessionLinkSelfTest {
                     updatedAt: Date(timeIntervalSince1970: 4),
                     turnID: nil,
                     connectionMode: .sharedDaemon
-                )
+                ),
             ],
             refreshedAt: Date(timeIntervalSince1970: 4)
         )
@@ -76,7 +76,7 @@ enum CodexSessionLinkSelfTest {
             connectionMode: .sharedDaemon,
             records: [
                 threadID: snapshot.records[threadID]!,
-                recentIdleThreadID: snapshot.records[recentIdleThreadID]!
+                recentIdleThreadID: snapshot.records[recentIdleThreadID]!,
             ],
             refreshedAt: Date(timeIntervalSince1970: 4)
         )
@@ -141,7 +141,7 @@ enum CodexSessionLinkSelfTest {
                 in: taskBoard,
                 matchingWindowTitles: [
                     "Continue account manager repair — Codex",
-                    "Background task — Codex"
+                    "Background task — Codex",
                 ],
                 now: Date(timeIntervalSince1970: 12)
             ) == threadID,
@@ -159,7 +159,7 @@ enum CodexSessionLinkSelfTest {
                 in: taskBoard,
                 matchingWindowTitles: [
                     "Continue account manager repair — Codex",
-                    "Background task — Codex"
+                    "Background task — Codex",
                 ]
             ) == nil,
             "multiple open task windows must not guess the current task"
@@ -200,8 +200,8 @@ enum CodexSessionLinkSelfTest {
         let logNow = Date(timeIntervalSince1970: 1_000)
         let freshTaskBoard = TaskBoard(refreshedAt: logNow, columns: taskBoard.columns)
         let focusedLog = """
-        1970-01-01T00:16:39.000Z info [electron-message-handler] event rendererWindowFocused=true rendererWindowVisible=true threadId=\(threadID) turnId=\(olderThreadID)
-        """
+            1970-01-01T00:16:39.000Z info [electron-message-handler] event rendererWindowFocused=true rendererWindowVisible=true threadId=\(threadID) turnId=\(olderThreadID)
+            """
         expect(
             CodexSessionOpener.uniqueRecentFocusedThreadID(
                 in: focusedLog,
@@ -218,7 +218,9 @@ enum CodexSessionLinkSelfTest {
             ) == nil,
             "unfocused Codex log metadata must not identify a task"
         )
-        let blurredLog = focusedLog + "\n" + focusedLog
+        let blurredLog =
+            focusedLog + "\n"
+            + focusedLog
             .replacingOccurrences(of: "00:16:39.000", with: "00:16:40.000")
             .replacingOccurrences(of: "rendererWindowFocused=true", with: "rendererWindowFocused=false")
         expect(
@@ -229,7 +231,9 @@ enum CodexSessionLinkSelfTest {
             ) == threadID,
             "the same task should survive the focused-to-manager blur transition"
         )
-        let ambiguousLog = focusedLog + "\n" + focusedLog
+        let ambiguousLog =
+            focusedLog + "\n"
+            + focusedLog
             .replacingOccurrences(of: "00:16:39.000", with: "00:16:40.000")
             .replacingOccurrences(of: "threadId=\(threadID)", with: "threadId=\(recentIdleThreadID)")
         expect(

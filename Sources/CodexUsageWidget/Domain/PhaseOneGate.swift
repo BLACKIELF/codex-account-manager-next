@@ -37,7 +37,8 @@ enum PhaseOneGateSelfTest {
         let passing = [PhaseOneCheck(id: "automatic", status: .pass)]
         let pending = passing + [PhaseOneCheck(id: "soak", status: .pending)]
         let failing = pending + [PhaseOneCheck(id: "privacy", status: .fail)]
-        let passed = PhaseOneGateEvaluator.evaluate(passing) == .pass
+        let passed =
+            PhaseOneGateEvaluator.evaluate(passing) == .pass
             && PhaseOneGateEvaluator.evaluate(pending) == .pending
             && PhaseOneGateEvaluator.evaluate(failing) == .fail
             && PhaseOneGateEvaluator.evaluate([]) == .pending

@@ -127,9 +127,9 @@ enum RuntimeQuotaContinuity {
 
         return incoming.map { next in
             guard !next.snapshot.quotaReadSucceeded,
-                  let last = previousByScope[next.scope],
-                  last.status == .available || last.status == .stale,
-                  last.snapshot.fiveHourQuota != nil
+                let last = previousByScope[next.scope],
+                last.status == .available || last.status == .stale,
+                last.snapshot.fiveHourQuota != nil
                     || last.snapshot.sevenDayQuota != nil
                     || last.snapshot.monthlyQuota != nil
             else {

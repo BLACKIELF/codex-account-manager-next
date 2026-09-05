@@ -44,8 +44,9 @@ enum PaletteValidator {
         }
 
         guard let manifestURL = safeURL(relativePath: "manifest.json", root: root),
-              let manifestData = try? Data(contentsOf: manifestURL),
-              let manifest = try? decoder.decode(PaletteManifestDTO.self, from: manifestData) else {
+            let manifestData = try? Data(contentsOf: manifestURL),
+            let manifest = try? decoder.decode(PaletteManifestDTO.self, from: manifestData)
+        else {
             failure("PAL001", "manifest.json", "Manifest is missing or cannot be decoded.")
             return PaletteValidationResult(definition: nil, diagnostics: diagnostics)
         }
@@ -53,10 +54,11 @@ enum PaletteValidator {
 
         for requiredFile in ["README.md", "LICENSE"] {
             guard let url = safeURL(relativePath: requiredFile, root: root),
-                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
-                  values.isRegularFile == true,
-                  let data = try? Data(contentsOf: url),
-                  !data.isEmpty else {
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
+                values.isRegularFile == true,
+                let data = try? Data(contentsOf: url),
+                !data.isEmpty
+            else {
                 failure("PAL010", requiredFile, "Required package documentation is missing or empty.", paletteID: paletteID)
                 continue
             }
@@ -99,14 +101,17 @@ enum PaletteValidator {
         var variants: [PaletteAppearance: PaletteVariantDTO] = [:]
         for appearance in PaletteAppearance.allCases {
             guard let path = manifest.variants[appearance.rawValue],
-                  let url = safeURL(relativePath: path, root: root),
-                  let data = try? Data(contentsOf: url),
-                  let variant = try? decoder.decode(PaletteVariantDTO.self, from: data) else {
+                let url = safeURL(relativePath: path, root: root),
+                let data = try? Data(contentsOf: url),
+                let variant = try? decoder.decode(PaletteVariantDTO.self, from: data)
+            else {
                 failure("PAL005", manifest.variants[appearance.rawValue] ?? "tokens/\(appearance.rawValue).json", "Variant is missing or invalid.", paletteID: paletteID)
                 continue
             }
             let modelSeriesIsValid = variant.data.modelSeries.map { $0.count == 9 } ?? true
-            if variant.data.series.count != 3 || !modelSeriesIsValid || variant.data.heatmap.count != 5 || variant.data.valueProgress.count != 3 || variant.data.milestones.count != 3 || !(0...0.12).contains(variant.surfaceTint.maximumOpacity) {
+            if variant.data.series.count != 3 || !modelSeriesIsValid || variant.data.heatmap.count != 5 || variant.data.valueProgress.count != 3
+                || variant.data.milestones.count != 3 || !(0...0.12).contains(variant.surfaceTint.maximumOpacity)
+            {
                 failure("PAL006", path, "Token array lengths or surface tint opacity are invalid.", paletteID: paletteID)
             }
             variants[appearance] = variant
@@ -115,9 +120,10 @@ enum PaletteValidator {
         var localizations: [String: PaletteLocalizationDTO] = [:]
         for (locale, path) in manifest.localizations {
             guard let url = safeURL(relativePath: path, root: root),
-                  let data = try? Data(contentsOf: url),
-                  let value = try? decoder.decode(PaletteLocalizationDTO.self, from: data),
-                  !value.displayName.isEmpty, !value.shortDescription.isEmpty, !value.inspirationNote.isEmpty else {
+                let data = try? Data(contentsOf: url),
+                let value = try? decoder.decode(PaletteLocalizationDTO.self, from: data),
+                !value.displayName.isEmpty, !value.shortDescription.isEmpty, !value.inspirationNote.isEmpty
+            else {
                 failure("PAL010", path, "Localization is missing or incomplete.", paletteID: paletteID)
                 continue
             }
@@ -126,10 +132,11 @@ enum PaletteValidator {
 
         var assets: [PaletteAssetDescriptor] = []
         if let assetManifestURL = safeURL(relativePath: manifest.assetManifest, root: root),
-           assetManifestURL.pathExtension == "json",
-           let data = try? Data(contentsOf: assetManifestURL),
-           let assetManifest = try? decoder.decode(PaletteAssetManifestDTO.self, from: data),
-           assetManifest.version == 1 {
+            assetManifestURL.pathExtension == "json",
+            let data = try? Data(contentsOf: assetManifestURL),
+            let assetManifest = try? decoder.decode(PaletteAssetManifestDTO.self, from: data),
+            assetManifest.version == 1
+        {
             var identities = Set<String>()
             for entry in assetManifest.assets {
                 let identity = "\(entry.appearance.rawValue):\(entry.slot.rawValue)"
@@ -148,8 +155,9 @@ enum PaletteValidator {
                         failure("PAL011", relativePath(url, root: root), "SVG cannot be decoded by AppKit.", paletteID: paletteID)
                         continue
                     }
-                    assets.append(PaletteAssetDescriptor(slot: entry.slot, appearance: entry.appearance, lod: entry.lod, url: url, renderMode: entry.renderMode, fallback: entry.fallback))
-                case let .failure(message):
+                    assets.append(
+                        PaletteAssetDescriptor(slot: entry.slot, appearance: entry.appearance, lod: entry.lod, url: url, renderMode: entry.renderMode, fallback: entry.fallback))
+                case .failure(let message):
                     failure(message.ruleID, relativePath(url, root: root), message.message, paletteID: paletteID)
                 }
             }
@@ -173,7 +181,8 @@ enum PaletteValidator {
 
     private static func validateSVG(url: URL) -> Result<Void, SVGFailure> {
         guard !isSymbolicLink(url), let data = try? Data(contentsOf: url), data.count <= maximumSVGBytes,
-              let source = String(data: data, encoding: .utf8) else {
+            let source = String(data: data, encoding: .utf8)
+        else {
             return .failure(SVGFailure(ruleID: "PAL009", message: "SVG is unreadable, linked, or exceeds 512 KiB."))
         }
         if source.range(of: "<!DOCTYPE", options: .caseInsensitive) != nil || source.range(of: "<!ENTITY", options: .caseInsensitive) != nil {
@@ -220,11 +229,13 @@ enum PaletteValidator {
 
     private static func packageContentViolations(_ root: URL) -> [PackageContentViolation] {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: Array(keys),
-            options: []
-        ) else {
+        guard
+            let enumerator = FileManager.default.enumerator(
+                at: root,
+                includingPropertiesForKeys: Array(keys),
+                options: []
+            )
+        else {
             return [PackageContentViolation(ruleID: "PAL009", relativePath: ".", message: "Package contents cannot be enumerated.")]
         }
 
@@ -262,7 +273,7 @@ enum PaletteValidator {
             "assets",
             "assets/light",
             "assets/dark",
-            "assets/shared"
+            "assets/shared",
         ].contains(path)
     }
 
@@ -275,9 +286,10 @@ enum PaletteValidator {
             return true
         }
         if components.count == 3,
-           components[0] == "assets",
-           ["light", "dark", "shared"].contains(String(components[1])),
-           URL(fileURLWithPath: path).pathExtension.lowercased() == "svg" {
+            components[0] == "assets",
+            ["light", "dark", "shared"].contains(String(components[1])),
+            URL(fileURLWithPath: path).pathExtension.lowercased() == "svg"
+        {
             return true
         }
         return false
@@ -309,7 +321,7 @@ enum PaletteValidator {
 private final class SafeSVGInspector: NSObject, XMLParserDelegate {
     private let allowedElements: Set<String> = [
         "svg", "defs", "g", "symbol", "use", "path", "circle", "rect", "ellipse", "line", "polyline", "polygon",
-        "linearGradient", "radialGradient", "stop", "clipPath", "mask", "filter", "feGaussianBlur", "feTurbulence", "feColorMatrix", "feBlend"
+        "linearGradient", "radialGradient", "stop", "clipPath", "mask", "filter", "feGaussianBlur", "feTurbulence", "feColorMatrix", "feBlend",
     ]
     private let filterElements: Set<String> = ["feGaussianBlur", "feTurbulence", "feColorMatrix", "feBlend"]
     private(set) var failure: PaletteValidator.SVGFailure?
@@ -318,12 +330,16 @@ private final class SafeSVGInspector: NSObject, XMLParserDelegate {
     private var filterCount = 0
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
-        guard failure == nil else { parser.abortParsing(); return }
+        guard failure == nil else {
+            parser.abortParsing()
+            return
+        }
         elementCount += 1
         depth += 1
         if filterElements.contains(elementName) { filterCount += 1 }
         guard allowedElements.contains(elementName), elementCount <= 4096, depth <= 32, filterCount <= 32 else {
-            failure = PaletteValidator.SVGFailure(ruleID: elementCount > 4096 || depth > 32 || filterCount > 32 ? "PAL009" : "PAL008", message: "SVG uses a forbidden element or exceeds complexity limits.")
+            failure = PaletteValidator.SVGFailure(
+                ruleID: elementCount > 4096 || depth > 32 || filterCount > 32 ? "PAL009" : "PAL008", message: "SVG uses a forbidden element or exceeds complexity limits.")
             parser.abortParsing()
             return
         }
@@ -333,7 +349,9 @@ private final class SafeSVGInspector: NSObject, XMLParserDelegate {
             if lowerName == "xmlns" || lowerName.hasPrefix("xmlns:") {
                 continue
             }
-            if lowerName.hasPrefix("on") || lowerValue.contains("javascript:") || lowerValue.contains("http:") || lowerValue.contains("https:") || lowerValue.contains("file:") || lowerValue.contains("data:") {
+            if lowerName.hasPrefix("on") || lowerValue.contains("javascript:") || lowerValue.contains("http:") || lowerValue.contains("https:") || lowerValue.contains("file:")
+                || lowerValue.contains("data:")
+            {
                 failure = PaletteValidator.SVGFailure(ruleID: "PAL008", message: "SVG contains an event handler or external reference.")
                 parser.abortParsing()
                 return

@@ -13,9 +13,11 @@ struct RuntimeLoadContext {
         codexHomeDirectory: URL? = nil
     ) -> RuntimeLoadContext {
         let environment = ProcessInfo.processInfo.environment
-        let home = environment["CAMNEXT_HOME_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let home =
+            environment["CAMNEXT_HOME_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.homeDirectoryForCurrentUser
-        let cache = environment["CAMNEXT_CACHE_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+        let cache =
+            environment["CAMNEXT_CACHE_OVERRIDE"].map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
             .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
             ?? home.appendingPathComponent("Library/Caches/CodexAccountManagerNext", isDirectory: true)
@@ -41,7 +43,8 @@ struct RuntimeProviderRegistry {
 
     init(providers: [any RuntimeUsageProvider]? = nil) {
         let baseProviders = providers ?? [CodexRuntimeProvider()]
-        let filters = ProcessInfo.processInfo.environment["CAMNEXT_RUNTIME_FILTER"]?
+        let filters =
+            ProcessInfo.processInfo.environment["CAMNEXT_RUNTIME_FILTER"]?
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             ?? []

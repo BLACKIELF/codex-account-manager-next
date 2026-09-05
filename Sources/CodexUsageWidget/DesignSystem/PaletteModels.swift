@@ -51,7 +51,7 @@ enum PaletteModelError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case let .invalidColor(value): "Invalid palette color: \(value)"
+        case .invalidColor(let value): "Invalid palette color: \(value)"
         }
     }
 }
@@ -249,19 +249,19 @@ struct ResolvedVisualTokens: Hashable {
 
     static func safeDefault(_ appearance: PaletteAppearance) -> ResolvedVisualTokens {
         let accent = AccentTokenSet(
-            primary: PaletteColor(rgba: 0x2866F7FF),
-            primaryStrong: PaletteColor(rgba: 0x1F59EDFF),
-            primaryLight: PaletteColor(rgba: 0x7BA0FFFF),
-            secondary: PaletteColor(rgba: 0x8B6DFFFF),
-            secondaryStrong: PaletteColor(rgba: 0x6D45E8FF),
-            highlight: PaletteColor(rgba: 0xDAA3FAFF)
+            primary: PaletteColor(rgba: 0x2866_F7FF),
+            primaryStrong: PaletteColor(rgba: 0x1F59_EDFF),
+            primaryLight: PaletteColor(rgba: 0x7BA0_FFFF),
+            secondary: PaletteColor(rgba: 0x8B6D_FFFF),
+            secondaryStrong: PaletteColor(rgba: 0x6D45_E8FF),
+            highlight: PaletteColor(rgba: 0xDAA3_FAFF)
         )
         return ResolvedVisualTokens(
             identity: PaletteRenderIdentity(paletteID: PaletteCatalog.defaultPaletteID, packageVersion: "safe-default", appearance: appearance),
             accent: accent,
             quota: QuotaTokenSet(
-                primary: QuotaRoleTokenSet(start: accent.primaryLight, end: accent.primary, track: PaletteColor(rgba: 0x2866F71A), label: accent.primary),
-                secondary: QuotaRoleTokenSet(start: accent.highlight, end: accent.secondary, track: PaletteColor(rgba: 0x8B6DFF1A), label: accent.secondary)
+                primary: QuotaRoleTokenSet(start: accent.primaryLight, end: accent.primary, track: PaletteColor(rgba: 0x2866_F71A), label: accent.primary),
+                secondary: QuotaRoleTokenSet(start: accent.highlight, end: accent.secondary, track: PaletteColor(rgba: 0x8B6D_FF1A), label: accent.secondary)
             ),
             data: DataTokenSet(
                 series: [accent.primary, accent.secondary, accent.highlight],
@@ -269,24 +269,30 @@ struct ResolvedVisualTokens: Hashable {
                     accent.primary,
                     accent.secondary,
                     accent.highlight,
-                    PaletteColor(rgba: 0x2AA198FF),
-                    PaletteColor(rgba: 0xE07A5FFF),
-                    PaletteColor(rgba: 0xD4A72CFF),
-                    PaletteColor(rgba: 0x5C9DEDFF),
-                    PaletteColor(rgba: 0xB04A8FFF),
-                    PaletteColor(rgba: 0x6FAE75FF)
+                    PaletteColor(rgba: 0x2AA1_98FF),
+                    PaletteColor(rgba: 0xE07A_5FFF),
+                    PaletteColor(rgba: 0xD4A7_2CFF),
+                    PaletteColor(rgba: 0x5C9D_EDFF),
+                    PaletteColor(rgba: 0xB04A_8FFF),
+                    PaletteColor(rgba: 0x6FAE_75FF),
                 ],
-                tokenInput: PaletteColor(rgba: 0x0A84FFFF),
+                tokenInput: PaletteColor(rgba: 0x0A84_FFFF),
                 tokenCached: accent.secondary,
-                tokenOutput: PaletteColor(rgba: 0xFF9F0AFF),
-                heatmap: [PaletteColor(rgba: 0x0000001A), PaletteColor(rgba: 0x2866F747), PaletteColor(rgba: 0x2866F775), PaletteColor(rgba: 0x2866F7B3), PaletteColor(rgba: 0x2866F7F5)],
-                zero: PaletteColor(rgba: 0x98989D59),
+                tokenOutput: PaletteColor(rgba: 0xFF9F_0AFF),
+                heatmap: [
+                    PaletteColor(rgba: 0x0000_001A), PaletteColor(rgba: 0x2866_F747), PaletteColor(rgba: 0x2866_F775), PaletteColor(rgba: 0x2866_F7B3),
+                    PaletteColor(rgba: 0x2866_F7F5),
+                ],
+                zero: PaletteColor(rgba: 0x9898_9D59),
                 valueProgress: [accent.primaryLight, accent.primary, accent.secondaryStrong],
                 milestones: [accent.primary, accent.secondary, accent.highlight]
             ),
-            selection: SelectionTokenSet(foreground: accent.primary, fill: PaletteColor(rgba: 0x2866F71F), stroke: PaletteColor(rgba: 0x2866F757), focusRing: PaletteColor(rgba: 0x2866F7A6)),
+            selection: SelectionTokenSet(
+                foreground: accent.primary, fill: PaletteColor(rgba: 0x2866_F71F), stroke: PaletteColor(rgba: 0x2866_F757), focusRing: PaletteColor(rgba: 0x2866_F7A6)),
             surfaceTint: SurfaceTintTokenSet(color: accent.primary, maximumOpacity: 0.08),
-            ornament: OrnamentTokenSet(ink: accent.primary, inkSoft: accent.primaryLight, secondaryInk: accent.secondary, highlight: PaletteColor(rgba: 0xFFFFFFFF), metal: PaletteColor(rgba: 0xD2B27BFF)),
+            ornament: OrnamentTokenSet(
+                ink: accent.primary, inkSoft: accent.primaryLight, secondaryInk: accent.secondary, highlight: PaletteColor(rgba: 0xFFFF_FFFF),
+                metal: PaletteColor(rgba: 0xD2B2_7BFF)),
             assets: [:]
         )
     }

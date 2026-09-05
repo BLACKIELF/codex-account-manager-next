@@ -188,7 +188,7 @@ enum CodexRateLimitNormalizerSelfTest {
 
         let duplicateFiveHour = CodexRateLimitNormalizer.normalize([
             window(usedPercent: 90, durationMins: 300),
-            window(usedPercent: 91, durationMins: 300)
+            window(usedPercent: 91, durationMins: 300),
         ])
         expect(duplicateFiveHour.fiveHour == nil, "duplicate 5h windows must not pick an arbitrary winner")
         expect(duplicateFiveHour.fiveHourMatchCount == 2, "duplicate 5h windows should be counted for diagnostics")

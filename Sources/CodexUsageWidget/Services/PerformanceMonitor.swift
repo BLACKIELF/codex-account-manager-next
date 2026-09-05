@@ -78,17 +78,20 @@ final class PerformanceMonitor {
         self.maximumOperationSamples = maximumOperationSamples
         self.maximumResourceSamples = maximumResourceSamples
         self.recordsMetrics = recordsMetrics
-        self.reportURL = reportURL ?? FileManager.default.urls(
-            for: .cachesDirectory,
-            in: .userDomainMask
-        )[0]
+        self.reportURL =
+            reportURL
+            ?? FileManager.default.urls(
+                for: .cachesDirectory,
+                in: .userDomainMask
+            )[0]
             .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
             .appendingPathComponent("performance-v1.json")
 
         if recordsMetrics,
-           let data = try? Data(contentsOf: self.reportURL),
-           let report = try? JSONDecoder().decode(PerformanceReport.self, from: data),
-           report.version == 1 {
+            let data = try? Data(contentsOf: self.reportURL),
+            let report = try? JSONDecoder().decode(PerformanceReport.self, from: data),
+            report.version == 1
+        {
             for operation in PerformanceOperation.allCases {
                 guard let persisted = report.operations[operation.rawValue] else { continue }
                 summaries[operation] = MutableOperationSummary(
@@ -184,32 +187,31 @@ final class PerformanceMonitor {
     }
 
     private func writeReport() {
-        let directory = reportURL.deletingLastPathComponent()
         do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(makeReport()).write(to: reportURL, options: .atomic)
+            try PrivateLocalFileStore.write(encoder.encode(makeReport()), to: reportURL)
         } catch {
             // Performance telemetry must never affect the product path.
         }
     }
 
     private func makeReport() -> PerformanceReport {
-        let operations = Dictionary(uniqueKeysWithValues: summaries.map { operation, mutable in
-            let sorted = mutable.samples.sorted()
-            return (
-                operation.rawValue,
-                PerformanceOperationSummary(
-                    count: mutable.count,
-                    failureCount: mutable.failureCount,
-                    p50Milliseconds: Self.percentile(sorted, fraction: 0.50),
-                    p95Milliseconds: Self.percentile(sorted, fraction: 0.95),
-                    maximumMilliseconds: sorted.last ?? 0,
-                    samplesMilliseconds: mutable.samples
+        let operations = Dictionary(
+            uniqueKeysWithValues: summaries.map { operation, mutable in
+                let sorted = mutable.samples.sorted()
+                return (
+                    operation.rawValue,
+                    PerformanceOperationSummary(
+                        count: mutable.count,
+                        failureCount: mutable.failureCount,
+                        p50Milliseconds: Self.percentile(sorted, fraction: 0.50),
+                        p95Milliseconds: Self.percentile(sorted, fraction: 0.95),
+                        maximumMilliseconds: sorted.last ?? 0,
+                        samplesMilliseconds: mutable.samples
+                    )
                 )
-            )
-        })
+            })
         return PerformanceReport(
             version: 1,
             updatedAtEpochSeconds: Date().timeIntervalSince1970,

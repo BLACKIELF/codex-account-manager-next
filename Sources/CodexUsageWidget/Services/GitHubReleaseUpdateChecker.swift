@@ -33,8 +33,9 @@ final class GitHubReleaseUpdateChecker {
         let cached = readCache()
 
         if !force,
-           let cached,
-           checkedAt.timeIntervalSince(cached.checkedAt) < minimumAutomaticCheckInterval {
+            let cached,
+            checkedAt.timeIntervalSince(cached.checkedAt) < minimumAutomaticCheckInterval
+        {
             let result = Self.revalidateCachedResult(
                 cached.result,
                 currentVersion: currentVersion,
@@ -61,22 +62,24 @@ final class GitHubReleaseUpdateChecker {
             guard let self else { return }
 
             if let error {
-                completion(self.failedResult(
-                    currentVersion: currentVersion,
-                    checkedAt: checkedAt,
-                    message: error.localizedDescription,
-                    cached: cached
-                ))
+                completion(
+                    self.failedResult(
+                        currentVersion: currentVersion,
+                        checkedAt: checkedAt,
+                        message: error.localizedDescription,
+                        cached: cached
+                    ))
                 return
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                completion(self.failedResult(
-                    currentVersion: currentVersion,
-                    checkedAt: checkedAt,
-                    message: "Invalid GitHub response",
-                    cached: cached
-                ))
+                completion(
+                    self.failedResult(
+                        currentVersion: currentVersion,
+                        checkedAt: checkedAt,
+                        message: "Invalid GitHub response",
+                        cached: cached
+                    ))
                 return
             }
 
@@ -94,15 +97,17 @@ final class GitHubReleaseUpdateChecker {
             }
 
             guard (200..<300).contains(httpResponse.statusCode), let data else {
-                let message = httpResponse.statusCode == 403
+                let message =
+                    httpResponse.statusCode == 403
                     ? "GitHub rate limit reached. Try again later."
                     : "GitHub release request failed with HTTP \(httpResponse.statusCode)."
-                completion(self.failedResult(
-                    currentVersion: currentVersion,
-                    checkedAt: checkedAt,
-                    message: message,
-                    cached: cached
-                ))
+                completion(
+                    self.failedResult(
+                        currentVersion: currentVersion,
+                        checkedAt: checkedAt,
+                        message: message,
+                        cached: cached
+                    ))
                 return
             }
 
@@ -122,12 +127,13 @@ final class GitHubReleaseUpdateChecker {
                 )
                 completion(result)
             } catch {
-                completion(self.failedResult(
-                    currentVersion: currentVersion,
-                    checkedAt: checkedAt,
-                    message: "Unable to parse GitHub release metadata.",
-                    cached: cached
-                ))
+                completion(
+                    self.failedResult(
+                        currentVersion: currentVersion,
+                        checkedAt: checkedAt,
+                        message: "Unable to parse GitHub release metadata.",
+                        cached: cached
+                    ))
             }
         }.resume()
     }
@@ -152,8 +158,8 @@ final class GitHubReleaseUpdateChecker {
 
         let candidates = releases.compactMap { release -> (release: GitHubReleaseInfo, version: AppVersion)? in
             guard !release.draft,
-                  includePrereleases || !release.prerelease,
-                  let version = release.version
+                includePrereleases || !release.prerelease,
+                let version = release.version
             else { return nil }
             return (release, version)
         }
@@ -230,8 +236,8 @@ final class GitHubReleaseUpdateChecker {
 
     private func readCache() -> AppUpdateCache? {
         guard let data = try? Data(contentsOf: cacheURL),
-              let cache = try? AppUpdateJSON.decoder.decode(AppUpdateCache.self, from: data),
-              cache.schemaVersion == cacheSchemaVersion
+            let cache = try? AppUpdateJSON.decoder.decode(AppUpdateCache.self, from: data),
+            cache.schemaVersion == cacheSchemaVersion
         else { return nil }
         return cache
     }

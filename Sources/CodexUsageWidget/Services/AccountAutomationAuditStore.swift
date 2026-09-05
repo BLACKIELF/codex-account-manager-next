@@ -22,18 +22,20 @@ final class AccountAutomationAuditStore {
 
     init(fileManager: FileManager = .default, applicationSupportDirectory: URL? = nil) {
         self.fileManager = fileManager
-        let support = applicationSupportDirectory
+        let support =
+            applicationSupportDirectory
             ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support", isDirectory: true)
-        eventsURL = support
+            .appendingPathComponent("Library/Application Support", isDirectory: true)
+        eventsURL =
+            support
             .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
             .appendingPathComponent("automation-events-v1.json")
     }
 
     func load() -> [AccountAutomationEvent] {
         guard let data = try? Data(contentsOf: eventsURL),
-              let events = try? JSONDecoder().decode([AccountAutomationEvent].self, from: data)
+            let events = try? JSONDecoder().decode([AccountAutomationEvent].self, from: data)
         else { return [] }
         return Array(events.prefix(maximumEvents))
     }

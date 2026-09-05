@@ -77,8 +77,9 @@ final class AppUpdateStore: ObservableObject {
     private func apply(_ nextResult: AppUpdateResult, force: Bool) {
         isChecking = false
         if !force,
-           nextResult.status == .updateAvailable,
-           nextResult.latestVersionLabel == settings.skippedUpdateVersion {
+            nextResult.status == .updateAvailable,
+            nextResult.latestVersionLabel == settings.skippedUpdateVersion
+        {
             result = AppUpdateResult(
                 status: .upToDate,
                 checkedAt: nextResult.checkedAt,

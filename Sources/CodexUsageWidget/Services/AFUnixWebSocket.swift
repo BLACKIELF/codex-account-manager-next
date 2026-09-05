@@ -18,20 +18,20 @@ enum AFUnixWebSocketError: Error, CustomStringConvertible {
         switch self {
         case .invalidSocketPath:
             return "invalid Unix socket path"
-        case let .socketFailed(code):
+        case .socketFailed(let code):
             return "socket() failed errno=\(code) (\(Self.errnoText(code)))"
-        case let .connectFailed(code):
+        case .connectFailed(let code):
             return "connect() failed errno=\(code) (\(Self.errnoText(code)))"
-        case let .handshakeFailed(reason):
+        case .handshakeFailed(let reason):
             return "WebSocket handshake failed: \(reason)"
-        case let .unexpectedHandshakeResponse(statusCode, headers):
+        case .unexpectedHandshakeResponse(let statusCode, let headers):
             let status = statusCode.map(String.init) ?? "unknown"
             return "WebSocket handshake response was not 101 status=\(status) headers=\(headers)"
-        case let .readFailed(code):
+        case .readFailed(let code):
             return "socket read failed errno=\(code) (\(Self.errnoText(code)))"
-        case let .writeFailed(code):
+        case .writeFailed(let code):
             return "socket write failed errno=\(code) (\(Self.errnoText(code)))"
-        case let .protocolViolation(reason):
+        case .protocolViolation(let reason):
             return "WebSocket protocol violation: \(reason)"
         case .messageTooLarge:
             return "WebSocket message exceeds configured limit"
@@ -152,7 +152,8 @@ final class AFUnixWebSocket {
             throw AFUnixWebSocketError.handshakeFailed("failed to generate Sec-WebSocket-Key")
         }
         let key = Data(nonce).base64EncodedString()
-        let request = "GET / HTTP/1.1\r\n"
+        let request =
+            "GET / HTTP/1.1\r\n"
             + "Host: localhost\r\n"
             + "Upgrade: websocket\r\n"
             + "Connection: Upgrade\r\n"
@@ -193,10 +194,11 @@ final class AFUnixWebSocket {
         let expectedAccept = SHA1.hash(Data((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").utf8))
             .base64EncodedString()
         guard headers["upgrade"]?.lowercased() == "websocket",
-              headers["connection"]?.lowercased().split(separator: ",").map({
-                  $0.trimmingCharacters(in: .whitespaces)
-              }).contains("upgrade") == true,
-              headers["sec-websocket-accept"] == expectedAccept else {
+            headers["connection"]?.lowercased().split(separator: ",").map({
+                $0.trimmingCharacters(in: .whitespaces)
+            }).contains("upgrade") == true,
+            headers["sec-websocket-accept"] == expectedAccept
+        else {
             throw AFUnixWebSocketError.handshakeFailed(
                 "invalid upgrade headers response=\(diagnosticHeaders)"
             )
@@ -239,8 +241,9 @@ final class AFUnixWebSocket {
                 headerBytes = 10
             }
             guard payloadLength <= UInt64(maximumMessageBytes),
-                  payloadLength <= UInt64(Int.max),
-                  headerBytes <= Int.max - Int(payloadLength) else {
+                payloadLength <= UInt64(Int.max),
+                headerBytes <= Int.max - Int(payloadLength)
+            else {
                 throw AFUnixWebSocketError.messageTooLarge
             }
             let frameBytes = headerBytes + Int(payloadLength)
@@ -393,12 +396,13 @@ private enum SHA1 {
         for shift in stride(from: 56, through: 0, by: -8) {
             message.append(UInt8((bitLength >> UInt64(shift)) & 0xff))
         }
-        var state: [UInt32] = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0]
+        var state: [UInt32] = [0x6745_2301, 0xefcd_ab89, 0x98ba_dcfe, 0x1032_5476, 0xc3d2_e1f0]
         for offset in stride(from: 0, to: message.count, by: 64) {
             var words = [UInt32](repeating: 0, count: 80)
             for index in 0..<16 {
                 let base = offset + index * 4
-                words[index] = UInt32(message[base]) << 24 | UInt32(message[base + 1]) << 16
+                words[index] =
+                    UInt32(message[base]) << 24 | UInt32(message[base + 1]) << 16
                     | UInt32(message[base + 2]) << 8 | UInt32(message[base + 3])
             }
             for index in 16..<80 {
@@ -407,19 +411,31 @@ private enum SHA1 {
                     by: 1
                 )
             }
-            var a = state[0], b = state[1], c = state[2], d = state[3], e = state[4]
+            var a = state[0]
+            var b = state[1]
+            var c = state[2]
+            var d = state[3]
+            var e = state[4]
             for index in 0..<80 {
                 let (function, constant): (UInt32, UInt32)
                 switch index {
-                case 0..<20: (function, constant) = ((b & c) | ((~b) & d), 0x5a827999)
-                case 20..<40: (function, constant) = (b ^ c ^ d, 0x6ed9eba1)
-                case 40..<60: (function, constant) = ((b & c) | (b & d) | (c & d), 0x8f1bbcdc)
-                default: (function, constant) = (b ^ c ^ d, 0xca62c1d6)
+                case 0..<20: (function, constant) = ((b & c) | ((~b) & d), 0x5a82_7999)
+                case 20..<40: (function, constant) = (b ^ c ^ d, 0x6ed9_eba1)
+                case 40..<60: (function, constant) = ((b & c) | (b & d) | (c & d), 0x8f1b_bcdc)
+                default: (function, constant) = (b ^ c ^ d, 0xca62_c1d6)
                 }
                 let temporary = rotateLeft(a, by: 5) &+ function &+ e &+ constant &+ words[index]
-                e = d; d = c; c = rotateLeft(b, by: 30); b = a; a = temporary
+                e = d
+                d = c
+                c = rotateLeft(b, by: 30)
+                b = a
+                a = temporary
             }
-            state[0] &+= a; state[1] &+= b; state[2] &+= c; state[3] &+= d; state[4] &+= e
+            state[0] &+= a
+            state[1] &+= b
+            state[2] &+= c
+            state[3] &+= d
+            state[4] &+= e
         }
         var digest = Data()
         for word in state {

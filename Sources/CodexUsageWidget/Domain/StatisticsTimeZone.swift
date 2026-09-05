@@ -39,7 +39,8 @@ enum StatisticsTimeZonePreferenceStore {
     private static let fixedIdentifierKey = "CodexManagerNext.statisticsTimeZone.fixedIdentifier"
 
     static func load(defaults: UserDefaults = .standard, system: TimeZone = .current) -> StatisticsTimeZonePreference {
-        let selection = defaults.string(forKey: selectionKey)
+        let selection =
+            defaults.string(forKey: selectionKey)
             .flatMap(StatisticsTimeZoneSelection.init(rawValue:)) ?? .system
         let identifier = defaults.string(forKey: fixedIdentifierKey) ?? system.identifier
         let stored = StatisticsTimeZonePreference(selection: selection, fixedIdentifier: identifier)

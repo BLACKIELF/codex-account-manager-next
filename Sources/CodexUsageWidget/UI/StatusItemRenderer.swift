@@ -164,7 +164,8 @@ struct StatusItemRenderer {
         } else if quotaMetrics.isEmpty {
             tokenX = StatusItemLayoutMetrics.leadingContentWidth
         } else {
-            tokenX = presentation.showsResetCountdown
+            tokenX =
+                presentation.showsResetCountdown
                 ? StatusItemLayoutMetrics.richQuotaWidthWithReset
                 : StatusItemLayoutMetrics.richQuotaWidthWithoutReset
             NSColor.separatorColor.withAlphaComponent(0.36).setFill()
@@ -442,11 +443,11 @@ struct StatusItemRenderer {
         let remaining = quotaMode == .remaining ? progress : 1 - progress
         let palette = RemainingQuotaHealth.classify(Double(remaining * 100)).colors
         guard let context = NSGraphicsContext.current?.cgContext,
-              let gradient = CGGradient(
+            let gradient = CGGradient(
                 colorsSpace: CGColorSpaceCreateDeviceRGB(),
                 colors: [palette.start.cgColor, palette.end.cgColor] as CFArray,
                 locations: [0, 1]
-              )
+            )
         else {
             palette.end.setFill()
             fillPath.fill()
@@ -538,12 +539,14 @@ struct StatusItemRenderer {
             return cached
         }
         if let url = Bundle.main.url(forResource: resourceName, withExtension: "png"),
-           let image = NSImage(contentsOf: url) {
+            let image = NSImage(contentsOf: url)
+        {
             Self.templateCache[resourceName] = image
             return image
         }
 
-        let fallbackName = scope == .codex
+        let fallbackName =
+            scope == .codex
             ? "apple.terminal.fill"
             : "curlybraces.square.fill"
         let configuration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
@@ -579,7 +582,7 @@ struct StatusItemRenderer {
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
             .foregroundColor: color,
-            .paragraphStyle: paragraphStyle
+            .paragraphStyle: paragraphStyle,
         ]
         text.draw(with: rect, options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attributes)
     }

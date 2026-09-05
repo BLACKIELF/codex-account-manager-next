@@ -41,10 +41,12 @@ struct GlobalShortcut: Hashable {
         guard carbonModifiers & UInt32(cmdKey | controlKey) != 0 else {
             return .requiresCommandOrControl
         }
-        guard !Self.isReservedSystemShortcut(
-            keyCode: keyCode,
-            modifiers: carbonModifiers
-        ) else { return .reservedSystemShortcut }
+        guard
+            !Self.isReservedSystemShortcut(
+                keyCode: keyCode,
+                modifiers: carbonModifiers
+            )
+        else { return .reservedSystemShortcut }
         guard Self.supportedKeyCodes.contains(keyCode) else { return .unsupportedKey }
         return nil
     }
@@ -52,13 +54,13 @@ struct GlobalShortcut: Hashable {
     static func load(defaults: UserDefaults = .standard) -> GlobalShortcut? {
         guard let enabledValue = defaults.object(forKey: enabledStorageKey) else { return nil }
         guard let enabledNumber = enabledValue as? NSNumber,
-              CFGetTypeID(enabledNumber) == CFBooleanGetTypeID()
+            CFGetTypeID(enabledNumber) == CFBooleanGetTypeID()
         else { return repairToDisabled(defaults: defaults) }
         if !enabledNumber.boolValue { return nil }
         guard let keyCode = storedUInt32(forKey: keyCodeStorageKey, defaults: defaults),
-              let modifiers = storedUInt32(forKey: modifiersStorageKey, defaults: defaults),
-              let keyLabel = defaults.string(forKey: keyLabelStorageKey),
-              isValidStoredLabel(keyLabel)
+            let modifiers = storedUInt32(forKey: modifiersStorageKey, defaults: defaults),
+            let keyLabel = defaults.string(forKey: keyLabelStorageKey),
+            isValidStoredLabel(keyLabel)
         else { return repairToDisabled(defaults: defaults) }
 
         let allowedModifiers = UInt32(cmdKey | controlKey | optionKey | shiftKey)
@@ -96,13 +98,13 @@ struct GlobalShortcut: Hashable {
         defaults: UserDefaults
     ) -> UInt32? {
         guard let number = defaults.object(forKey: key) as? NSNumber,
-              CFGetTypeID(number) != CFBooleanGetTypeID()
+            CFGetTypeID(number) != CFBooleanGetTypeID()
         else { return nil }
         let value = number.doubleValue
         guard value.isFinite,
-              value.rounded(.towardZero) == value,
-              value >= 0,
-              value <= Double(UInt32.max)
+            value.rounded(.towardZero) == value,
+            value >= 0,
+            value <= Double(UInt32.max)
         else { return nil }
         return UInt32(value)
     }
@@ -130,24 +132,26 @@ struct GlobalShortcut: Hashable {
         guard modifiers != 0 else { return nil }
 
         let keyCode = UInt32(event.keyCode)
-        let label = specialKeyLabels[keyCode]
+        let label =
+            specialKeyLabels[keyCode]
             ?? event.charactersIgnoringModifiers?.uppercased()
         guard let label, !label.isEmpty else { return nil }
         return GlobalShortcut(keyCode: keyCode, carbonModifiers: modifiers, keyLabel: label)
     }
 
-    private static let supportedKeyCodes: Set<UInt32> = Set([
-        kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E,
-        kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_I, kVK_ANSI_J,
-        kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O,
-        kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_T,
-        kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y,
-        kVK_ANSI_Z, kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3,
-        kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8,
-        kVK_ANSI_9, kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow,
-        kVK_DownArrow, kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5,
-        kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12
-    ].map(UInt32.init))
+    private static let supportedKeyCodes: Set<UInt32> = Set(
+        [
+            kVK_ANSI_A, kVK_ANSI_B, kVK_ANSI_C, kVK_ANSI_D, kVK_ANSI_E,
+            kVK_ANSI_F, kVK_ANSI_G, kVK_ANSI_H, kVK_ANSI_I, kVK_ANSI_J,
+            kVK_ANSI_K, kVK_ANSI_L, kVK_ANSI_M, kVK_ANSI_N, kVK_ANSI_O,
+            kVK_ANSI_P, kVK_ANSI_Q, kVK_ANSI_R, kVK_ANSI_S, kVK_ANSI_T,
+            kVK_ANSI_U, kVK_ANSI_V, kVK_ANSI_W, kVK_ANSI_X, kVK_ANSI_Y,
+            kVK_ANSI_Z, kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3,
+            kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8,
+            kVK_ANSI_9, kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow,
+            kVK_DownArrow, kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5,
+            kVK_F6, kVK_F7, kVK_F8, kVK_F9, kVK_F10, kVK_F11, kVK_F12,
+        ].map(UInt32.init))
 
     private struct ReservedShortcutMask {
         let keyCode: UInt32
@@ -181,7 +185,7 @@ struct GlobalShortcut: Hashable {
         ReservedShortcutMask(keyCode: UInt32(kVK_ANSI_3), requiredModifiers: UInt32(cmdKey | shiftKey)),
         ReservedShortcutMask(keyCode: UInt32(kVK_ANSI_4), requiredModifiers: UInt32(cmdKey | shiftKey)),
         ReservedShortcutMask(keyCode: UInt32(kVK_ANSI_5), requiredModifiers: UInt32(cmdKey | shiftKey)),
-        ReservedShortcutMask(keyCode: UInt32(kVK_F5), requiredModifiers: UInt32(cmdKey | optionKey))
+        ReservedShortcutMask(keyCode: UInt32(kVK_F5), requiredModifiers: UInt32(cmdKey | optionKey)),
     ]
 
     private static let specialKeyLabels: [UInt32: String] = [
@@ -202,7 +206,7 @@ struct GlobalShortcut: Hashable {
         UInt32(kVK_F1): "F1", UInt32(kVK_F2): "F2", UInt32(kVK_F3): "F3",
         UInt32(kVK_F4): "F4", UInt32(kVK_F5): "F5", UInt32(kVK_F6): "F6",
         UInt32(kVK_F7): "F7", UInt32(kVK_F8): "F8", UInt32(kVK_F9): "F9",
-        UInt32(kVK_F10): "F10", UInt32(kVK_F11): "F11", UInt32(kVK_F12): "F12"
+        UInt32(kVK_F10): "F10", UInt32(kVK_F11): "F11", UInt32(kVK_F12): "F12",
     ]
 }
 

@@ -19,55 +19,6 @@ final class PaletteAssetStore {
     }
 }
 
-struct PaletteRingArtwork: View {
-    let descriptor: PaletteAssetDescriptor
-    let progress: CGFloat
-    let lineWidth: CGFloat
-
-    var body: some View {
-        if let image = PaletteAssetStore.shared.image(for: descriptor) {
-            Image(nsImage: image)
-                .resizable()
-                .interpolation(.high)
-                .scaledToFit()
-                .mask(
-                    Circle()
-                        .inset(by: lineWidth / 2)
-                        .trim(from: 0, to: progress)
-                        .stroke(Color.white, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                )
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-        }
-    }
-}
-
-struct PaletteRingCap: View {
-    let descriptor: PaletteAssetDescriptor
-    let progress: CGFloat
-    let lineWidth: CGFloat
-
-    var body: some View {
-        GeometryReader { proxy in
-            if let image = PaletteAssetStore.shared.image(for: descriptor), progress > 0.001 {
-                let radius = (min(proxy.size.width, proxy.size.height) - lineWidth) / 2
-                let angle = Double(progress) * 2 * Double.pi - Double.pi / 2
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .frame(width: lineWidth + 2, height: lineWidth + 2)
-                    .position(
-                        x: proxy.size.width / 2 + radius * cos(angle),
-                        y: proxy.size.height / 2 + radius * sin(angle)
-                    )
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
-        }
-    }
-}
-
 struct PaletteAssetFill: View {
     let descriptor: PaletteAssetDescriptor
 
@@ -103,9 +54,6 @@ private struct PaletteTiledAssetFill: View {
 
             switch axis {
             case .horizontal:
-                // Scale the complete SVG strip to the target height first, then
-                // repeat it. SwiftUI's .tile keeps the 32pt source height and a
-                // 10pt progress bar therefore exposes only a cropped edge.
                 let tileWidth = max(1, size.height * image.size.width / image.size.height)
                 var x: CGFloat = 0
                 while x < size.width {

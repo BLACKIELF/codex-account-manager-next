@@ -140,12 +140,14 @@ struct CodexThreadHistoryPageAccumulator {
         }
         pageCount += 1
         guard pageCount <= Self.maximumPages,
-              turnIDs.count + turns.count <= Self.maximumTurns else {
+            turnIDs.count + turns.count <= Self.maximumTurns
+        else {
             throw CodexThreadHistoryError.tooLarge
         }
         for turn in turns {
             guard let turnID = turn["id"] as? String,
-                  !turnID.isEmpty else {
+                !turnID.isEmpty
+            else {
                 throw CodexThreadHistoryError.malformedPage
             }
             guard seenTurnIDs.insert(turnID).inserted else {
@@ -177,24 +179,28 @@ enum CodexThreadHistoryProbeSelfTest {
     static func run() -> Bool {
         var accumulator = CodexThreadHistoryPageAccumulator(threadID: "thread")
         do {
-            guard try accumulator.append(result: [
-                "data": [["id": "new"], ["id": "middle"]],
-                "nextCursor": "older-page"
-            ]) == "older-page",
-            try accumulator.append(result: [
-                "data": [["id": "old"]],
-                "nextCursor": NSNull()
-            ]) == nil else {
+            guard
+                try accumulator.append(result: [
+                    "data": [["id": "new"], ["id": "middle"]],
+                    "nextCursor": "older-page",
+                ]) == "older-page",
+                try accumulator.append(result: [
+                    "data": [["id": "old"]],
+                    "nextCursor": NSNull(),
+                ]) == nil
+            else {
                 print("Codex thread history probe self-test failed: pagination")
                 return false
             }
             let snapshot = try accumulator.snapshot()
             guard snapshot.turnIDs == ["new", "middle", "old"],
-                  snapshot.matches(snapshot),
-                  !snapshot.matches(CodexThreadHistorySnapshot(
-                    threadID: "thread",
-                    turnIDs: ["new", "old"]
-                  )) else {
+                snapshot.matches(snapshot),
+                !snapshot.matches(
+                    CodexThreadHistorySnapshot(
+                        threadID: "thread",
+                        turnIDs: ["new", "old"]
+                    ))
+            else {
                 print("Codex thread history probe self-test failed: fingerprint")
                 return false
             }
@@ -303,14 +309,16 @@ enum CodexThreadHistoryProbe {
                     "threadId": threadID,
                     "limit": pageSize,
                     "sortDirection": "desc",
-                    "itemsView": "notLoaded"
+                    "itemsView": "notLoaded",
                 ]
                 if let cursor { params["cursor"] = cursor }
-                guard writeMessage([
-                    "id": historyRequestID,
-                    "method": "thread/turns/list",
-                    "params": params
-                ]) else {
+                guard
+                    writeMessage([
+                        "id": historyRequestID,
+                        "method": "thread/turns/list",
+                        "params": params,
+                    ])
+                else {
                     finish(.failure(.unavailable))
                     return
                 }
@@ -325,10 +333,12 @@ enum CodexThreadHistoryProbe {
 
             func parseLine(_ line: Data) {
                 guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-                      let requestID = responseID(object["id"]) else { return }
+                    let requestID = responseID(object["id"])
+                else { return }
                 if requestID == 1 {
                     guard object["error"] == nil,
-                          writeMessage(["method": "initialized"]) else {
+                        writeMessage(["method": "initialized"])
+                    else {
                         finish(.failure(.unavailable))
                         return
                     }
@@ -337,7 +347,8 @@ enum CodexThreadHistoryProbe {
                 }
                 guard requestID == historyRequestID else { return }
                 guard object["error"] == nil,
-                      let result = object["result"] as? [String: Any] else {
+                    let result = object["result"] as? [String: Any]
+                else {
                     finish(.failure(.unavailable))
                     return
                 }
@@ -358,10 +369,12 @@ enum CodexThreadHistoryProbe {
             while true {
                 let data: Data
                 do {
-                    guard let next = try POSIXPipeReader.readChunk(
-                        from: outputDescriptor,
-                        maximumBytes: 64 * 1_024
-                    ) else { return }
+                    guard
+                        let next = try POSIXPipeReader.readChunk(
+                            from: outputDescriptor,
+                            maximumBytes: 64 * 1_024
+                        )
+                    else { return }
                     data = next
                 } catch {
                     return
@@ -390,13 +403,13 @@ enum CodexThreadHistoryProbe {
                 "clientInfo": [
                     "name": "codex-account-manager-next",
                     "title": "Codex Account Manager Next",
-                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                    "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0",
                 ],
                 "capabilities": [
                     "experimentalApi": true,
-                    "optOutNotificationMethods": []
-                ]
-            ]
+                    "optOutNotificationMethods": [],
+                ],
+            ],
         ]) {
             finish(.failure(.unavailable))
         }
@@ -542,31 +555,35 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         webSocket.start(
             onReady: { [weak self, weak webSocket] in
                 guard let self, let webSocket,
-                      self.connectionGeneration == generation,
-                      self.webSocket === webSocket else { return }
+                    self.connectionGeneration == generation,
+                    self.webSocket === webSocket
+                else { return }
                 self.isConnected = true
                 self.connectionMode = mode
-                guard self.writeJSONObject([
-                    "id": self.initializeRequestID,
-                    "method": "initialize",
-                    "params": [
-                        "clientInfo": [
-                            "name": "codex-account-manager-next",
-                            "title": "Codex Account Manager Next",
-                            "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+                guard
+                    self.writeJSONObject([
+                        "id": self.initializeRequestID,
+                        "method": "initialize",
+                        "params": [
+                            "clientInfo": [
+                                "name": "codex-account-manager-next",
+                                "title": "Codex Account Manager Next",
+                                "version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0",
+                            ],
+                            "capabilities": [
+                                "experimentalApi": false,
+                                "optOutNotificationMethods": [],
+                            ],
                         ],
-                        "capabilities": [
-                            "experimentalApi": false,
-                            "optOutNotificationMethods": []
-                        ]
-                    ]
-                ]) else {
+                    ])
+                else {
                     self.handleDisconnect(generation: generation)
                     return
                 }
                 let timeout = DispatchWorkItem { [weak self] in
                     guard let self, self.connectionGeneration == generation,
-                          self.initializeTimeout != nil else { return }
+                        self.initializeTimeout != nil
+                    else { return }
                     self.handleDisconnect(generation: generation)
                 }
                 self.initializeTimeout = timeout
@@ -574,7 +591,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
             },
             onMessage: { [weak self] data in
                 guard let self, self.connectionGeneration == generation,
-                      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
                 else { return }
                 self.handle(object)
             },
@@ -613,7 +630,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         let completions = pendingThreadListCompletions.removeValue(forKey: responseID) ?? []
         let span = pendingThreadListSpans.removeValue(forKey: responseID)
         guard let result = object["result"] as? [String: Any],
-              let threads = result["data"] as? [[String: Any]]
+            let threads = result["data"] as? [[String: Any]]
         else {
             if let span {
                 PerformanceMonitor.shared.end(span, success: false)
@@ -625,10 +642,11 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         if let span {
             PerformanceMonitor.shared.end(span)
         }
-        let nextCursor = (result["nextCursor"] as? String)
+        let nextCursor =
+            (result["nextCursor"] as? String)
             ?? (result["next_cursor"] as? String)
         guard threads.count < maximumThreadListCount,
-              nextCursor?.isEmpty != false
+            nextCursor?.isEmpty != false
         else {
             reducer.disconnect()
             publishSnapshot()
@@ -661,7 +679,8 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
         pendingThreadListSpans[requestID] = PerformanceMonitor.shared.begin(.appServerTasks)
         let timeout = DispatchWorkItem { [weak self] in
             guard let self,
-                  self.pendingThreadListIDs.remove(requestID) != nil else { return }
+                self.pendingThreadListIDs.remove(requestID) != nil
+            else { return }
             self.pendingThreadListTimeouts.removeValue(forKey: requestID)
             let completions = self.pendingThreadListCompletions.removeValue(forKey: requestID) ?? []
             if let span = self.pendingThreadListSpans.removeValue(forKey: requestID) {
@@ -678,8 +697,8 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
                 "limit": maximumThreadListCount,
                 "sortKey": "recency_at",
                 "sortDirection": "desc",
-                "useStateDbOnly": true
-            ]
+                "useStateDbOnly": true,
+            ],
         ])
         if !wrote {
             pendingThreadListIDs.remove(requestID)
@@ -695,7 +714,7 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
 
     private func writeJSONObject(_ object: [String: Any]) -> Bool {
         guard let webSocket,
-              let data = try? JSONSerialization.data(withJSONObject: object)
+            let data = try? JSONSerialization.data(withJSONObject: object)
         else { return false }
         return webSocket.sendText(data)
     }
@@ -745,15 +764,17 @@ final class CodexAppServerTaskClient: CodexTaskEventClient {
 
     private func scheduleReconnectIfNeeded() {
         guard !isStopping, !activeReasons.isEmpty, !hasRetriedConnection,
-              reconnectWorkItem == nil else { return }
+            reconnectWorkItem == nil
+        else { return }
         hasRetriedConnection = true
         debugLog("AFUnixWebSocket: scheduling reconnect in 30 seconds")
         let retry = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.reconnectWorkItem = nil
             guard !self.activeReasons.isEmpty,
-                  self.fileManager.fileExists(atPath: self.defaultDaemonSocket.path),
-                  self.webSocket == nil else { return }
+                self.fileManager.fileExists(atPath: self.defaultDaemonSocket.path),
+                self.webSocket == nil
+            else { return }
             debugLog("AFUnixWebSocket: starting 30-second reconnect attempt")
             self.launch(mode: .sharedDaemon)
         }

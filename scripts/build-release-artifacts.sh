@@ -17,20 +17,8 @@ plutil -lint Resources/Info.plist
 git diff --check
 
 make test-macos-compatibility
-make build >/dev/null
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-statistics-time-zone
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-token-counter
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-app-server-pipe
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-status-item
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-rate-limits
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-particle-animation
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-updates
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-profile-store
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-automatic-account-switch
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-feishu-webhook
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-automation-audit
-build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-switch-safety
-./scripts/test-parsers.sh
+make test
+CAMNEXT_SKIP_BUILD=1 ./scripts/test-parsers.sh
 
 make release-all
 

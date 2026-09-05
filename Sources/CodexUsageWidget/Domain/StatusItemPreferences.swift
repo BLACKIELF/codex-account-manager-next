@@ -100,9 +100,11 @@ enum StatusItemPreferencesStore {
             save(fallback, defaults: defaults)
             return fallback
         }
-        let displayMode = defaults.string(forKey: displayModeKey)
+        let displayMode =
+            defaults.string(forKey: displayModeKey)
             .flatMap(StatusItemDisplayMode.init(rawValue:)) ?? fallback.displayMode
-        let quotaMode = defaults.string(forKey: quotaModeKey)
+        let quotaMode =
+            defaults.string(forKey: quotaModeKey)
             .flatMap(QuotaDisplayMode.init(rawValue:)) ?? fallback.quotaMode
 
         let visibleMetrics: Set<StatusItemMetric>

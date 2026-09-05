@@ -32,6 +32,8 @@ enum StatusItemPresentationSelfTest {
         expect(AccountDisplay.masked("longname0917@example.test") == "lon•••917", "email should hide its domain and middle")
         expect(AccountDisplay.masked("abc@example.test") == "abc", "short email names should remain readable")
         expect(AccountDisplay.masked("账号 2") == "账号 2", "non-email profile names should remain unchanged")
+        expect(AccountDisplay.masked("@handle") == "@handle", "handle-like names should not be mistaken for email addresses")
+        expect(AccountDisplay.masked("name@") == "name@", "incomplete email-like names should remain unchanged")
         expect(RemainingQuotaHealth.classify(nil) == .unavailable, "missing quota should remain neutral")
         expect(RemainingQuotaHealth.classify(24.99) == .critical, "quota below 25% should be red")
         expect(RemainingQuotaHealth.classify(25) == .warning, "quota from 25% should be yellow")
@@ -332,7 +334,8 @@ enum StatusItemPresentationSelfTest {
             "minimal quota rings should share one center"
         )
         let minimalInnerRingOuterRadius = StatusItemLayoutMetrics.minimalInnerRingDiameter / 2
-        let minimalOuterRingInnerRadius = StatusItemLayoutMetrics.minimalOuterRingDiameter / 2
+        let minimalOuterRingInnerRadius =
+            StatusItemLayoutMetrics.minimalOuterRingDiameter / 2
             - StatusItemLayoutMetrics.minimalOuterRingLineWidth
         expect(
             minimalInnerRingOuterRadius + StatusItemLayoutMetrics.minimalRingClearance
@@ -344,7 +347,8 @@ enum StatusItemPresentationSelfTest {
         let darkTokens = ResolvedVisualTokens.safeDefault(.dark)
         let minimalImage = renderer.render(minimal, tokens: lightTokens, appearance: NSAppearance(named: .aqua))
         if let bitmap = minimalImage.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)),
-           let center = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2) {
+            let center = bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)
+        {
             expect(center.alphaComponent < 0.01, "minimal mode center should remain transparent without a runtime logo")
         } else {
             failures.append("minimal status item render should produce a readable bitmap")
@@ -395,7 +399,8 @@ enum StatusItemPresentationSelfTest {
             }
         }
         if let bitmap = aquaImage.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)),
-           let corner = bitmap.colorAt(x: 0, y: 0) {
+            let corner = bitmap.colorAt(x: 0, y: 0)
+        {
             expect(corner.alphaComponent < 0.01, "status item image background should remain transparent")
         } else {
             failures.append("status item render should produce a readable bitmap")
@@ -510,13 +515,14 @@ enum StatusItemPresentationSelfTest {
             var inkY: [Int] = []
             for y in minPixelY...maxPixelY {
                 for x in minPixelX...maxPixelX
-                    where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
+                where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
                     inkX.append(x)
                     inkY.append(y)
                 }
             }
             if let minInkX = inkX.min(), let maxInkX = inkX.max(),
-               let minInkY = inkY.min(), let maxInkY = inkY.max() {
+                let minInkY = inkY.min(), let maxInkY = inkY.max()
+            {
                 let inkMidX = CGFloat(minInkX + maxInkX + 1) / 2 / scaleX
                 let inkMidY = CGFloat(minInkY + maxInkY + 1) / 2 / scaleY
                 expect(
@@ -550,7 +556,7 @@ enum StatusItemPresentationSelfTest {
             var maxY = -1
             for y in 0..<bitmap.pixelsHigh {
                 for x in startX..<bitmap.pixelsWide
-                    where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
+                where (bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.05 {
                     minX = min(minX, x)
                     maxX = max(maxX, x)
                     minY = min(minY, y)

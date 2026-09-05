@@ -9,7 +9,7 @@ struct HubTask: Decodable, Equatable {
     var approvalExpired: Bool? = nil
 
     private static let accountBusyStates: Set<String> = [
-        "awaiting_approval", "starting", "running", "cancel_requested", "uncertain"
+        "awaiting_approval", "approved", "queued", "starting", "running", "cancel_requested", "uncertain",
     ]
 
     static func blocksAccountWarmUp(state: String) -> Bool {
@@ -87,6 +87,7 @@ struct HubAccountTaskStatus: Equatable {
 enum HubAccountTaskStatusResolver {
     static let terminalFeedbackTTL: TimeInterval = 2 * 60
     static let overviewFreshnessTTL: TimeInterval = 30
+    static let maximumFutureClockSkew: TimeInterval = 5
 
     static func canonicalAlias(_ alias: String) -> String {
         alias.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -104,7 +105,8 @@ enum HubAccountTaskStatusResolver {
                 if taskIsBusy != currentIsBusy {
                     if taskIsBusy { result[alias] = task }
                 } else if task.createdAt > current.createdAt
-                    || (task.createdAt == current.createdAt && task.updatedAt > current.updatedAt) {
+                    || (task.createdAt == current.createdAt && task.updatedAt > current.updatedAt)
+                {
                     result[alias] = task
                 }
             } else {
@@ -120,15 +122,20 @@ enum HubAccountTaskStatusResolver {
         }
 
         let rawState = task.state.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let age = max(0, now.timeIntervalSince(task.updatedAt))
+        let signedAge = now.timeIntervalSince(task.updatedAt)
+        guard signedAge >= -maximumFutureClockSkew else {
+            return HubAccountTaskStatus(phase: .uncertain, updatedAt: task.updatedAt)
+        }
+        let age = max(0, signedAge)
         switch rawState {
         case "awaiting_approval":
             if task.approvalExpired == true
-                || task.approvalExpiresAt.map({ $0 <= now }) == true {
+                || task.approvalExpiresAt.map({ $0 <= now }) == true
+            {
                 return HubAccountTaskStatus(phase: .idle, updatedAt: nil)
             }
             return activeStatus(.awaitingApproval, task: task)
-        case "starting":
+        case "approved", "queued", "starting":
             return activeStatus(.starting, task: task)
         case "running":
             return activeStatus(.running, task: task)
@@ -155,10 +162,10 @@ enum HubAccountTaskStatusResolver {
         now: Date
     ) -> HubAccountTaskStatus {
         guard connectionState == .online,
-              let lastSuccessfulRefreshAt,
-              now.timeIntervalSince(lastSuccessfulRefreshAt) <= overviewFreshnessTTL,
-              let accountAlias,
-              !canonicalAlias(accountAlias).isEmpty
+            let lastSuccessfulRefreshAt,
+            (-maximumFutureClockSkew...overviewFreshnessTTL).contains(now.timeIntervalSince(lastSuccessfulRefreshAt)),
+            let accountAlias,
+            !canonicalAlias(accountAlias).isEmpty
         else {
             return HubAccountTaskStatus(phase: .unavailable, updatedAt: nil)
         }
@@ -275,12 +282,13 @@ enum HubConsoleModel {
         request.httpMethod = "GET"
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let response = response as? HTTPURLResponse,
-              (200..<300).contains(response.statusCode)
+            (200..<300).contains(response.statusCode)
         else { throw URLError(.badServerResponse) }
-        return try decoder.decode(HubOverview.self, from: data)
+        return try makeDecoder().decode(HubOverview.self, from: data)
     }
 
-    private static let decoder: JSONDecoder = {
+    /// `JSONDecoder` is mutable and not safe to share across concurrent refresh requests.
+    private static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
@@ -294,17 +302,152 @@ enum HubConsoleModel {
             return date
         }
         return decoder
-    }()
+    }
 }
 
 enum HubWarmUpGateSelfTest {
     static func run() -> Bool {
-        let blocking = ["awaiting_approval", "starting", "running", "cancel_requested", "uncertain"]
-        let terminal = ["succeeded", "failed", "cancelled", "blocked_configuration"]
-        let passed = blocking.allSatisfy { HubTask.blocksAccountWarmUp(state: $0) }
-            && terminal.allSatisfy { !HubTask.blocksAccountWarmUp(state: $0) }
-        if !passed { print("Hub warm-up gate self-test failed") }
-        return passed
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var failures: [String] = []
+
+        func task(
+            alias: String? = "account-a",
+            state: String,
+            createdAt: Date? = nil,
+            updatedAt: Date? = nil,
+            approvalExpiresAt: Date? = nil,
+            approvalExpired: Bool? = nil
+        ) -> HubTask {
+            HubTask(
+                accountAlias: alias,
+                state: state,
+                createdAt: createdAt ?? now.addingTimeInterval(-20),
+                updatedAt: updatedAt ?? now.addingTimeInterval(-10),
+                approvalExpiresAt: approvalExpiresAt,
+                approvalExpired: approvalExpired
+            )
+        }
+
+        func expect(_ condition: @autoclosure () -> Bool, _ name: String) {
+            if !condition() { failures.append(name) }
+        }
+
+        let busyStates: [(String, HubAccountTaskPhase)] = [
+            ("awaiting_approval", .awaitingApproval),
+            ("approved", .starting),
+            ("queued", .starting),
+            ("starting", .starting),
+            ("running", .running),
+            ("cancel_requested", .cancelRequested),
+            ("uncertain", .uncertain),
+        ]
+        for (rawState, expectedPhase) in busyStates {
+            let status = HubAccountTaskStatusResolver.status(for: task(state: rawState), now: now)
+            expect(HubTask.blocksAccountWarmUp(state: rawState), "busy predicate: \(rawState)")
+            expect(status.phase == expectedPhase, "busy phase: \(rawState)")
+            expect(status.blocksLocalCLI, "busy blocks local CLI: \(rawState)")
+        }
+
+        let unknown = HubAccountTaskStatusResolver.status(for: task(state: "future_state"), now: now)
+        expect(unknown.phase == .uncertain && unknown.blocksLocalCLI, "unknown state fails closed")
+
+        let expiredByDate = HubAccountTaskStatusResolver.status(
+            for: task(state: "awaiting_approval", approvalExpiresAt: now.addingTimeInterval(-1)),
+            now: now
+        )
+        let expiredByFlag = HubAccountTaskStatusResolver.status(
+            for: task(state: "awaiting_approval", approvalExpired: true),
+            now: now
+        )
+        expect(expiredByDate.phase == .idle && !expiredByDate.blocksLocalCLI, "expired approval date is idle")
+        expect(expiredByFlag.phase == .idle && !expiredByFlag.blocksLocalCLI, "expired approval flag is idle")
+
+        for terminalState in ["succeeded", "failed", "cancelled", "blocked_configuration"] {
+            let recent = HubAccountTaskStatusResolver.status(for: task(state: terminalState), now: now)
+            let expired = HubAccountTaskStatusResolver.status(
+                for: task(
+                    state: terminalState,
+                    updatedAt: now.addingTimeInterval(-HubAccountTaskStatusResolver.terminalFeedbackTTL - 1)
+                ),
+                now: now
+            )
+            expect(!recent.blocksLocalCLI && recent.phase != .idle, "recent terminal feedback: \(terminalState)")
+            expect(expired.phase == .idle && !expired.blocksLocalCLI, "expired terminal feedback: \(terminalState)")
+        }
+
+        let freshRefresh = now.addingTimeInterval(-1)
+        let offline = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "account-a",
+            tasksByAlias: [:],
+            connectionState: .offline,
+            lastSuccessfulRefreshAt: freshRefresh,
+            now: now
+        )
+        let stale = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "account-a",
+            tasksByAlias: [:],
+            connectionState: .online,
+            lastSuccessfulRefreshAt: now.addingTimeInterval(-HubAccountTaskStatusResolver.overviewFreshnessTTL - 1),
+            now: now
+        )
+        let missingAlias = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "  \n ",
+            tasksByAlias: [:],
+            connectionState: .online,
+            lastSuccessfulRefreshAt: freshRefresh,
+            now: now
+        )
+        for (name, status) in [("offline", offline), ("stale overview", stale), ("missing alias", missingAlias)] {
+            expect(status.phase == .unavailable && status.blocksLocalCLI, "\(name) is unavailable")
+        }
+
+        let futureTask = HubAccountTaskStatusResolver.status(
+            for: task(
+                state: "succeeded",
+                updatedAt: now.addingTimeInterval(HubAccountTaskStatusResolver.maximumFutureClockSkew + 1)
+            ),
+            now: now
+        )
+        let futureOverview = HubAccountTaskStatusResolver.status(
+            forAccountAlias: "account-a",
+            tasksByAlias: [:],
+            connectionState: .online,
+            lastSuccessfulRefreshAt: now.addingTimeInterval(HubAccountTaskStatusResolver.maximumFutureClockSkew + 1),
+            now: now
+        )
+        expect(futureTask.phase == .uncertain && futureTask.blocksLocalCLI, "future task timestamp fails closed")
+        expect(futureOverview.phase == .unavailable && futureOverview.blocksLocalCLI, "future overview timestamp fails closed")
+
+        let olderBusy = task(
+            alias: " Account-A ",
+            state: "running",
+            createdAt: now.addingTimeInterval(-100),
+            updatedAt: now.addingTimeInterval(-5)
+        )
+        let newerTerminal = task(
+            alias: "account-a",
+            state: "succeeded",
+            createdAt: now.addingTimeInterval(-20),
+            updatedAt: now.addingTimeInterval(-1)
+        )
+        let latest = HubAccountTaskStatusResolver.latestTasksByAlias([olderBusy, newerTerminal], now: now)
+        expect(latest["account-a"] == olderBusy, "busy task wins over newer terminal task")
+        expect(HubAccountTaskStatusResolver.canonicalAlias("  AcCoUnT-A\n") == "account-a", "alias normalization")
+        let normalizedStatus = HubAccountTaskStatusResolver.status(
+            forAccountAlias: " ACCOUNT-A ",
+            tasksByAlias: latest,
+            connectionState: .online,
+            lastSuccessfulRefreshAt: freshRefresh,
+            now: now
+        )
+        expect(normalizedStatus.phase == .running && normalizedStatus.blocksLocalCLI, "normalized alias lookup")
+
+        if failures.isEmpty {
+            print("Hub warm-up gate self-test passed")
+            return true
+        }
+        print("Hub warm-up gate self-test failed: \(failures.joined(separator: ", "))")
+        return false
     }
 }
 

@@ -1,0 +1,159 @@
+import Foundation
+
+/// Presentation only: never changes identity, scheduling eligibility or account leases.
+struct WorkspacePresentation {
+    let accountCount: Int
+    let managedAccountCount: Int
+    let focusedProfile: CodexProfile?
+    private let selectedProfile: CodexProfile?
+
+    var isSingleAccount: Bool { accountCount <= 1 }
+
+    var quotaProfile: CodexProfile? { usesFocusedQuota ? focusedProfile : selectedProfile }
+
+    private var usesFocusedQuota: Bool {
+        isSingleAccount && focusedProfile != nil
+            && focusedProfile?.recordedAccountKey != selectedProfile?.recordedAccountKey
+    }
+
+    init(profiles: [CodexProfile], selectedProfileID: String?) {
+        let managed = profiles.filter { !$0.isSystemProfile }
+        // An unverified system placeholder is not a second account. Unknown managed
+        // profiles remain separate until the existing identity logic can match them.
+        let represented = profiles.filter { !$0.isSystemProfile || $0.lastSnapshot != nil || managed.isEmpty }
+        accountCount = CodexProfile.groupsByRecordedAccount(represented).count
+        managedAccountCount = CodexProfile.groupsByRecordedAccount(managed).count
+        let selected = profiles.first { $0.id == selectedProfileID }
+        selectedProfile = selected
+        if let selected, !selected.isSystemProfile {
+            focusedProfile = selected
+        } else if let selected {
+            focusedProfile =
+                managed.first { $0.recordedAccountKey == selected.recordedAccountKey }
+                ?? (selected.isSystemProfile && selected.lastSnapshot == nil ? managed.first : nil)
+                ?? selected
+        } else {
+            focusedProfile = managed.first ?? profiles.first
+        }
+    }
+
+    func quotaSummary(monitored: UsageSnapshot) -> (fiveHour: RateWindow?, sevenDay: RateWindow?, readSucceeded: Bool) {
+        guard usesFocusedQuota, let profile = quotaProfile else {
+            return (monitored.fiveHourQuota, monitored.sevenDayQuota, monitored.quotaReadSucceeded)
+        }
+        func window(_ snapshot: CodexQuotaWindowSnapshot?) -> RateWindow? {
+            snapshot.map { RateWindow(usedPercent: $0.usedPercent, windowDurationMins: $0.windowDurationMins, resetsAt: $0.resetsAt) }
+        }
+        return (
+            window(profile.lastSnapshot?.fiveHour), window(profile.lastSnapshot?.sevenDay),
+            profile.lastSnapshot != nil && profile.lastQuotaReadFailureAt == nil
+        )
+    }
+
+    static func selfTest() -> Bool {
+        func profile(
+            _ id: String, system: Bool = false, email: String? = nil,
+            fetchedAt: Date = Date(timeIntervalSince1970: 0), lastFailureAt: Date? = nil
+        ) -> CodexProfile {
+            CodexProfile(
+                id: id, name: id, codexHomePath: "/preview/\(id)", isSystemProfile: system,
+                createdAt: Date(timeIntervalSince1970: 0),
+                lastSnapshot: email.map {
+                    CodexAccountSnapshot(
+                        accountType: "chatgpt", planType: "plus", email: $0, limitId: nil,
+                        limitName: nil, fiveHour: nil, sevenDay: nil, monthly: nil,
+                        fetchedAt: fetchedAt, appServerVersion: nil
+                    )
+                },
+                lastQuotaReadFailureAt: lastFailureAt
+            )
+        }
+        let system = profile("system", system: true)
+        let managed = profile("managed", email: "demo@example.invalid")
+        let sameSystem = profile("system", system: true, email: "DEMO@example.invalid")
+        let duplicate = profile("duplicate", email: "demo@example.invalid")
+        let other = profile("other", email: "other@example.invalid")
+        let empty = Self(profiles: [], selectedProfileID: nil)
+        let systemOnly = Self(profiles: [system], selectedProfileID: "system")
+        let single = Self(profiles: [system, managed], selectedProfileID: "system")
+        let duplicates = Self(profiles: [sameSystem, managed, duplicate], selectedProfileID: "system")
+        let selectedDuplicate = Self(profiles: [sameSystem, managed, duplicate], selectedProfileID: "duplicate")
+        let multi = Self(profiles: [sameSystem, managed, other], selectedProfileID: "other")
+        let unknown = Self(profiles: [system, profile("a"), profile("b")], selectedProfileID: nil)
+        let now = Date(timeIntervalSince1970: 100_000)
+        let freshSystem = profile("system", system: true, email: "demo@example.invalid", fetchedAt: now)
+        let failedManaged = profile(
+            "managed", email: "demo@example.invalid", fetchedAt: now.addingTimeInterval(-3_600), lastFailureAt: now
+        )
+        let monitoredSystem = Self(profiles: [freshSystem, failedManaged], selectedProfileID: "system")
+        let monitoredManaged = Self(profiles: [freshSystem, failedManaged], selectedProfileID: "managed")
+        let freshQuota = UsageSnapshot(
+            refreshedAt: now, account: nil, limitId: nil, limitName: nil, quotaReadSucceeded: true,
+            fiveHourQuota: RateWindow(usedPercent: 17, windowDurationMins: 300, resetsAt: nil),
+            sevenDayQuota: nil, monthlyQuota: nil, credits: nil, cloudLifetimeTokens: nil,
+            local: nil, taskBoard: nil, messages: []
+        )
+        func health(_ presentation: Self) -> AccountSnapshotHealth {
+            AccountSnapshotHealth.classify(
+                snapshotAt: presentation.quotaProfile?.lastSnapshot?.fetchedAt,
+                lastFailureAt: presentation.quotaProfile?.lastQuotaReadFailureAt,
+                now: now
+            )
+        }
+        guard empty.isSingleAccount, empty.focusedProfile == nil,
+            empty.quotaProfile == nil,
+            systemOnly.isSingleAccount, systemOnly.managedAccountCount == 0,
+            single.accountCount == 1, single.focusedProfile?.id == "managed",
+            single.quotaProfile?.id == "managed",
+            duplicates.accountCount == 1, duplicates.managedAccountCount == 1,
+            duplicates.focusedProfile?.id == "managed",
+            selectedDuplicate.focusedProfile?.id == "duplicate",
+            selectedDuplicate.quotaProfile?.id == "duplicate",
+            multi.accountCount == 2, multi.focusedProfile?.id == "other",
+            multi.quotaProfile?.id == "other",
+            monitoredSystem.focusedProfile?.id == "managed",
+            monitoredSystem.quotaProfile?.id == "system", health(monitoredSystem) == .current,
+            monitoredSystem.quotaSummary(monitored: freshQuota).readSucceeded,
+            monitoredSystem.quotaSummary(monitored: freshQuota).fiveHour?.usedPercent == 17,
+            monitoredManaged.quotaProfile?.id == "managed", health(monitoredManaged) == .failed,
+            single.quotaSummary(monitored: .empty).readSucceeded,
+            !systemOnly.quotaSummary(monitored: .empty).readSucceeded,
+            AccountSnapshotHealth.selfTest(),
+            !unknown.isSingleAccount
+        else {
+            print("workspace presentation self-test failed")
+            return false
+        }
+        print("workspace presentation self-test passed")
+        return true
+    }
+}
+
+enum AccountSnapshotHealth: Equatable {
+    case current, missing, failed, stale
+
+    static func classify(snapshotAt: Date?, lastFailureAt: Date?, now: Date = Date()) -> Self {
+        if let lastFailureAt, lastFailureAt >= (snapshotAt ?? .distantPast) { return .failed }
+        guard let snapshotAt else { return .missing }
+        return (-30...1_800).contains(now.timeIntervalSince(snapshotAt)) ? .current : .stale
+    }
+
+    var notice: String? {
+        switch self {
+        case .current: return nil
+        case .missing: return "等待额度"
+        case .failed: return "刷新失败"
+        case .stale: return "快照过期"
+        }
+    }
+
+    static func selfTest() -> Bool {
+        let now = Date(timeIntervalSince1970: 100_000)
+        return classify(snapshotAt: nil, lastFailureAt: nil, now: now) == .missing
+            && classify(snapshotAt: now, lastFailureAt: nil, now: now) == .current
+            && classify(snapshotAt: now.addingTimeInterval(-1_801), lastFailureAt: nil, now: now) == .stale
+            && classify(snapshotAt: now.addingTimeInterval(31), lastFailureAt: nil, now: now) == .stale
+            && classify(snapshotAt: now.addingTimeInterval(-10), lastFailureAt: now, now: now) == .failed
+            && classify(snapshotAt: now, lastFailureAt: now.addingTimeInterval(-10), now: now) == .current
+    }
+}

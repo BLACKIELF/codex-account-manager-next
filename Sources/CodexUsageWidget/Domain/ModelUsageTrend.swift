@@ -123,7 +123,8 @@ enum ModelUsageAreaSeriesBuilder {
 
         let visibleDateIDs = Set(dateBuckets.map(\.id))
         let recentDateIDs = Set(dateBuckets.suffix(7).map(\.id))
-        let sortedTrends = modelTrends
+        let sortedTrends =
+            modelTrends
             .filter { trend in
                 trend.dayBuckets.contains { bucket in
                     visibleDateIDs.contains(bucket.id) && bucket.tokens > 0
@@ -217,12 +218,13 @@ enum ModelUsageAreaSeriesBuilder {
         }
 
         let buckets = dateBuckets.map { reference in
-            lookup[reference.id] ?? UsageDayBucket(
-                id: reference.id,
-                date: reference.date,
-                usage: .zero,
-                sourceQuality: sourceQuality
-            )
+            lookup[reference.id]
+                ?? UsageDayBucket(
+                    id: reference.id,
+                    date: reference.date,
+                    usage: .zero,
+                    sourceQuality: sourceQuality
+                )
         }
 
         return ModelUsageAreaSeries(
@@ -364,14 +366,18 @@ enum ModelUsageTrendSelfTest {
         let tokenSummary = ModelUsageMetricSummary.make(from: overallTrend, metric: .tokens)
         expect(nearlyEqual(tokenSummary.recentValue, expectedRecentTokens), "token summary should include the latest seven-day total")
         expect(nearlyEqual(tokenSummary.dailyAverageValue, expectedRecentTokens / 7), "token summary should calculate a seven-day average")
-        expect(nearlyEqual(tokenSummary.changePercent ?? .nan, (expectedRecentTokens - expectedPreviousTokens) / expectedPreviousTokens * 100), "token summary should compare the previous seven days")
+        expect(
+            nearlyEqual(tokenSummary.changePercent ?? .nan, (expectedRecentTokens - expectedPreviousTokens) / expectedPreviousTokens * 100),
+            "token summary should compare the previous seven days")
 
         let expectedRecentCost = aggregateUsage(Array(overallBuckets.suffix(7))).estimatedCostUSD
         let expectedPreviousCost = aggregateUsage(Array(overallBuckets.dropLast(7).suffix(7))).estimatedCostUSD
         let costSummary = ModelUsageMetricSummary.make(from: overallTrend, metric: .estimatedCostUSD)
         expect(nearlyEqual(costSummary.recentValue, expectedRecentCost), "cost summary should use the same latest seven-day dates")
         expect(nearlyEqual(costSummary.dailyAverageValue, expectedRecentCost / 7), "cost summary should calculate a seven-day average")
-        expect(nearlyEqual(costSummary.changePercent ?? .nan, (expectedRecentCost - expectedPreviousCost) / expectedPreviousCost * 100), "cost summary should compare the previous seven days")
+        expect(
+            nearlyEqual(costSummary.changePercent ?? .nan, (expectedRecentCost - expectedPreviousCost) / expectedPreviousCost * 100),
+            "cost summary should compare the previous seven days")
 
         let capped = ModelUsageAreaSeriesBuilder.build(
             modelTrends: tenModels,
@@ -410,7 +416,7 @@ enum ModelUsageTrendSelfTest {
             "token and cost modes should share one date axis"
         )
 
-        let topEightTooltipRowCount = 1 + capped.count + 2 // total + models + runtime/source
+        let topEightTooltipRowCount = 1 + capped.count + 2  // total + models + runtime/source
         let compactTooltip = ChartTooltipLayout.isCompact(rowCount: topEightTooltipRowCount)
         let compactTooltipHeight = ChartTooltipLayout.estimatedHeight(
             rowCount: topEightTooltipRowCount,
@@ -490,7 +496,9 @@ enum ModelUsageTrendSelfTest {
         applyTurnContextModel("model-b", to: &activeModel)
         expect(resolvedModelUsageName(turnContextModel: activeModel, threadModel: "thread-model") == "model-b", "a newer turn context should replace the previous model")
         applyTurnContextModel(nil, to: &activeModel)
-        expect(resolvedModelUsageName(turnContextModel: activeModel, threadModel: "thread-model") == "thread-model", "a turn context without a model should clear the prior model before the next token event")
+        expect(
+            resolvedModelUsageName(turnContextModel: activeModel, threadModel: "thread-model") == "thread-model",
+            "a turn context without a model should clear the prior model before the next token event")
 
         if failures.isEmpty {
             print("model usage trend self-test passed")

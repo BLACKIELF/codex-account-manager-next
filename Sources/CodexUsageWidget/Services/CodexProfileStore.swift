@@ -104,6 +104,7 @@ struct CodexOfficialProfileSnapshot: Codable, Equatable {
 
 struct CodexExecutionPreference: Codable, Equatable {
     enum Model: String, Codable, CaseIterable {
+        case astra = "gpt-6-astra"
         case sol = "gpt-5.6-sol"
         case terra = "gpt-5.6-terra"
         case luna = "gpt-5.6-luna"
@@ -112,6 +113,7 @@ struct CodexExecutionPreference: Codable, Equatable {
 
         var displayName: String {
             switch self {
+            case .astra: return "GPT-6 Astra"
             case .sol: return "5.6 Sol"
             case .terra: return "5.6 Terra"
             case .luna: return "5.6 Luna"
@@ -122,7 +124,7 @@ struct CodexExecutionPreference: Codable, Equatable {
 
         var supportedReasoningEfforts: [ReasoningEffort] {
             switch self {
-            case .sol, .terra:
+            case .astra, .sol, .terra:
                 return ReasoningEffort.allCases
             case .luna:
                 return [.low, .medium, .high, .xhigh, .max]
@@ -149,6 +151,17 @@ struct CodexExecutionPreference: Codable, Equatable {
             case .high: return "High"
             case .xhigh: return "XHigh"
             case .max: return "Max"
+            case .ultra: return "Ultra"
+            }
+        }
+
+        var localizedTitle: String {
+            switch self {
+            case .low: return "低"
+            case .medium: return "中"
+            case .high: return "高"
+            case .xhigh: return "特高"
+            case .max: return "最高"
             case .ultra: return "Ultra"
             }
         }
@@ -273,7 +286,8 @@ struct CodexProfile: Codable, Equatable, Identifiable {
 
     static func participatesInAutomaticSwitch(_ profileID: String, among profiles: [CodexProfile]) -> Bool {
         guard let profile = profiles.first(where: { $0.id == profileID }) else { return false }
-        return profiles
+        return
+            profiles
             .filter { $0.recordedAccountKey == profile.recordedAccountKey }
             .allSatisfy(\.participatesInAutomaticSwitch)
     }
@@ -374,9 +388,10 @@ enum CodexWarmUpPolicy {
             return true
         }
         if let previousReset = previous.resetsAt,
-           let currentReset = current.resetsAt,
-           abs(currentReset.timeIntervalSince(previousReset)) > 120,
-           current.usedPercent + 3 <= previous.usedPercent {
+            let currentReset = current.resetsAt,
+            abs(currentReset.timeIntervalSince(previousReset)) > 120,
+            current.usedPercent + 3 <= previous.usedPercent
+        {
             return true
         }
         return false
@@ -457,7 +472,7 @@ enum CodexWarmUpPolicy {
         now: Date = Date()
     ) -> Bool {
         guard profile.lastWarmUpSucceeded == false,
-              let attemptedAt = profile.lastWarmUpAt
+            let attemptedAt = profile.lastWarmUpAt
         else { return false }
         guard let snapshot = profile.lastSnapshot, snapshot.fetchedAt > attemptedAt else { return true }
         return (selection.fiveHour && isWindowIdle(snapshot.fiveHour, now: now))
@@ -477,7 +492,7 @@ enum CodexWarmUpPolicy {
 
     static func hasFreshQuotaEvidence(_ profile: CodexProfile, now: Date = Date()) -> Bool {
         guard let snapshot = profile.lastSnapshot,
-              snapshot.email?.isEmpty == false
+            snapshot.email?.isEmpty == false
         else { return false }
         let age = now.timeIntervalSince(snapshot.fetchedAt)
         return age >= -60 && age <= maximumQuotaAge
@@ -489,7 +504,7 @@ enum CodexWarmUpPolicy {
         now: Date = Date()
     ) -> Date? {
         guard selection.isEnabled,
-              profile.lastSnapshot?.email?.isEmpty == false
+            profile.lastSnapshot?.email?.isEmpty == false
         else { return nil }
 
         var dates: [Date] = []
@@ -503,8 +518,9 @@ enum CodexWarmUpPolicy {
             }
         }
         if selection.sevenDay,
-           let resetsAt = profile.lastSnapshot?.sevenDay?.resetsAt,
-           resetsAt > now {
+            let resetsAt = profile.lastSnapshot?.sevenDay?.resetsAt,
+            resetsAt > now
+        {
             dates.append(resetsAt.addingTimeInterval(resetGrace))
         }
         return dates.min()
@@ -541,11 +557,11 @@ enum CodexOfficialProfileReader {
     static func load(codexHomeURL: URL, now: Date = Date()) -> CodexOfficialProfileSnapshot? {
         let authURL = codexHomeURL.appendingPathComponent("auth.json")
         guard let authData = try? Data(contentsOf: authURL),
-              let auth = try? JSONSerialization.jsonObject(with: authData) as? [String: Any],
-              let tokens = auth["tokens"] as? [String: Any],
-              let accessToken = tokens["access_token"] as? String,
-              !accessToken.isEmpty,
-              let identity = credentialIdentity(fromAuthData: authData)
+            let auth = try? JSONSerialization.jsonObject(with: authData) as? [String: Any],
+            let tokens = auth["tokens"] as? [String: Any],
+            let accessToken = tokens["access_token"] as? String,
+            !accessToken.isEmpty,
+            let identity = credentialIdentity(fromAuthData: authData)
         else { return nil }
 
         let idToken = tokens["id_token"] as? String
@@ -576,11 +592,11 @@ enum CodexOfficialProfileReader {
         session.finishTasksAndInvalidate()
 
         guard let responseData,
-              let statusCode,
-              (200..<300).contains(statusCode),
-              let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
-              let profile = response["profile"] as? [String: Any],
-              let stats = response["stats"] as? [String: Any]
+            let statusCode,
+            (200..<300).contains(statusCode),
+            let response = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+            let profile = response["profile"] as? [String: Any],
+            let stats = response["stats"] as? [String: Any]
         else { return nil }
 
         let metadata = response["metadata"] as? [String: Any]
@@ -599,7 +615,7 @@ enum CodexOfficialProfileReader {
 
     static func subscription(fromIDToken idToken: String?) -> (planType: String?, activeUntil: Date?)? {
         guard let claims = claims(fromToken: idToken),
-              let auth = claims["https://api.openai.com/auth"] as? [String: Any]
+            let auth = claims["https://api.openai.com/auth"] as? [String: Any]
         else { return nil }
         return (
             nonEmpty(auth["chatgpt_plan_type"] as? String),
@@ -620,11 +636,11 @@ enum CodexOfficialProfileReader {
 
     static func credentialIdentity(fromAuthData data: Data) -> CodexCredentialIdentity? {
         guard let auth = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tokens = auth["tokens"] as? [String: Any],
-              let accessToken = nonEmpty(tokens["access_token"] as? String),
-              let idToken = nonEmpty(tokens["id_token"] as? String),
-              let idClaims = claims(fromToken: idToken),
-              let email = normalizedEmail(idClaims["email"] as? String)
+            let tokens = auth["tokens"] as? [String: Any],
+            let accessToken = nonEmpty(tokens["access_token"] as? String),
+            let idToken = nonEmpty(tokens["id_token"] as? String),
+            let idClaims = claims(fromToken: idToken),
+            let email = normalizedEmail(idClaims["email"] as? String)
         else { return nil }
 
         let accessClaims = claims(fromToken: accessToken)
@@ -632,7 +648,7 @@ enum CodexOfficialProfileReader {
         let idTokenAccountID = accountID(in: idClaims)
         let accessTokenAccountID = accessClaims.flatMap(accountID(in:))
         guard let accountID = storedAccountID ?? idTokenAccountID ?? accessTokenAccountID,
-              [storedAccountID, idTokenAccountID, accessTokenAccountID]
+            [storedAccountID, idTokenAccountID, accessTokenAccountID]
                 .compactMap({ $0 })
                 .allSatisfy({ $0 == accountID })
         else { return nil }
@@ -718,10 +734,12 @@ final class CodexProfileStore {
         self.fileManager = fileManager
         let home = homeDirectory ?? fileManager.homeDirectoryForCurrentUser
         managedRootURL = home.appendingPathComponent(".codex-account-manager-next/profiles", isDirectory: true)
-        let support = applicationSupportDirectory
+        let support =
+            applicationSupportDirectory
             ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? home.appendingPathComponent("Library/Application Support", isDirectory: true)
-        stateURL = support
+        stateURL =
+            support
             .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
             .appendingPathComponent("account-manager-next-v1.json")
 
@@ -743,8 +761,9 @@ final class CodexProfileStore {
             state = fallback
             persistenceBlocked = false
         } else if let data = try? Data(contentsOf: stateURL),
-                  let decoded = try? JSONDecoder().decode(State.self, from: data),
-                  Self.isValid(decoded, systemPath: systemProfile.codexHomePath, managedRoot: managedRootURL) {
+            let decoded = try? JSONDecoder().decode(State.self, from: data),
+            Self.isValid(decoded, systemPath: systemProfile.codexHomePath, managedRoot: managedRootURL)
+        {
             state = decoded
             persistenceBlocked = false
         } else {
@@ -766,7 +785,8 @@ final class CodexProfileStore {
     func backfillResetCountersFromHistory() {
         var additions: [(key: String, count: Int, lastCountedAt: Date, newestWindowEnd: Date?)] = []
         for group in CodexProfile.groupsByRecordedAccount(state.profiles) {
-            let windows = group
+            let windows =
+                group
                 .compactMap { profile -> (fetchedAt: Date, window: CodexQuotaWindowSnapshot)? in
                     guard let snapshot = profile.lastSnapshot else { return nil }
                     guard let window = snapshot.sevenDay else { return nil }
@@ -774,8 +794,8 @@ final class CodexProfileStore {
                 }
                 .sorted { $0.fetchedAt < $1.fetchedAt }
             guard windows.count >= 2,
-                  let key = group.first?.recordedAccountKey,
-                  state.resetCounters?[key]?.lastCountedResetAt == nil
+                let key = group.first?.recordedAccountKey,
+                state.resetCounters?[key]?.lastCountedResetAt == nil
             else { continue }
             var count = 0
             for (previous, current) in zip(windows, windows.dropFirst()) {
@@ -787,12 +807,13 @@ final class CodexProfileStore {
                     count += 1
                 }
             }
-            additions.append((
-                key,
-                count,
-                windows.map(\.fetchedAt).max() ?? Date(),
-                windows.compactMap { $0.window.resetsAt }.max()
-            ))
+            additions.append(
+                (
+                    key,
+                    count,
+                    windows.map(\.fetchedAt).max() ?? Date(),
+                    windows.compactMap { $0.window.resetsAt }.max()
+                ))
         }
         guard !additions.isEmpty else { return }
         var counters = state.resetCounters ?? [:]
@@ -841,7 +862,8 @@ final class CodexProfileStore {
             chromeProfile: chromeProfile
         )
         if let sourceProfileID,
-           let sourceIndex = state.profiles.firstIndex(where: { $0.id == sourceProfileID }) {
+            let sourceIndex = state.profiles.firstIndex(where: { $0.id == sourceProfileID })
+        {
             state.profiles.insert(profile, at: sourceIndex)
         } else {
             state.profiles.append(profile)
@@ -879,10 +901,10 @@ final class CodexProfileStore {
         let identity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: authData)
         let boundAccountID = expectedAccountID ?? system.lastSnapshot?.accountID ?? identity?.accountID
         guard let boundEmail,
-              !boundEmail.isEmpty,
-              let boundAccountID,
-              identity?.email == boundEmail,
-              identity?.accountID == boundAccountID
+            !boundEmail.isEmpty,
+            let boundAccountID,
+            identity?.email == boundEmail,
+            identity?.accountID == boundAccountID
         else {
             throw NSError(
                 domain: "CodexAccountManagerNext.ProfileStore",
@@ -942,11 +964,12 @@ final class CodexProfileStore {
         guard let system = state.profiles.first(where: \.isSystemProfile) else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        let target = state.profiles.first {
-            !$0.isSystemProfile
-                && $0.matchesRecordedAccount(email: system.lastSnapshot?.email)
-                && $0.lastSnapshot?.accountID == system.lastSnapshot?.accountID
-        } ?? system
+        let target =
+            state.profiles.first {
+                !$0.isSystemProfile
+                    && $0.matchesRecordedAccount(email: system.lastSnapshot?.email)
+                    && $0.lastSnapshot?.accountID == system.lastSnapshot?.accountID
+            } ?? system
         state.selectedMonitorProfileID = target.id
         try save()
         return target.id
@@ -1009,7 +1032,8 @@ final class CodexProfileStore {
         let accountKey = profile.recordedAccountKey
         for index in state.profiles.indices
         where !state.profiles[index].isSystemProfile
-            && (applyToAll || state.profiles[index].recordedAccountKey == accountKey) {
+            && (applyToAll || state.profiles[index].recordedAccountKey == accountKey)
+        {
             state.profiles[index].executionPreference = validated
         }
         do {
@@ -1023,17 +1047,17 @@ final class CodexProfileStore {
     func effectiveCredentialHome(for profileID: String) -> URL? {
         guard let profile = state.profiles.first(where: { $0.id == profileID }) else { return nil }
         guard !profile.isSystemProfile,
-              let system = state.profiles.first(where: \.isSystemProfile),
-              let identity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: system.codexHomeURL),
-              profile.matchesRecordedCredential(identity)
+            let system = state.profiles.first(where: \.isSystemProfile),
+            let identity = CodexOfficialProfileReader.credentialIdentity(codexHomeURL: system.codexHomeURL),
+            profile.matchesRecordedCredential(identity)
         else { return profile.codexHomeURL }
         return system.codexHomeURL
     }
 
     func moveProfile(_ id: String, relativeTo targetID: String, before: Bool) throws {
         guard id != targetID,
-              let sourceIndex = state.profiles.firstIndex(where: { $0.id == id }),
-              state.profiles.contains(where: { $0.id == targetID })
+            let sourceIndex = state.profiles.firstIndex(where: { $0.id == id }),
+            state.profiles.contains(where: { $0.id == targetID })
         else { return }
         let previousState = state
         let profile = state.profiles.remove(at: sourceIndex)
@@ -1064,7 +1088,8 @@ final class CodexProfileStore {
             // 避免账号凭证失效后快照无限期静默过期。
             // 失败原因只保留分类标记，不落盘原始服务端消息，避免写入账号标识。
             let failureReason = Self.quotaFailureReason(from: snapshot.messages)
-            let changed = state.profiles[index].lastQuotaReadFailureAt != snapshot.refreshedAt
+            let changed =
+                state.profiles[index].lastQuotaReadFailureAt != snapshot.refreshedAt
                 || state.profiles[index].lastQuotaReadFailureReason != failureReason
             if changed {
                 state.profiles[index].lastQuotaReadFailureAt = snapshot.refreshedAt
@@ -1082,7 +1107,8 @@ final class CodexProfileStore {
         let identityMatchesSnapshot = credentialIdentity?.email == snapshotEmail
         let verifiedAccountID = identityMatchesSnapshot ? credentialIdentity?.accountID : nil
         let previousAccountID = state.profiles[index].lastSnapshot?.accountID
-        let accountChanged = !state.profiles[index].matchesRecordedAccount(email: snapshot.account?.email)
+        let accountChanged =
+            !state.profiles[index].matchesRecordedAccount(email: snapshot.account?.email)
             || (previousAccountID != nil && verifiedAccountID != nil && previousAccountID != verifiedAccountID)
         guard !accountChanged || (allowSystemAccountChange && state.profiles[index].isSystemProfile) else { return }
         if accountChanged {
@@ -1126,16 +1152,17 @@ final class CodexProfileStore {
         state.profiles[index].lastQuotaReadFailureAt = nil
         state.profiles[index].lastQuotaReadFailureReason = nil
         if !accountChanged,
-           CodexWarmUpPolicy.didConsumeReset(
-            previous: previousSevenDay,
-            current: record.sevenDay,
-            now: snapshot.refreshedAt
-           ),
-           !resetAlreadyObservedInGroup(
-            previous: previousSevenDay,
-            current: record.sevenDay,
-            excludingIndex: index
-           ) {
+            CodexWarmUpPolicy.didConsumeReset(
+                previous: previousSevenDay,
+                current: record.sevenDay,
+                now: snapshot.refreshedAt
+            ),
+            !resetAlreadyObservedInGroup(
+                previous: previousSevenDay,
+                current: record.sevenDay,
+                excludingIndex: index
+            )
+        {
             let key = state.profiles[index].recordedAccountKey
             var counters = state.resetCounters ?? [:]
             var counter = counters[key] ?? CodexAccountResetCounter()
@@ -1192,13 +1219,13 @@ final class CodexProfileStore {
         guard let system = state.profiles.first(where: \.isSystemProfile) else { return }
         let systemAuthURL = system.codexHomeURL.appendingPathComponent("auth.json")
         guard fileManager.fileExists(atPath: systemAuthURL.path),
-              let systemAttributes = try? fileManager.attributesOfItem(atPath: systemAuthURL.path),
-              let systemModified = systemAttributes[.modificationDate] as? Date
+            let systemAttributes = try? fileManager.attributesOfItem(atPath: systemAuthURL.path),
+            let systemModified = systemAttributes[.modificationDate] as? Date
         else { return }
         let authData = try Data(contentsOf: systemAuthURL)
         guard let identity = CodexOfficialProfileReader.credentialIdentity(fromAuthData: authData),
-              identity.email == system.recordedAccountKey,
-              system.lastSnapshot?.accountID == identity.accountID
+            identity.email == system.recordedAccountKey,
+            system.lastSnapshot?.accountID == identity.accountID
         else { return }
         let matching = state.profiles.filter {
             !$0.isSystemProfile
@@ -1209,8 +1236,9 @@ final class CodexProfileStore {
         for profile in matching {
             let managedAuthURL = profile.codexHomeURL.appendingPathComponent("auth.json")
             if let managedAttributes = try? fileManager.attributesOfItem(atPath: managedAuthURL.path),
-               let managedModified = managedAttributes[.modificationDate] as? Date,
-               managedModified >= systemModified {
+                let managedModified = managedAttributes[.modificationDate] as? Date,
+                managedModified >= systemModified
+            {
                 continue
             }
             try writeAuth(authData, to: profile.codexHomeURL)
@@ -1224,19 +1252,20 @@ final class CodexProfileStore {
         excludingIndex index: Int
     ) -> Bool {
         guard let current,
-              let currentReset = current.resetsAt,
-              let previousReset = previous?.resetsAt
+            let currentReset = current.resetsAt,
+            let previousReset = previous?.resetsAt
         else { return false }
         let key = state.profiles[index].recordedAccountKey
         let isNewWindow = abs(currentReset.timeIntervalSince(previousReset)) > 120
         for (otherIndex, other) in state.profiles.enumerated() where otherIndex != index {
             guard other.recordedAccountKey == key,
-                  let otherReset = other.lastSnapshot?.sevenDay?.resetsAt,
-                  abs(otherReset.timeIntervalSince(currentReset)) <= 120
+                let otherReset = other.lastSnapshot?.sevenDay?.resetsAt,
+                abs(otherReset.timeIntervalSince(currentReset)) <= 120
             else { continue }
             if isNewWindow { return true }
             if let otherUsed = other.lastSnapshot?.sevenDay?.usedPercent,
-               abs(otherUsed - current.usedPercent) <= 0.5 {
+                abs(otherUsed - current.usedPercent) <= 0.5
+            {
                 return true
             }
         }
@@ -1356,11 +1385,11 @@ final class CodexProfileStore {
         var changed = false
         for index in state.profiles.indices {
             guard let current = state.profiles[index].lastSnapshot,
-                  let identity = CodexOfficialProfileReader.credentialIdentity(
+                let identity = CodexOfficialProfileReader.credentialIdentity(
                     codexHomeURL: state.profiles[index].codexHomeURL
-                  ),
-                  state.profiles[index].matchesRecordedAccount(email: identity.email),
-                  current.accountID != identity.accountID
+                ),
+                state.profiles[index].matchesRecordedAccount(email: identity.email),
+                current.accountID != identity.accountID
             else { continue }
             state.profiles[index].lastSnapshot = Self.snapshot(current, accountID: identity.accountID)
             changed = true
@@ -1399,17 +1428,18 @@ final class CodexProfileStore {
 
     private static func isValid(_ state: State, systemPath: String, managedRoot: URL) -> Bool {
         guard state.schemaVersion == 1,
-              !state.profiles.isEmpty,
-              Set(state.profiles.map(\.id)).count == state.profiles.count,
-              state.profiles.contains(where: { $0.id == state.selectedMonitorProfileID }),
-              state.profiles.contains(where: { $0.id == state.selectedLaunchProfileID })
+            !state.profiles.isEmpty,
+            Set(state.profiles.map(\.id)).count == state.profiles.count,
+            state.profiles.contains(where: { $0.id == state.selectedMonitorProfileID }),
+            state.profiles.contains(where: { $0.id == state.selectedLaunchProfileID })
         else { return false }
 
         let root = managedRoot.standardizedFileURL.path + "/"
         return state.profiles.allSatisfy { profile in
             let path = profile.codexHomeURL.standardizedFileURL.path
             let homeIsValid = profile.isSystemProfile ? path == systemPath : path.hasPrefix(root)
-            let preferenceIsValid = profile.isSystemProfile
+            let preferenceIsValid =
+                profile.isSystemProfile
                 ? profile.executionPreference == nil
                 : profile.executionPreference?.isValid != false
             return homeIsValid && profile.chromeProfile?.isValid != false && preferenceIsValid
@@ -1428,7 +1458,8 @@ enum CodexProfileStoreSelfTest {
             let support = root.appendingPathComponent("support", isDirectory: true)
             try fileManager.createDirectory(at: home, withIntermediateDirectories: true)
             let corruptSupport = root.appendingPathComponent("corrupt-support", isDirectory: true)
-            let corruptStateURL = corruptSupport
+            let corruptStateURL =
+                corruptSupport
                 .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
                 .appendingPathComponent("account-manager-next-v1.json")
             try fileManager.createDirectory(
@@ -1495,6 +1526,16 @@ enum CodexProfileStoreSelfTest {
                 reasoningEffort: .ultra,
                 serviceTier: .fast
             )
+            for effort in CodexExecutionPreference.ReasoningEffort.allCases {
+                for tier in CodexExecutionPreference.ServiceTier.allCases {
+                    let astra = CodexExecutionPreference(model: .astra, reasoningEffort: effort, serviceTier: tier)
+                    let encoded = try JSONEncoder().encode(astra.validated())
+                    guard try JSONDecoder().decode(CodexExecutionPreference.self, from: encoded) == astra else {
+                        print("Codex profile store self-test failed: Astra preference round trip")
+                        return false
+                    }
+                }
+            }
             guard !invalidPreference.isValid else {
                 print("Codex profile store self-test failed: invalid execution preference accepted")
                 return false
@@ -1535,12 +1576,26 @@ enum CodexProfileStoreSelfTest {
                 serviceTier: .standard
             )
             try first.setExecutionPreference(standardPreference, for: duplicate.id, applyToAll: true)
-            guard first.profiles.filter({ !$0.isSystemProfile }).allSatisfy({
-                $0.effectiveExecutionPreference == standardPreference
-            }) else {
+            guard
+                first.profiles.filter({ !$0.isSystemProfile }).allSatisfy({
+                    $0.effectiveExecutionPreference == standardPreference
+                })
+            else {
                 print("Codex profile store self-test failed: apply execution preference to all")
                 return false
             }
+            let astraPreference = CodexExecutionPreference(model: .astra, reasoningEffort: .max, serviceTier: .fast)
+            try first.setExecutionPreference(astraPreference, for: added.id, applyToAll: true)
+            let reloadedAstra = CodexProfileStore(homeDirectory: home, applicationSupportDirectory: support)
+            guard
+                reloadedAstra.profiles.filter({ !$0.isSystemProfile }).allSatisfy({
+                    $0.effectiveExecutionPreference == astraPreference
+                })
+            else {
+                print("Codex profile store self-test failed: Astra persistence and apply to all")
+                return false
+            }
+            try first.setExecutionPreference(standardPreference, for: added.id, applyToAll: true)
             try first.discardManagedProfile(duplicate.id)
 
             let standardCommand = try TerminalAppLauncher.configuredCodexCommand(
@@ -1552,12 +1607,12 @@ enum CodexProfileStoreSelfTest {
                 preference: fastPreference
             )
             guard standardCommand.contains("--model 'gpt-5.6-sol'"),
-                  standardCommand.contains("'agents.default_subagent_model=\"gpt-5.6-sol\"'"),
-                  standardCommand.contains("'agents.default_subagent_reasoning_effort=\"high\"'"),
-                  standardCommand.contains("'service_tier=\"default\"' --disable fast_mode"),
-                  fastCommand.contains("--model 'gpt-5.6-terra'"),
-                  fastCommand.contains("'model_reasoning_effort=\"ultra\"'"),
-                  fastCommand.contains("'service_tier=\"fast\"' --enable fast_mode")
+                standardCommand.contains("'agents.default_subagent_model=\"gpt-5.6-sol\"'"),
+                standardCommand.contains("'agents.default_subagent_reasoning_effort=\"high\"'"),
+                standardCommand.contains("'service_tier=\"default\"' --disable fast_mode"),
+                fastCommand.contains("--model 'gpt-5.6-terra'"),
+                fastCommand.contains("'model_reasoning_effort=\"ultra\"'"),
+                fastCommand.contains("'service_tier=\"fast\"' --enable fast_mode")
             else {
                 print("Codex profile store self-test failed: terminal execution preference command")
                 return false
@@ -1606,11 +1661,11 @@ enum CodexProfileStoreSelfTest {
             try first.setRemark("旧账号", for: "system")
             try first.record(secondSnapshot, for: "system", allowSystemAccountChange: true)
             guard let reboundSystem = first.profiles.first(where: { $0.id == "system" }),
-                  reboundSystem.lastSnapshot?.email == "second@example.com",
-                  reboundSystem.remark == nil,
-                  reboundSystem.officialProfile == nil,
-                  reboundSystem.lastWarmUpAt == nil,
-                  reboundSystem.lastWarmUpSucceeded == nil
+                reboundSystem.lastSnapshot?.email == "second@example.com",
+                reboundSystem.remark == nil,
+                reboundSystem.officialProfile == nil,
+                reboundSystem.lastWarmUpAt == nil,
+                reboundSystem.lastWarmUpSucceeded == nil
             else {
                 print("Codex profile store self-test failed: explicit system account rebind")
                 return false
@@ -1637,36 +1692,38 @@ enum CodexProfileStoreSelfTest {
                 applicationSupportDirectory: support
             )
             guard restored.profiles.count == 2,
-                  restored.selectedMonitorProfileID == added.id,
-                  restored.selectedLaunchProfileID == added.id,
-                  restored.profiles.first(where: { $0.id == added.id })?.remark == "工作账号",
-                  restored.profiles.first(where: { $0.id == added.id })?.officialProfile == official,
-                  restored.profiles.first(where: { $0.id == added.id })?.lastWarmUpSucceeded == true,
-                  restored.profiles.first(where: { $0.id == added.id })?.chromeProfile == chromeProfile,
-                  restored.profiles.first(where: { $0.id == added.id })?.participatesInAutomaticSwitch == false,
-                  restored.profiles.first(where: { $0.id == added.id })?.displayedProTierMultiplier == 20,
-                  restored.profiles.first(where: { $0.id == added.id })?.effectiveExecutionPreference
+                restored.selectedMonitorProfileID == added.id,
+                restored.selectedLaunchProfileID == added.id,
+                restored.profiles.first(where: { $0.id == added.id })?.remark == "工作账号",
+                restored.profiles.first(where: { $0.id == added.id })?.officialProfile == official,
+                restored.profiles.first(where: { $0.id == added.id })?.lastWarmUpSucceeded == true,
+                restored.profiles.first(where: { $0.id == added.id })?.chromeProfile == chromeProfile,
+                restored.profiles.first(where: { $0.id == added.id })?.participatesInAutomaticSwitch == false,
+                restored.profiles.first(where: { $0.id == added.id })?.displayedProTierMultiplier == 20,
+                restored.profiles.first(where: { $0.id == added.id })?.effectiveExecutionPreference
                     == standardPreference,
-                  restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.availableResetCredits == 2,
-                  restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.resetCreditExpiries
+                restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.availableResetCredits == 2,
+                restored.profiles.first(where: { $0.id == added.id })?.lastSnapshot?.resetCreditExpiries
                     == [Date(timeIntervalSince1970: 1_300)],
-                  !CodexProfile.participatesInAutomaticSwitch(added.id, among: restored.profiles),
-                  restored.profiles[0].matchesRecordedAccount(email: "FIRST@example.com"),
-                  !restored.profiles[0].matchesRecordedAccount(email: "other@example.com"),
-                  CodexProfile.groupsByRecordedAccount([
-                      restored.profiles[0], restored.profiles[1], restored.profiles[0]
-                  ]).count == 2
+                !CodexProfile.participatesInAutomaticSwitch(added.id, among: restored.profiles),
+                restored.profiles[0].matchesRecordedAccount(email: "FIRST@example.com"),
+                !restored.profiles[0].matchesRecordedAccount(email: "other@example.com"),
+                CodexProfile.groupsByRecordedAccount([
+                    restored.profiles[0], restored.profiles[1], restored.profiles[0],
+                ]).count == 2
             else {
                 print("Codex profile store self-test failed: persistence")
                 return false
             }
-            let stateURL = support
+            let stateURL =
+                support
                 .appendingPathComponent("CodexAccountManagerNext", isDirectory: true)
                 .appendingPathComponent("account-manager-next-v1.json")
-            guard var legacyState = try JSONSerialization.jsonObject(
-                with: Data(contentsOf: stateURL)
-            ) as? [String: Any],
-            let legacyProfiles = legacyState["profiles"] as? [[String: Any]]
+            guard
+                var legacyState = try JSONSerialization.jsonObject(
+                    with: Data(contentsOf: stateURL)
+                ) as? [String: Any],
+                let legacyProfiles = legacyState["profiles"] as? [[String: Any]]
             else {
                 print("Codex profile store self-test failed: legacy state fixture")
                 return false
@@ -1685,25 +1742,27 @@ enum CodexProfileStoreSelfTest {
                 applicationSupportDirectory: support
             )
             guard legacyRestored.profiles.allSatisfy(\.participatesInAutomaticSwitch),
-                  legacyRestored.profiles.allSatisfy({ $0.displayedProTierMultiplier == nil }),
-                  legacyRestored.profiles.allSatisfy({
-                      $0.effectiveExecutionPreference == .defaultValue
-                  })
+                legacyRestored.profiles.allSatisfy({ $0.displayedProTierMultiplier == nil }),
+                legacyRestored.profiles.allSatisfy({
+                    $0.effectiveExecutionPreference == .defaultValue
+                })
             else {
                 print("Codex profile store self-test failed: automatic-switch scope migration")
                 return false
             }
             var invalidProfiles = legacyState["profiles"] as? [[String: Any]] ?? []
-            guard let invalidIndex = invalidProfiles.firstIndex(where: {
-                ($0["isSystemProfile"] as? Bool) == false
-            }) else {
+            guard
+                let invalidIndex = invalidProfiles.firstIndex(where: {
+                    ($0["isSystemProfile"] as? Bool) == false
+                })
+            else {
                 print("Codex profile store self-test failed: invalid execution preference fixture")
                 return false
             }
             invalidProfiles[invalidIndex]["executionPreference"] = [
                 "model": "gpt-5.2",
                 "reasoningEffort": "ultra",
-                "serviceTier": "fast"
+                "serviceTier": "fast",
             ]
             legacyState["profiles"] = invalidProfiles
             let invalidStateData = try JSONSerialization.data(withJSONObject: legacyState)
@@ -1745,13 +1804,13 @@ enum CodexProfileStoreSelfTest {
             let preservedAuth = try Data(contentsOf: preserved.codexHomeURL.appendingPathComponent("auth.json"))
             let preservedAgain = try reordered.preserveSystemLogin()
             guard preserved.lastSnapshot?.email == "first@example.com",
-                  preserved.lastSnapshot?.accountID == "acct-first",
-                  preserved.lastSnapshot?.availableResetCredits == 2,
-                  preserved.lastSnapshot?.resetCreditExpiries == [Date(timeIntervalSince1970: 1_100)],
-                  preservedAuth == systemAuth,
-                  preservedAgain.id == preserved.id,
-                  reordered.profiles.count == 3,
-                  reordered.effectiveCredentialHome(for: preserved.id)?.standardizedFileURL
+                preserved.lastSnapshot?.accountID == "acct-first",
+                preserved.lastSnapshot?.availableResetCredits == 2,
+                preserved.lastSnapshot?.resetCreditExpiries == [Date(timeIntervalSince1970: 1_100)],
+                preservedAuth == systemAuth,
+                preservedAgain.id == preserved.id,
+                reordered.profiles.count == 3,
+                reordered.effectiveCredentialHome(for: preserved.id)?.standardizedFileURL
                     == systemHome.standardizedFileURL
             else {
                 print("Codex profile store self-test failed: preserve system login")
@@ -1765,16 +1824,18 @@ enum CodexProfileStoreSelfTest {
                 email: "managed@example.com",
                 limitId: "codex",
                 limitName: nil,
-                fiveHour: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 1,
-                    windowDurationMins: 300,
-                    resetsAt: Date(timeIntervalSince1970: 18_000)
-                )),
-                sevenDay: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 20,
-                    windowDurationMins: 10_080,
-                    resetsAt: nil
-                )),
+                fiveHour: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 1,
+                        windowDurationMins: 300,
+                        resetsAt: Date(timeIntervalSince1970: 18_000)
+                    )),
+                sevenDay: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 20,
+                        windowDurationMins: 10_080,
+                        resetsAt: nil
+                    )),
                 monthly: nil,
                 fetchedAt: Date(timeIntervalSince1970: 100),
                 appServerVersion: nil
@@ -1787,20 +1848,21 @@ enum CodexProfileStoreSelfTest {
             let sevenDayOnly = CodexWarmUpSelection(fiveHour: false, sevenDay: true)
             let fiveHourOnly = CodexWarmUpSelection(fiveHour: true, sevenDay: false)
             let bothWindows = CodexWarmUpSelection(fiveHour: true, sevenDay: true)
-            guard CodexWarmUpPolicy.effectiveSelection(
-                bothWindows,
-                participatesInAutomaticSwitch: false
-            ) == sevenDayOnly,
-            CodexWarmUpPolicy.effectiveSelection(
-                bothWindows,
-                participatesInAutomaticSwitch: false,
-                unexpected: [.fiveHour]
-            ) == bothWindows,
-            CodexWarmUpPolicy.effectiveSelection(
-                sevenDayOnly,
-                participatesInAutomaticSwitch: false,
-                unexpected: [.fiveHour]
-            ) == sevenDayOnly
+            guard
+                CodexWarmUpPolicy.effectiveSelection(
+                    bothWindows,
+                    participatesInAutomaticSwitch: false
+                ) == sevenDayOnly,
+                CodexWarmUpPolicy.effectiveSelection(
+                    bothWindows,
+                    participatesInAutomaticSwitch: false,
+                    unexpected: [.fiveHour]
+                ) == bothWindows,
+                CodexWarmUpPolicy.effectiveSelection(
+                    sevenDayOnly,
+                    participatesInAutomaticSwitch: false,
+                    unexpected: [.fiveHour]
+                ) == sevenDayOnly
             else {
                 print("Codex profile store self-test failed: automatic-switch scope warm-up selection")
                 return false
@@ -1811,50 +1873,62 @@ enum CodexProfileStoreSelfTest {
                 email: "managed@example.com",
                 limitId: "codex",
                 limitName: nil,
-                fiveHour: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 12,
-                    windowDurationMins: 300,
-                    resetsAt: fiveHourReset
-                )),
-                sevenDay: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 20,
-                    windowDurationMins: 10_080,
-                    resetsAt: sevenDayReset
-                )),
+                fiveHour: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 12,
+                        windowDurationMins: 300,
+                        resetsAt: fiveHourReset
+                    )),
+                sevenDay: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 20,
+                        windowDurationMins: 10_080,
+                        resetsAt: sevenDayReset
+                    )),
                 monthly: nil,
                 fetchedAt: Date(timeIntervalSince1970: 100),
                 appServerVersion: nil
             )
-            guard CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: sevenDayOnly, now: now)
-                    == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: sevenDayOnly, now: now)
+                    == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: 7-day switch waits for weekly reset")
                 return false
             }
-            guard CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: fiveHourOnly, now: now)
-                    == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: fiveHourOnly, now: now)
+                    == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: 5-hour switch waits for 5-hour reset")
                 return false
             }
-            guard CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: bothWindows, now: now)
-                    == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(for: policyProfile, selection: bothWindows, now: now)
+                    == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: both switches use the earliest reset")
                 return false
             }
-            guard CodexWarmUpPolicy.nextScheduledResetDate(
-                for: policyProfile,
-                selection: bothWindows,
-                now: now
-            ) == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextScheduledResetDate(
+                    for: policyProfile,
+                    selection: bothWindows,
+                    now: now
+                ) == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: one-shot schedule uses the earliest known reset")
                 return false
             }
             var staleMembershipClaim = policyProfile
             staleMembershipClaim.officialProfile = official
-            guard CodexWarmUpPolicy.nextEligibleDate(
-                for: staleMembershipClaim,
-                selection: bothWindows,
-                now: now
-            ) == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(
+                    for: staleMembershipClaim,
+                    selection: bothWindows,
+                    now: now
+                ) == fiveHourReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: stale membership claim must not override live quota")
                 return false
             }
@@ -1869,16 +1943,18 @@ enum CodexProfileStoreSelfTest {
                 email: "managed@example.com",
                 limitId: "codex",
                 limitName: nil,
-                fiveHour: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 0,
-                    windowDurationMins: 300,
-                    resetsAt: Date(timeIntervalSince1970: 500)
-                )),
-                sevenDay: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 0,
-                    windowDurationMins: 10_080,
-                    resetsAt: Date(timeIntervalSince1970: 500)
-                )),
+                fiveHour: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 0,
+                        windowDurationMins: 300,
+                        resetsAt: Date(timeIntervalSince1970: 500)
+                    )),
+                sevenDay: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 0,
+                        windowDurationMins: 10_080,
+                        resetsAt: Date(timeIntervalSince1970: 500)
+                    )),
                 monthly: nil,
                 fetchedAt: Date(timeIntervalSince1970: 100),
                 appServerVersion: nil
@@ -1891,11 +1967,13 @@ enum CodexProfileStoreSelfTest {
                 print("Codex profile store self-test failed: idle 5-hour window should warm immediately")
                 return false
             }
-            guard CodexWarmUpPolicy.nextScheduledResetDate(
-                for: idleWeek,
-                selection: bothWindows,
-                now: now
-            ) == nil else {
+            guard
+                CodexWarmUpPolicy.nextScheduledResetDate(
+                    for: idleWeek,
+                    selection: bothWindows,
+                    now: now
+                ) == nil
+            else {
                 print("Codex profile store self-test failed: past reset must not create an automatic retry timer")
                 return false
             }
@@ -1906,16 +1984,18 @@ enum CodexProfileStoreSelfTest {
                 email: "managed@example.com",
                 limitId: "codex",
                 limitName: nil,
-                fiveHour: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 12,
-                    windowDurationMins: 300,
-                    resetsAt: fiveHourReset
-                )),
-                sevenDay: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 20,
-                    windowDurationMins: 10_080,
-                    resetsAt: nil
-                )),
+                fiveHour: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 12,
+                        windowDurationMins: 300,
+                        resetsAt: fiveHourReset
+                    )),
+                sevenDay: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 20,
+                        windowDurationMins: 10_080,
+                        resetsAt: nil
+                    )),
                 monthly: nil,
                 fetchedAt: Date(timeIntervalSince1970: 100),
                 appServerVersion: nil
@@ -1925,11 +2005,12 @@ enum CodexProfileStoreSelfTest {
                 return false
             }
             let previousWeek = unknownWeek.lastSnapshot?.sevenDay
-            let droppedWeek = CodexQuotaWindowSnapshot(RateWindow(
-                usedPercent: 0,
-                windowDurationMins: 10_080,
-                resetsAt: nil
-            ))
+            let droppedWeek = CodexQuotaWindowSnapshot(
+                RateWindow(
+                    usedPercent: 0,
+                    windowDurationMins: 10_080,
+                    resetsAt: nil
+                ))
             guard CodexWarmUpPolicy.didResetUnexpectedly(previous: previousWeek, current: droppedWeek, now: now) else {
                 print("Codex profile store self-test failed: weekly used-percent drop is an unexpected reset")
                 return false
@@ -1962,16 +2043,18 @@ enum CodexProfileStoreSelfTest {
                 email: "managed@example.com",
                 limitId: "codex",
                 limitName: nil,
-                fiveHour: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 0,
-                    windowDurationMins: 300,
-                    resetsAt: Date(timeIntervalSince1970: 500)
-                )),
-                sevenDay: CodexQuotaWindowSnapshot(RateWindow(
-                    usedPercent: 97,
-                    windowDurationMins: 10_080,
-                    resetsAt: sevenDayReset
-                )),
+                fiveHour: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 0,
+                        windowDurationMins: 300,
+                        resetsAt: Date(timeIntervalSince1970: 500)
+                    )),
+                sevenDay: CodexQuotaWindowSnapshot(
+                    RateWindow(
+                        usedPercent: 97,
+                        windowDurationMins: 10_080,
+                        resetsAt: sevenDayReset
+                    )),
                 monthly: nil,
                 fetchedAt: Date(timeIntervalSince1970: 100),
                 appServerVersion: nil
@@ -1984,25 +2067,29 @@ enum CodexProfileStoreSelfTest {
                 print("Codex profile store self-test failed: 5-hour switch pauses when weekly remaining is low")
                 return false
             }
-            guard CodexWarmUpPolicy.nextScheduledResetDate(
-                for: lowWeekly,
-                selection: fiveHourOnly,
-                now: now
-            ) == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextScheduledResetDate(
+                    for: lowWeekly,
+                    selection: fiveHourOnly,
+                    now: now
+                ) == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: 5-hour warm-up resumes at its own weekly reset")
                 return false
             }
-            guard CodexWarmUpPolicy.nextEligibleDate(for: lowWeekly, selection: sevenDayOnly, now: now)
-                    == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace) else {
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(for: lowWeekly, selection: sevenDayOnly, now: now)
+                    == sevenDayReset.addingTimeInterval(CodexWarmUpPolicy.resetGrace)
+            else {
                 print("Codex profile store self-test failed: 7-day switch still waits when remaining is low")
                 return false
             }
             guard CodexWarmUpPolicy.hasFreshQuotaEvidence(idleWeek, now: now),
-                  !CodexWarmUpPolicy.isDue(
+                !CodexWarmUpPolicy.isDue(
                     idleWeek,
                     selection: fiveHourOnly,
                     now: now.addingTimeInterval(CodexWarmUpPolicy.maximumQuotaAge + 1)
-                  )
+                )
             else {
                 print("Codex profile store self-test failed: stale quota evidence must block warm-up")
                 return false
@@ -2015,16 +2102,17 @@ enum CodexProfileStoreSelfTest {
             }
             idleWeek.lastWarmUpAt = Date(timeIntervalSince1970: 980)
             idleWeek.lastWarmUpSucceeded = true
-            guard CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: sevenDayOnly, now: now)
+            guard
+                CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: sevenDayOnly, now: now)
                     == Date(timeIntervalSince1970: 980 + CodexWarmUpPolicy.sevenDaySuccessInterval),
-                  CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: fiveHourOnly, now: now)
+                CodexWarmUpPolicy.nextEligibleDate(for: idleWeek, selection: fiveHourOnly, now: now)
                     == Date(timeIntervalSince1970: 980 + CodexWarmUpPolicy.fiveHourSuccessInterval),
-                  CodexWarmUpPolicy.nextEligibleDate(
+                CodexWarmUpPolicy.nextEligibleDate(
                     for: idleWeek,
                     selection: fiveHourOnly,
                     unexpected: [.fiveHour],
                     now: now
-                  ) == now
+                ) == now
             else {
                 print("Codex profile store self-test failed: successful warm-up interval")
                 return false
@@ -2032,7 +2120,7 @@ enum CodexProfileStoreSelfTest {
             let payload = try JSONSerialization.data(withJSONObject: [
                 "https://api.openai.com/auth": [
                     "chatgpt_plan_type": "plus",
-                    "chatgpt_subscription_active_until": "2026-08-18T09:29:34+00:00"
+                    "chatgpt_subscription_active_until": "2026-08-18T09:29:34+00:00",
                 ]
             ])
             let encoded = payload.base64EncodedString()
@@ -2046,7 +2134,7 @@ enum CodexProfileStoreSelfTest {
             }
             let identityClaims = try JSONSerialization.data(withJSONObject: [
                 "email": "identity@example.com",
-                "https://api.openai.com/auth": ["chatgpt_account_id": "acct-identity"]
+                "https://api.openai.com/auth": ["chatgpt_account_id": "acct-identity"],
             ])
             let identityPayload = identityClaims.base64EncodedString()
                 .replacingOccurrences(of: "+", with: "-")
@@ -2057,19 +2145,20 @@ enum CodexProfileStoreSelfTest {
                 "tokens": [
                     "access_token": identityToken,
                     "id_token": identityToken,
-                    "account_id": "acct-identity"
+                    "account_id": "acct-identity",
                 ]
             ])
             let mismatchedIdentityAuth = try JSONSerialization.data(withJSONObject: [
                 "tokens": [
                     "access_token": identityToken,
                     "id_token": identityToken,
-                    "account_id": "acct-other"
+                    "account_id": "acct-other",
                 ]
             ])
-            guard CodexOfficialProfileReader.credentialIdentity(fromAuthData: validIdentityAuth)
+            guard
+                CodexOfficialProfileReader.credentialIdentity(fromAuthData: validIdentityAuth)
                     == CodexCredentialIdentity(email: "identity@example.com", accountID: "acct-identity"),
-                  CodexOfficialProfileReader.credentialIdentity(fromAuthData: mismatchedIdentityAuth) == nil
+                CodexOfficialProfileReader.credentialIdentity(fromAuthData: mismatchedIdentityAuth) == nil
             else {
                 print("Codex profile store self-test failed: stable account identity binding")
                 return false
@@ -2085,18 +2174,20 @@ enum CodexProfileStoreSelfTest {
             let resetAccount = try resetStore.addManagedProfile()
             let week: TimeInterval = 604_800
             let base = Date(timeIntervalSince1970: 1_000_000)
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 80,
-                resetsAt: base.addingTimeInterval(week),
-                fetchedAt: base
-            ), for: resetAccount.id)
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 50,
-                resetsAt: base.addingTimeInterval(week * 2),
-                fetchedAt: base.addingTimeInterval(week + 60)
-            ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 80,
+                    resetsAt: base.addingTimeInterval(week),
+                    fetchedAt: base
+                ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 50,
+                    resetsAt: base.addingTimeInterval(week * 2),
+                    fetchedAt: base.addingTimeInterval(week + 60)
+                ), for: resetAccount.id)
             func resetCounterOf(_ store: CodexProfileStore) -> CodexAccountResetCounter {
                 let key = store.profiles.first { $0.id == resetAccount.id }?.recordedAccountKey ?? ""
                 return store.resetCounter(accountKey: key)
@@ -2105,43 +2196,49 @@ enum CodexProfileStoreSelfTest {
                 print("Codex profile store self-test failed: natural rollover must not count as reset")
                 return false
             }
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 5,
-                resetsAt: base.addingTimeInterval(week * 2),
-                fetchedAt: base.addingTimeInterval(week + 120)
-            ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 5,
+                    resetsAt: base.addingTimeInterval(week * 2),
+                    fetchedAt: base.addingTimeInterval(week + 120)
+                ), for: resetAccount.id)
             guard resetCounterOf(resetStore).automaticCount == 1 else {
                 print("Codex profile store self-test failed: same-window quota restore should count")
                 return false
             }
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 90,
-                resetsAt: base.addingTimeInterval(week * 2),
-                fetchedAt: base.addingTimeInterval(week + 180)
-            ), for: resetAccount.id)
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 3,
-                resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
-                fetchedAt: base.addingTimeInterval(week * 2 - 86_400)
-            ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 90,
+                    resetsAt: base.addingTimeInterval(week * 2),
+                    fetchedAt: base.addingTimeInterval(week + 180)
+                ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 3,
+                    resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
+                    fetchedAt: base.addingTimeInterval(week * 2 - 86_400)
+                ), for: resetAccount.id)
             guard resetCounterOf(resetStore).automaticCount == 2 else {
                 print("Codex profile store self-test failed: early new window should count")
                 return false
             }
-            guard resetCounterOf(resetStore).cardExpiresAt
-                    == base.addingTimeInterval(week * 2 - 86_400 + week) else {
+            guard
+                resetCounterOf(resetStore).cardExpiresAt
+                    == base.addingTimeInterval(week * 2 - 86_400 + week)
+            else {
                 print("Codex profile store self-test failed: counted reset should capture window end as expiry")
                 return false
             }
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 70,
-                resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
-                fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 60)
-            ), for: resetAccount.id)
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 70,
+                    resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
+                    fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 60)
+                ), for: resetAccount.id)
             let resetKey = resetStore.profiles.first { $0.id == resetAccount.id }!.recordedAccountKey
             try resetStore.adjustResetManualOffset(accountKey: resetKey, delta: 1)
             guard resetStore.resetCounter(accountKey: resetKey).total == 3 else {
@@ -2149,22 +2246,24 @@ enum CodexProfileStoreSelfTest {
                 return false
             }
             try resetStore.adjustResetManualOffset(accountKey: resetKey, delta: -1)
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 70,
-                resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
-                fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 120)
-            ), for: "system")
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 70,
+                    resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
+                    fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 120)
+                ), for: "system")
             guard resetStore.resetCounter(accountKey: resetKey).total == 2 else {
                 print("Codex profile store self-test failed: counter must be shared by account, not by card")
                 return false
             }
-            try resetStore.record(testResetSnapshot(
-                email: "reset@example.com",
-                usedPercent: 4,
-                resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
-                fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 180)
-            ), for: "system")
+            try resetStore.record(
+                testResetSnapshot(
+                    email: "reset@example.com",
+                    usedPercent: 4,
+                    resetsAt: base.addingTimeInterval(week * 2 - 86_400 + week),
+                    fetchedAt: base.addingTimeInterval(week * 2 - 86_400 + 180)
+                ), for: "system")
             guard resetStore.resetCounter(accountKey: resetKey).total == 3 else {
                 print("Codex profile store self-test failed: reset recorded via system card must land on shared counter")
                 return false
@@ -2201,18 +2300,20 @@ enum CodexProfileStoreSelfTest {
             let backfillAccount = try backfillStore.addManagedProfile()
             let backfillWeek: TimeInterval = 604_800
             let backfillBase = Date(timeIntervalSince1970: 2_000_000)
-            try backfillStore.record(testResetSnapshot(
-                email: "backfill@example.com",
-                usedPercent: 100,
-                resetsAt: backfillBase.addingTimeInterval(backfillWeek),
-                fetchedAt: backfillBase
-            ), for: backfillAccount.id)
-            try backfillStore.record(testResetSnapshot(
-                email: "backfill@example.com",
-                usedPercent: 23,
-                resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2 + 15_885),
-                fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 15_885)
-            ), for: "system")
+            try backfillStore.record(
+                testResetSnapshot(
+                    email: "backfill@example.com",
+                    usedPercent: 100,
+                    resetsAt: backfillBase.addingTimeInterval(backfillWeek),
+                    fetchedAt: backfillBase
+                ), for: backfillAccount.id)
+            try backfillStore.record(
+                testResetSnapshot(
+                    email: "backfill@example.com",
+                    usedPercent: 23,
+                    resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2 + 15_885),
+                    fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 15_885)
+                ), for: "system")
             let backfillKey = backfillStore.profiles
                 .first { $0.id == backfillAccount.id }!
                 .recordedAccountKey
@@ -2231,29 +2332,32 @@ enum CodexProfileStoreSelfTest {
                 return false
             }
             // 同组另一张卡已观察到的新窗口，live 记录不得再计一次
-            try backfillStore.record(testResetSnapshot(
-                email: "backfill@example.com",
-                usedPercent: 23,
-                resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2 + 15_885),
-                fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 16_000)
-            ), for: backfillAccount.id)
+            try backfillStore.record(
+                testResetSnapshot(
+                    email: "backfill@example.com",
+                    usedPercent: 23,
+                    resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2 + 15_885),
+                    fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 16_000)
+                ), for: backfillAccount.id)
             guard backfillStore.resetCounter(accountKey: backfillKey).total == 1 else {
                 print("Codex profile store self-test failed: window already observed by group must not double count")
                 return false
             }
             let naturalAccount = try backfillStore.addManagedProfile()
-            try backfillStore.record(testResetSnapshot(
-                email: "natural@example.com",
-                usedPercent: 80,
-                resetsAt: backfillBase.addingTimeInterval(backfillWeek),
-                fetchedAt: backfillBase
-            ), for: naturalAccount.id)
-            try backfillStore.record(testResetSnapshot(
-                email: "natural@example.com",
-                usedPercent: 5,
-                resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2),
-                fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 60)
-            ), for: "system", allowSystemAccountChange: true)
+            try backfillStore.record(
+                testResetSnapshot(
+                    email: "natural@example.com",
+                    usedPercent: 80,
+                    resetsAt: backfillBase.addingTimeInterval(backfillWeek),
+                    fetchedAt: backfillBase
+                ), for: naturalAccount.id)
+            try backfillStore.record(
+                testResetSnapshot(
+                    email: "natural@example.com",
+                    usedPercent: 5,
+                    resetsAt: backfillBase.addingTimeInterval(backfillWeek * 2),
+                    fetchedAt: backfillBase.addingTimeInterval(backfillWeek + 60)
+                ), for: "system", allowSystemAccountChange: true)
             backfillStore.backfillResetCountersFromHistory()
             let naturalKey = backfillStore.profiles
                 .first { $0.id == naturalAccount.id }!
@@ -2314,12 +2418,13 @@ enum CodexProfileStoreSelfTest {
             }
             try restored.discardManagedProfile(added.id)
             guard restored.profiles.count == 1,
-                  restored.selectedMonitorProfileID == "system",
-                  restored.selectedLaunchProfileID == "system"
+                restored.selectedMonitorProfileID == "system",
+                restored.selectedLaunchProfileID == "system"
             else {
                 print("Codex profile store self-test failed: removal")
                 return false
             }
+            guard WorkspacePresentation.selfTest() else { return false }
             print("Codex profile store self-test passed")
             return true
         } catch {
@@ -2365,7 +2470,7 @@ enum CodexProfileStoreSelfTest {
         let accountID = "acct-" + email.lowercased()
         let payload = try JSONSerialization.data(withJSONObject: [
             "email": email,
-            "https://api.openai.com/auth": ["chatgpt_account_id": accountID]
+            "https://api.openai.com/auth": ["chatgpt_account_id": accountID],
         ])
         let encoded = payload.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
@@ -2375,7 +2480,7 @@ enum CodexProfileStoreSelfTest {
             "tokens": [
                 "access_token": accessToken,
                 "id_token": "x.\(encoded).y",
-                "account_id": accountID
+                "account_id": accountID,
             ]
         ])
     }
@@ -2411,29 +2516,32 @@ enum CodexWarmUpPolicySelfTest {
             if !condition { print("Codex warm-up policy self-test failed: \(message)") }
             return condition
         }
-        guard expect(
-            CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: true) == 10 * 60
-                && CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: false) == 30 * 60
-                && !CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
-                    currentInterval: 10 * 60,
-                    requestedInterval: 10 * 60
-                )
-                && CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
-                    currentInterval: 30 * 60,
-                    requestedInterval: 10 * 60
-                ),
-            "quota maintenance cadence"
-        ) else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: true) == 10 * 60
+                    && CodexWarmUpPolicy.maintenanceRefreshInterval(warmUpEnabled: false) == 30 * 60
+                    && !CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
+                        currentInterval: 10 * 60,
+                        requestedInterval: 10 * 60
+                    )
+                    && CodexWarmUpPolicy.maintenanceTimerNeedsReplacement(
+                        currentInterval: 30 * 60,
+                        requestedInterval: 10 * 60
+                    ),
+                "quota maintenance cadence"
+            )
+        else { return false }
         func window(
             used: Double,
             resetsIn: TimeInterval? = nil,
             durationMins: Int? = 300
         ) -> CodexQuotaWindowSnapshot {
-            CodexQuotaWindowSnapshot(RateWindow(
-                usedPercent: used,
-                windowDurationMins: durationMins,
-                resetsAt: resetsIn.map { now.addingTimeInterval($0) }
-            ))
+            CodexQuotaWindowSnapshot(
+                RateWindow(
+                    usedPercent: used,
+                    windowDurationMins: durationMins,
+                    resetsAt: resetsIn.map { now.addingTimeInterval($0) }
+                ))
         }
         func snapshot(
             five: CodexQuotaWindowSnapshot? = nil,
@@ -2485,59 +2593,81 @@ enum CodexWarmUpPolicySelfTest {
 
         // didResetUnexpectedly
         let active = window(used: 40, resetsIn: 600)
-        guard expect(
-            CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 0.2), now: now),
-            "unexpected reset to idle"
-        ) else { return false }
-        guard expect(
-            CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 30, resetsIn: 600), now: now),
-            "unexpected big drop"
-        ) else { return false }
-        guard expect(
-            !CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 39, resetsIn: 600), now: now),
-            "small change is not reset"
-        ) else { return false }
-        guard expect(
-            !CodexWarmUpPolicy.didResetUnexpectedly(previous: window(used: 0.2), current: window(used: 40), now: now),
-            "idle previous is not reset evidence"
-        ) else { return false }
-        guard expect(
-            CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 35, resetsIn: 6_000), now: now),
-            "shifted reset window with drop"
-        ) else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 0.2), now: now),
+                "unexpected reset to idle"
+            )
+        else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 30, resetsIn: 600), now: now),
+                "unexpected big drop"
+            )
+        else { return false }
+        guard
+            expect(
+                !CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 39, resetsIn: 600), now: now),
+                "small change is not reset"
+            )
+        else { return false }
+        guard
+            expect(
+                !CodexWarmUpPolicy.didResetUnexpectedly(previous: window(used: 0.2), current: window(used: 40), now: now),
+                "idle previous is not reset evidence"
+            )
+        else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.didResetUnexpectedly(previous: active, current: window(used: 35, resetsIn: 6_000), now: now),
+                "shifted reset window with drop"
+            )
+        else { return false }
 
         // didConsumeReset
-        let previousWindow = CodexQuotaWindowSnapshot(RateWindow(
-            usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600)))
-        let sameWindowDrop = CodexQuotaWindowSnapshot(RateWindow(
-            usedPercent: 40, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600)))
-        guard expect(
-            CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: sameWindowDrop, now: now),
-            "same-window drop consumes reset"
-        ) else { return false }
-        let naturalRoll = CodexQuotaWindowSnapshot(RateWindow(
-            usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600 + 18_000)))
-        guard expect(
-            !CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: naturalRoll, now: now),
-            "natural window roll is not a reset"
-        ) else { return false }
-        let shiftedWindow = CodexQuotaWindowSnapshot(RateWindow(
-            usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(4_000)))
-        guard expect(
-            CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: shiftedWindow, now: now),
-            "shifted window start consumes reset"
-        ) else { return false }
+        let previousWindow = CodexQuotaWindowSnapshot(
+            RateWindow(
+                usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600)))
+        let sameWindowDrop = CodexQuotaWindowSnapshot(
+            RateWindow(
+                usedPercent: 40, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600)))
+        guard
+            expect(
+                CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: sameWindowDrop, now: now),
+                "same-window drop consumes reset"
+            )
+        else { return false }
+        let naturalRoll = CodexQuotaWindowSnapshot(
+            RateWindow(
+                usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(600 + 18_000)))
+        guard
+            expect(
+                !CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: naturalRoll, now: now),
+                "natural window roll is not a reset"
+            )
+        else { return false }
+        let shiftedWindow = CodexQuotaWindowSnapshot(
+            RateWindow(
+                usedPercent: 50, windowDurationMins: 300, resetsAt: now.addingTimeInterval(4_000)))
+        guard
+            expect(
+                CodexWarmUpPolicy.didConsumeReset(previous: previousWindow, current: shiftedWindow, now: now),
+                "shifted window start consumes reset"
+            )
+        else { return false }
 
         // shouldSkipFiveHourToProtectWeekly
-        let scarce = profile(snapshot(
-            five: window(used: 10, resetsIn: 600),
-            seven: window(used: 95, resetsIn: 86_400)
-        ))
+        let scarce = profile(
+            snapshot(
+                five: window(used: 10, resetsIn: 600),
+                seven: window(used: 95, resetsIn: 86_400)
+            ))
         guard expect(CodexWarmUpPolicy.shouldSkipFiveHourToProtectWeekly(scarce, now: now), "skip five-hour when weekly scarce") else { return false }
-        let plenty = profile(snapshot(
-            five: window(used: 10, resetsIn: 600),
-            seven: window(used: 60, resetsIn: 86_400)
-        ))
+        let plenty = profile(
+            snapshot(
+                five: window(used: 10, resetsIn: 600),
+                seven: window(used: 60, resetsIn: 86_400)
+            ))
         guard expect(!CodexWarmUpPolicy.shouldSkipFiveHourToProtectWeekly(plenty, now: now), "keep five-hour when weekly plenty") else { return false }
 
         // nextEligibleDate
@@ -2546,65 +2676,82 @@ enum CodexWarmUpPolicySelfTest {
         var succeeded = idleProfile
         succeeded.lastWarmUpSucceeded = true
         succeeded.lastWarmUpAt = now.addingTimeInterval(-3_600)
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: succeeded, selection: fiveHourOnly, now: now)
-                == now.addingTimeInterval(4 * 3_600),
-            "successful warm-up waits one interval"
-        ) else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(for: succeeded, selection: fiveHourOnly, now: now)
+                    == now.addingTimeInterval(4 * 3_600),
+                "successful warm-up waits one interval"
+            )
+        else { return false }
         var failed = idleProfile
         failed.lastWarmUpSucceeded = false
         failed.lastWarmUpAt = now.addingTimeInterval(-600)
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: failed, selection: fiveHourOnly, now: now) == nil,
-            "failed warm-up requires manual retry"
-        ) else { return false }
-        guard expect(
-            !CodexWarmUpPolicy.hasUnresolvedFailure(
-                failed,
-                selection: CodexWarmUpSelection(fiveHour: false, sevenDay: false),
-                now: now
-            ),
-            "fresh quota evidence makes old failure display stale while warm-up is disabled"
-        ) else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(for: failed, selection: fiveHourOnly, now: now) == nil,
+                "failed warm-up requires manual retry"
+            )
+        else { return false }
+        guard
+            expect(
+                !CodexWarmUpPolicy.hasUnresolvedFailure(
+                    failed,
+                    selection: CodexWarmUpSelection(fiveHour: false, sevenDay: false),
+                    now: now
+                ),
+                "fresh quota evidence makes old failure display stale while warm-up is disabled"
+            )
+        else { return false }
         let activeProfile = profile(snapshot(five: window(used: 40, resetsIn: 600)))
         var supersededFailure = activeProfile
         supersededFailure.lastWarmUpSucceeded = false
         supersededFailure.lastWarmUpAt = now.addingTimeInterval(-600)
-        guard expect(
-            !CodexWarmUpPolicy.hasUnresolvedFailure(
-                supersededFailure,
-                selection: fiveHourOnly,
-                now: now
-            ) && CodexWarmUpPolicy.nextEligibleDate(
-                for: supersededFailure,
-                selection: fiveHourOnly,
-                now: now
-            ) == now.addingTimeInterval(608),
-            "new active window supersedes an old failure"
-        ) else { return false }
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(
-                for: failed,
-                selection: fiveHourOnly,
-                unexpected: [.fiveHour],
-                now: now
-            ) == now,
-            "new reset may retry a previous failure once"
-        ) else { return false }
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: idleProfile, selection: fiveHourOnly, unexpected: [.fiveHour], now: now) == now,
-            "unexpected reset warms up immediately"
-        ) else { return false }
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: activeProfile, selection: fiveHourOnly, now: now)
-                == now.addingTimeInterval(608),
-            "active window waits for reset plus grace"
-        ) else { return false }
+        guard
+            expect(
+                !CodexWarmUpPolicy.hasUnresolvedFailure(
+                    supersededFailure,
+                    selection: fiveHourOnly,
+                    now: now
+                )
+                    && CodexWarmUpPolicy.nextEligibleDate(
+                        for: supersededFailure,
+                        selection: fiveHourOnly,
+                        now: now
+                    ) == now.addingTimeInterval(608),
+                "new active window supersedes an old failure"
+            )
+        else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(
+                    for: failed,
+                    selection: fiveHourOnly,
+                    unexpected: [.fiveHour],
+                    now: now
+                ) == now,
+                "new reset may retry a previous failure once"
+            )
+        else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(for: idleProfile, selection: fiveHourOnly, unexpected: [.fiveHour], now: now) == now,
+                "unexpected reset warms up immediately"
+            )
+        else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(for: activeProfile, selection: fiveHourOnly, now: now)
+                    == now.addingTimeInterval(608),
+                "active window waits for reset plus grace"
+            )
+        else { return false }
         let anonymous = profile(snapshot(five: window(used: 0.2), email: ""))
-        guard expect(
-            CodexWarmUpPolicy.nextEligibleDate(for: anonymous, selection: fiveHourOnly, now: now) == nil,
-            "missing identity blocks warm-up"
-        ) else { return false }
+        guard
+            expect(
+                CodexWarmUpPolicy.nextEligibleDate(for: anonymous, selection: fiveHourOnly, now: now) == nil,
+                "missing identity blocks warm-up"
+            )
+        else { return false }
 
         // isDue：过期快照永远不触发暖号
         let stale = profile(snapshot(five: window(used: 0.2), at: now.addingTimeInterval(-16 * 60)))
@@ -2613,15 +2760,18 @@ enum CodexWarmUpPolicySelfTest {
         guard expect(CodexWarmUpPolicy.isDue(fresh, selection: fiveHourOnly, now: now), "fresh idle evidence is due") else { return false }
 
         // nextScheduledResetDate
-        let dual = profile(snapshot(
-            five: window(used: 40, resetsIn: 600),
-            seven: window(used: 40, resetsIn: 86_400)
-        ))
-        guard expect(
-            CodexWarmUpPolicy.nextScheduledResetDate(for: dual, selection: selection, now: now)
-                == now.addingTimeInterval(608),
-            "scheduled reset uses earliest window"
-        ) else { return false }
+        let dual = profile(
+            snapshot(
+                five: window(used: 40, resetsIn: 600),
+                seven: window(used: 40, resetsIn: 86_400)
+            ))
+        guard
+            expect(
+                CodexWarmUpPolicy.nextScheduledResetDate(for: dual, selection: selection, now: now)
+                    == now.addingTimeInterval(608),
+                "scheduled reset uses earliest window"
+            )
+        else { return false }
 
         // 额度读取失败必须留下痕迹，成功后清除
         let fileManager = FileManager.default
@@ -2666,15 +2816,19 @@ enum CodexWarmUpPolicySelfTest {
                 failureReason: "timeout",
                 for: profileID
             )
-            guard expect(
-                store.profiles.first?.lastWarmUpFailureReason == "timeout",
-                "warm-up failure category is recorded"
-            ) else { return false }
+            guard
+                expect(
+                    store.profiles.first?.lastWarmUpFailureReason == "timeout",
+                    "warm-up failure category is recorded"
+                )
+            else { return false }
             try store.recordWarmUp(at: now, succeeded: true, for: profileID)
-            guard expect(
-                store.profiles.first?.lastWarmUpFailureReason == nil,
-                "warm-up success clears failure category"
-            ) else { return false }
+            guard
+                expect(
+                    store.profiles.first?.lastWarmUpFailureReason == nil,
+                    "warm-up success clears failure category"
+                )
+            else { return false }
             try store.record(
                 testWindowSnapshot(email: "f@example.com", at: now),
                 for: profileID

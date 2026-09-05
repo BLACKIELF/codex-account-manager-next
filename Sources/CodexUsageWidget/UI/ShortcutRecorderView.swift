@@ -1,5 +1,5 @@
-import Cocoa
 import Carbon.HIToolbox
+import Cocoa
 import SwiftUI
 
 struct ShortcutRecorderView: NSViewRepresentable {
@@ -81,7 +81,8 @@ final class ShortcutRecorderControl: NSButton {
     private func handleRecordingKeyDown(_ event: NSEvent) {
         guard !event.isARepeat else { return }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        let hasShortcutModifier = flags.contains(.command)
+        let hasShortcutModifier =
+            flags.contains(.command)
             || flags.contains(.option)
             || flags.contains(.shift)
             || flags.contains(.control)
@@ -110,9 +111,9 @@ final class ShortcutRecorderControl: NSButton {
         removeKeyDownMonitor()
         keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self,
-                  self.isRecording,
-                  self.window?.isKeyWindow == true,
-                  self.window?.firstResponder === self
+                self.isRecording,
+                self.window?.isKeyWindow == true,
+                self.window?.firstResponder === self
             else { return event }
             self.handleRecordingKeyDown(event)
             return nil
@@ -140,7 +141,8 @@ final class ShortcutRecorderControl: NSButton {
     }
 
     private func updateTitle() {
-        title = isRecording
+        title =
+            isRecording
             ? language.text("请按新快捷键", "Press shortcut")
             : shortcut?.displayName ?? language.text("未设置", "Not set")
         let help = language.text(

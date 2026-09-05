@@ -3,7 +3,7 @@ import Cocoa
 import Foundation
 
 enum GlobalShortcutSelfTest {
-    private static let signature: OSType = 0x43414D54 // CAMT
+    private static let signature: OSType = 0x4341_4D54  // CAMT
     private static let oldShortcut = GlobalShortcut(
         keyCode: UInt32(kVK_F11),
         carbonModifiers: UInt32(cmdKey | shiftKey),
@@ -83,7 +83,7 @@ enum GlobalShortcutSelfTest {
             ("command+shift+U", shortcut(kVK_ANSI_U, cmdKey | shiftKey, "U"), nil),
             ("control+shift+K", shortcut(kVK_ANSI_K, controlKey | shiftKey, "K"), nil),
             ("control+option+F8", shortcut(kVK_F8, controlKey | optionKey, "F8"), .reservedSystemShortcut),
-            ("command+shift+comma", shortcut(kVK_ANSI_Comma, cmdKey | shiftKey, ","), .unsupportedKey)
+            ("command+shift+comma", shortcut(kVK_ANSI_Comma, cmdKey | shiftKey, ","), .unsupportedKey),
         ]
 
         for (name, shortcut, expected) in cases where shortcut.validationError != expected {
@@ -119,13 +119,15 @@ enum GlobalShortcutSelfTest {
             settings.globalShortcutUnregistration = { .success(()) }
             settings.resetGlobalShortcut()
             if settings.globalShortcut != .default
-                || GlobalShortcut.load(defaults: defaults) != .default {
+                || GlobalShortcut.load(defaults: defaults) != .default
+            {
                 failures.append("reset did not restore and persist the default shortcut")
             }
 
             settings.clearGlobalShortcut()
             if settings.globalShortcut != nil
-                || GlobalShortcut.load(defaults: defaults) != nil {
+                || GlobalShortcut.load(defaults: defaults) != nil
+            {
                 failures.append("settings clear did not persist the disabled state")
             }
         }
@@ -139,13 +141,15 @@ enum GlobalShortcutSelfTest {
             if settings.requestGlobalShortcut(candidate)
                 || settings.globalShortcut != oldShortcut
                 || GlobalShortcut.load(defaults: defaults) != oldShortcut
-                || settings.globalShortcutError != .occupied {
+                || settings.globalShortcutError != .occupied
+            {
                 failures.append("registration failure did not retain the old stored shortcut")
             }
 
             if !settings.requestGlobalShortcut(oldShortcut)
                 || settings.globalShortcutError != nil
-                || GlobalShortcut.load(defaults: defaults) != oldShortcut {
+                || GlobalShortcut.load(defaults: defaults) != oldShortcut
+            {
                 failures.append("reselecting the active shortcut did not clear the error")
             }
         }
@@ -158,7 +162,8 @@ enum GlobalShortcutSelfTest {
             settings.clearGlobalShortcut()
             if settings.globalShortcut != oldShortcut
                 || GlobalShortcut.load(defaults: defaults) != oldShortcut
-                || settings.globalShortcutError != .unregistrationFailed {
+                || settings.globalShortcutError != .unregistrationFailed
+            {
                 failures.append("unregistration failure did not retain the old shortcut")
             }
         }
@@ -170,7 +175,8 @@ enum GlobalShortcutSelfTest {
             settings.handleInitialGlobalShortcutFailure(defaultRegistered: true)
             if settings.globalShortcut != .default
                 || settings.globalShortcutError != .savedShortcutUnavailableUsingDefault
-                || GlobalShortcut.load(defaults: defaults) != custom {
+                || GlobalShortcut.load(defaults: defaults) != custom
+            {
                 failures.append("startup fallback overwrote the saved shortcut")
             }
         }
@@ -182,7 +188,8 @@ enum GlobalShortcutSelfTest {
             settings.handleInitialGlobalShortcutFailure(defaultRegistered: false)
             if settings.globalShortcut != nil
                 || settings.globalShortcutError != .noShortcutAvailable
-                || GlobalShortcut.load(defaults: defaults) != custom {
+                || GlobalShortcut.load(defaults: defaults) != custom
+            {
                 failures.append("startup failure without fallback overwrote the saved shortcut")
             }
         }
@@ -190,32 +197,50 @@ enum GlobalShortcutSelfTest {
 
     private static func checkInvalidStoredValues(failures: inout [String]) {
         let invalidCases: [(String, (UserDefaults) -> Void)] = [
-            ("negative key code", { defaults in
-                seed(defaults, keyCode: -1, modifiers: cmdKey | shiftKey, label: "K")
-            }),
-            ("overflow key code", { defaults in
-                defaults.set(true, forKey: GlobalShortcut.enabledStorageKey)
-                defaults.set(Double(UInt32.max) + 1, forKey: GlobalShortcut.keyCodeStorageKey)
-                defaults.set(cmdKey | shiftKey, forKey: GlobalShortcut.modifiersStorageKey)
-                defaults.set("K", forKey: GlobalShortcut.keyLabelStorageKey)
-            }),
-            ("unknown modifier bit", { defaults in
-                seed(
-                    defaults,
-                    keyCode: kVK_ANSI_K,
-                    modifiers: Int(UInt32(cmdKey | shiftKey) | (1 << 31)),
-                    label: "K"
-                )
-            }),
-            ("unsupported key", { defaults in
-                seed(defaults, keyCode: kVK_Return, modifiers: cmdKey | shiftKey, label: "↩")
-            }),
-            ("control character label", { defaults in
-                seed(defaults, keyCode: kVK_ANSI_K, modifiers: cmdKey | shiftKey, label: "K\n")
-            }),
-            ("non-boolean enabled flag", { defaults in
-                defaults.set("yes", forKey: GlobalShortcut.enabledStorageKey)
-            })
+            (
+                "negative key code",
+                { defaults in
+                    seed(defaults, keyCode: -1, modifiers: cmdKey | shiftKey, label: "K")
+                }
+            ),
+            (
+                "overflow key code",
+                { defaults in
+                    defaults.set(true, forKey: GlobalShortcut.enabledStorageKey)
+                    defaults.set(Double(UInt32.max) + 1, forKey: GlobalShortcut.keyCodeStorageKey)
+                    defaults.set(cmdKey | shiftKey, forKey: GlobalShortcut.modifiersStorageKey)
+                    defaults.set("K", forKey: GlobalShortcut.keyLabelStorageKey)
+                }
+            ),
+            (
+                "unknown modifier bit",
+                { defaults in
+                    seed(
+                        defaults,
+                        keyCode: kVK_ANSI_K,
+                        modifiers: Int(UInt32(cmdKey | shiftKey) | (1 << 31)),
+                        label: "K"
+                    )
+                }
+            ),
+            (
+                "unsupported key",
+                { defaults in
+                    seed(defaults, keyCode: kVK_Return, modifiers: cmdKey | shiftKey, label: "↩")
+                }
+            ),
+            (
+                "control character label",
+                { defaults in
+                    seed(defaults, keyCode: kVK_ANSI_K, modifiers: cmdKey | shiftKey, label: "K\n")
+                }
+            ),
+            (
+                "non-boolean enabled flag",
+                { defaults in
+                    defaults.set("yes", forKey: GlobalShortcut.enabledStorageKey)
+                }
+            ),
         ]
 
         for (name, mutation) in invalidCases {
@@ -225,7 +250,8 @@ enum GlobalShortcutSelfTest {
                     || defaults.bool(forKey: GlobalShortcut.enabledStorageKey)
                     || defaults.object(forKey: GlobalShortcut.keyCodeStorageKey) != nil
                     || defaults.object(forKey: GlobalShortcut.modifiersStorageKey) != nil
-                    || defaults.object(forKey: GlobalShortcut.keyLabelStorageKey) != nil {
+                    || defaults.object(forKey: GlobalShortcut.keyLabelStorageKey) != nil
+                {
                     failures.append("\(name) did not fail closed to a disabled shortcut")
                 }
             }

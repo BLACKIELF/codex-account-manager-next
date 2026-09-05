@@ -12,7 +12,7 @@ enum CodexExecutable {
             "/Applications/Codex.app/Contents/Resources/codex",
             "/opt/homebrew/bin/codex",
             "/usr/local/bin/codex",
-            "/usr/bin/codex"
+            "/usr/bin/codex",
         ])
         return candidates.first { fileManager.isExecutableFile(atPath: $0) }
     }
@@ -39,7 +39,7 @@ enum CodexExecutable {
         guard process.terminationStatus == 0 else { return nil }
         let maximumVersionBytes = 4 * 1_024
         guard let data = try? pipe.fileHandleForReading.read(upToCount: maximumVersionBytes + 1),
-              data.count <= maximumVersionBytes
+            data.count <= maximumVersionBytes
         else { return nil }
         return String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines)

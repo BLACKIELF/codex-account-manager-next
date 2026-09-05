@@ -16,7 +16,7 @@ func dumpJSON(_ snapshot: MultiRuntimeUsageSnapshot) {
         "leadership": leadershipJSONObject(snapshot.leadership),
         "compat": [
             "codex": codexSnapshot.map { runtimeJSONObject($0) } ?? NSNull()
-        ] as [String: Any]
+        ] as [String: Any],
     ]
 
     if let codexSnapshot {
@@ -24,7 +24,8 @@ func dumpJSON(_ snapshot: MultiRuntimeUsageSnapshot) {
     }
 
     if let data = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]),
-       let text = String(data: data, encoding: .utf8) {
+        let text = String(data: data, encoding: .utf8)
+    {
         print(text)
     }
 }
@@ -38,10 +39,10 @@ private func leadershipJSONObject(_ snapshot: LeadershipDashboardSnapshot) -> [S
         "today": today.map { report in
             [
                 "agentCount": runtimeJSONValue(report.agentCount),
-                "aiHours": runtimeJSONValue(report.aiHours)
+                "aiHours": runtimeJSONValue(report.aiHours),
             ] as [String: Any]
         } ?? NSNull(),
-        "reports": snapshot.reports.map { leadershipJSONObject($0) }
+        "reports": snapshot.reports.map { leadershipJSONObject($0) },
     ] as [String: Any]
 }
 
@@ -55,7 +56,7 @@ private func leadershipJSONObject(_ report: LeadershipReport) -> [String: Any] {
                 "level": title.level,
                 "name": title.name,
                 "lowerBound": title.lowerBound,
-                "upperBound": title.upperBound
+                "upperBound": title.upperBound,
             ] as [String: Any]
         } ?? NSNull(),
         "maturity": report.maturity,
@@ -72,7 +73,7 @@ private func leadershipJSONObject(_ report: LeadershipReport) -> [String: Any] {
                 "kind": dimension.kind.rawValue,
                 "score": dimension.score,
                 "confidence": dimension.confidence,
-                "summaryValue": dimension.summaryValue
+                "summaryValue": dimension.summaryValue,
             ] as [String: Any]
         },
         "dailyPoints": report.dailyPoints.map { point in
@@ -80,7 +81,7 @@ private func leadershipJSONObject(_ report: LeadershipReport) -> [String: Any] {
                 "day": runtimeISOString(point.day) ?? "",
                 "agentCount": point.agentCount,
                 "aiHours": point.aiHours,
-                "peakConcurrency": point.peakConcurrency
+                "peakConcurrency": point.peakConcurrency,
             ] as [String: Any]
         },
         "projects": report.projects.map { project in
@@ -89,9 +90,9 @@ private func leadershipJSONObject(_ report: LeadershipReport) -> [String: Any] {
                 "name": project.projectName,
                 "agentCount": project.agentCount,
                 "aiHours": project.aiHours,
-                "autonomousHours": project.autonomousHours
+                "autonomousHours": project.autonomousHours,
             ] as [String: Any]
-        }
+        },
     ] as [String: Any]
 }
 
@@ -103,7 +104,7 @@ private func runtimeJSONObject(_ runtime: RuntimeUsageSnapshot) -> [String: Any]
         "status": runtime.status.rawValue,
         "quotaSourceLabel": runtime.quotaSourceLabel,
         "usageSourceLabel": runtime.usageSourceLabel,
-        "snapshot": runtimeJSONObject(runtime.snapshot)
+        "snapshot": runtimeJSONObject(runtime.snapshot),
     ] as [String: Any]
 }
 
@@ -111,11 +112,12 @@ private func runtimeJSONObject(_ snapshot: UsageSnapshot) -> [String: Any] {
     var object = runtimeLegacyJSONObject(snapshot)
     object["refreshedAt"] = runtimeISOString(snapshot.refreshedAt) ?? ""
     object["quotaReadSucceeded"] = snapshot.quotaReadSucceeded
-    object["quotaWindows"] = [
-        "fiveHour": snapshot.fiveHourQuota.map(runtimeJSONObject) ?? NSNull(),
-        "sevenDay": snapshot.sevenDayQuota.map(runtimeJSONObject) ?? NSNull(),
-        "monthly": snapshot.monthlyQuota.map(runtimeJSONObject) ?? NSNull()
-    ] as [String: Any]
+    object["quotaWindows"] =
+        [
+            "fiveHour": snapshot.fiveHourQuota.map(runtimeJSONObject) ?? NSNull(),
+            "sevenDay": snapshot.sevenDayQuota.map(runtimeJSONObject) ?? NSNull(),
+            "monthly": snapshot.monthlyQuota.map(runtimeJSONObject) ?? NSNull(),
+        ] as [String: Any]
     object["messages"] = snapshot.messages
     return object
 }
@@ -124,11 +126,12 @@ private func runtimeLegacyJSONObject(_ snapshot: UsageSnapshot) -> [String: Any]
     var object: [String: Any] = [:]
 
     if let account = snapshot.account {
-        object["account"] = [
-            "type": account.type,
-            "planType": runtimeJSONValue(account.planType),
-            "emailPresent": account.emailPresent
-        ] as [String: Any]
+        object["account"] =
+            [
+                "type": account.type,
+                "planType": runtimeJSONValue(account.planType),
+                "emailPresent": account.emailPresent,
+            ] as [String: Any]
     }
 
     if let primary = snapshot.fiveHourQuota {
@@ -140,17 +143,18 @@ private func runtimeLegacyJSONObject(_ snapshot: UsageSnapshot) -> [String: Any]
     }
 
     if let credits = snapshot.credits {
-        object["credits"] = [
-            "hasCredits": credits.hasCredits,
-            "unlimited": credits.unlimited,
-            "balance": runtimeJSONValue(credits.balance),
-            "resetCredits": runtimeJSONValue(credits.resetCredits),
-            "resetCreditDetails": credits.resetCreditDetails.map { details in
-                details.map { detail in
-                    ["expiresAt": runtimeJSONValue(runtimeISOString(detail.expiresAt))]
-                }
-            } ?? NSNull()
-        ] as [String: Any]
+        object["credits"] =
+            [
+                "hasCredits": credits.hasCredits,
+                "unlimited": credits.unlimited,
+                "balance": runtimeJSONValue(credits.balance),
+                "resetCredits": runtimeJSONValue(credits.resetCredits),
+                "resetCreditDetails": credits.resetCreditDetails.map { details in
+                    details.map { detail in
+                        ["expiresAt": runtimeJSONValue(runtimeISOString(detail.expiresAt))]
+                    }
+                } ?? NSNull(),
+            ] as [String: Any]
     }
 
     if let local = snapshot.local {
@@ -169,7 +173,7 @@ private func runtimeJSONObject(_ window: RateWindow) -> [String: Any] {
         "usedPercent": window.usedPercent,
         "remainingPercent": window.remainingPercent,
         "windowDurationMins": runtimeJSONValue(window.windowDurationMins),
-        "resetsAt": runtimeJSONValue(runtimeISOString(window.resetsAt))
+        "resetsAt": runtimeJSONValue(runtimeISOString(window.resetsAt)),
     ] as [String: Any]
 }
 
@@ -184,100 +188,106 @@ private func runtimeJSONObject(_ local: LocalUsage) -> [String: Any] {
             [
                 "day": bucket.id,
                 "label": bucket.label,
-                "tokens": bucket.tokens
+                "tokens": bucket.tokens,
             ] as [String: Any]
         },
         "toolUsages": local.toolUsages.prefix(20).map { runtimeJSONObject($0) },
-        "skillUsages": local.skillUsages.prefix(20).map { runtimeJSONObject($0) }
+        "skillUsages": local.skillUsages.prefix(20).map { runtimeJSONObject($0) },
     ]
 
     if let detailed = local.detailedUsage {
-        object["detailedUsage"] = [
-            "today": runtimeJSONObject(detailed.today),
-            "sevenDay": runtimeJSONObject(detailed.sevenDay),
-            "month": runtimeJSONObject(detailed.month),
-            "lifetime": runtimeJSONObject(detailed.lifetime),
-            "parsedFileCount": detailed.parsedFileCount,
-            "tokenEventCount": detailed.tokenEventCount
-        ] as [String: Any]
+        object["detailedUsage"] =
+            [
+                "today": runtimeJSONObject(detailed.today),
+                "sevenDay": runtimeJSONObject(detailed.sevenDay),
+                "month": runtimeJSONObject(detailed.month),
+                "lifetime": runtimeJSONObject(detailed.lifetime),
+                "parsedFileCount": detailed.parsedFileCount,
+                "tokenEventCount": detailed.tokenEventCount,
+            ] as [String: Any]
     }
 
     if let history = local.inferencePerformance {
-        object["inferencePerformance"] = [
-            "source": "local-rollout-observed-call",
-            "storage": "local-application-support",
-            "recordingStartedAt": runtimeISOString(history.recordingStartedAt) ?? "",
-            "periods": [
-                "today": history.today.map { runtimeJSONObject($0) } ?? NSNull(),
-                "sevenDays": history.sevenDays.map { runtimeJSONObject($0) } ?? NSNull(),
-                "twentyEightDays": history.twentyEightDays.map { runtimeJSONObject($0) } ?? NSNull()
+        object["inferencePerformance"] =
+            [
+                "source": "local-rollout-observed-call",
+                "storage": "local-application-support",
+                "recordingStartedAt": runtimeISOString(history.recordingStartedAt) ?? "",
+                "periods": [
+                    "today": history.today.map { runtimeJSONObject($0) } ?? NSNull(),
+                    "sevenDays": history.sevenDays.map { runtimeJSONObject($0) } ?? NSNull(),
+                    "twentyEightDays": history.twentyEightDays.map { runtimeJSONObject($0) } ?? NSNull(),
+                ] as [String: Any],
             ] as [String: Any]
-        ] as [String: Any]
     }
 
     if let trend = local.usageTrend {
-        let modelTrends: Any = trend.modelTrends.map { trends in
-            trends.map { modelTrend in
-                [
-                    "id": modelTrend.id,
-                    "model": modelTrend.model ?? NSNull(),
-                    "dayCount": modelTrend.dayBuckets.count,
-                    "activeDayCount": modelTrend.activeDayCount,
-                    "sevenDay": runtimeJSONObject(modelTrend.summary.sevenDay),
-                    "dailyAverageTokens": modelTrend.summary.dailyAverageTokens,
-                    "changePercent": runtimeJSONValue(modelTrend.summary.changePercent)
-                ] as [String: Any]
-            }
-        } ?? NSNull()
-        let modelSeries: Any = trend.modelTrends.map { _ in
-            ModelUsageAreaSeriesBuilder.build(from: trend).map { series in
-                [
-                    "id": series.id,
-                    "model": runtimeJSONValue(series.model),
-                    "isAggregate": series.isAggregate,
-                    "dayCount": series.dayBuckets.count,
-                    "activeDayCount": series.activeDayCount,
-                    "sourceQuality": series.sourceQuality.rawValue,
-                    "costAvailable": series.costAvailable,
-                    "usesReferencePricing": series.usesReferencePricing,
-                    "dayBuckets": series.dayBuckets.map { bucket in
-                        [
-                            "day": bucket.id,
-                            "tokens": bucket.tokens,
-                            "estimatedCostUSD": runtimeJSONValue(series.costAvailable ? bucket.usage.estimatedCostUSD : nil)
-                        ] as [String: Any]
-                    }
-                ] as [String: Any]
-            }
-        } ?? NSNull()
-        object["usageTrend"] = [
-            "sourceQuality": trend.sourceQuality.rawValue,
-            "dayCount": trend.dayBuckets.count,
-            "activeDayCount": trend.activeDayCount,
-            "sevenDay": runtimeJSONObject(trend.summary.sevenDay),
-            "dailyAverageTokens": trend.summary.dailyAverageTokens,
-            "peakDay": trend.summary.peakDay.map { bucket in
-                [
-                    "day": bucket.id,
-                    "tokens": bucket.tokens,
-                    "estimatedCostUSD": bucket.usage.estimatedCostUSD
-                ] as [String: Any]
-            } ?? NSNull(),
-            "modelAttribution": trend.modelTrends == nil ? "unsupported" : "available",
-            "modelTrends": modelTrends,
-            "modelSeries": modelSeries,
-            "changePercent": runtimeJSONValue(trend.summary.changePercent),
-            "isNewActivity": trend.summary.isNewActivity,
-            "month": runtimeJSONObject(trend.month),
-            "projectedMonthCostUSD": runtimeJSONValue(trend.projectedMonthCostUSD)
-        ] as [String: Any]
+        let modelTrends: Any =
+            trend.modelTrends.map { trends in
+                trends.map { modelTrend in
+                    [
+                        "id": modelTrend.id,
+                        "model": modelTrend.model ?? NSNull(),
+                        "dayCount": modelTrend.dayBuckets.count,
+                        "activeDayCount": modelTrend.activeDayCount,
+                        "sevenDay": runtimeJSONObject(modelTrend.summary.sevenDay),
+                        "dailyAverageTokens": modelTrend.summary.dailyAverageTokens,
+                        "changePercent": runtimeJSONValue(modelTrend.summary.changePercent),
+                    ] as [String: Any]
+                }
+            } ?? NSNull()
+        let modelSeries: Any =
+            trend.modelTrends.map { _ in
+                ModelUsageAreaSeriesBuilder.build(from: trend).map { series in
+                    [
+                        "id": series.id,
+                        "model": runtimeJSONValue(series.model),
+                        "isAggregate": series.isAggregate,
+                        "dayCount": series.dayBuckets.count,
+                        "activeDayCount": series.activeDayCount,
+                        "sourceQuality": series.sourceQuality.rawValue,
+                        "costAvailable": series.costAvailable,
+                        "usesReferencePricing": series.usesReferencePricing,
+                        "dayBuckets": series.dayBuckets.map { bucket in
+                            [
+                                "day": bucket.id,
+                                "tokens": bucket.tokens,
+                                "estimatedCostUSD": runtimeJSONValue(series.costAvailable ? bucket.usage.estimatedCostUSD : nil),
+                            ] as [String: Any]
+                        },
+                    ] as [String: Any]
+                }
+            } ?? NSNull()
+        object["usageTrend"] =
+            [
+                "sourceQuality": trend.sourceQuality.rawValue,
+                "dayCount": trend.dayBuckets.count,
+                "activeDayCount": trend.activeDayCount,
+                "sevenDay": runtimeJSONObject(trend.summary.sevenDay),
+                "dailyAverageTokens": trend.summary.dailyAverageTokens,
+                "peakDay": trend.summary.peakDay.map { bucket in
+                    [
+                        "day": bucket.id,
+                        "tokens": bucket.tokens,
+                        "estimatedCostUSD": bucket.usage.estimatedCostUSD,
+                    ] as [String: Any]
+                } ?? NSNull(),
+                "modelAttribution": trend.modelTrends == nil ? "unsupported" : "available",
+                "modelTrends": modelTrends,
+                "modelSeries": modelSeries,
+                "changePercent": runtimeJSONValue(trend.summary.changePercent),
+                "isNewActivity": trend.summary.isNewActivity,
+                "month": runtimeJSONObject(trend.month),
+                "projectedMonthCostUSD": runtimeJSONValue(trend.projectedMonthCostUSD),
+            ] as [String: Any]
     }
 
     if let projectBoard = local.projectBoard {
-        object["projectBoard"] = [
-            "recentProjects": projectBoard.recentProjects.prefix(8).map { runtimeJSONObject($0) },
-            "allProjects": projectBoard.allProjects.prefix(8).map { runtimeJSONObject($0) }
-        ] as [String: Any]
+        object["projectBoard"] =
+            [
+                "recentProjects": projectBoard.recentProjects.prefix(8).map { runtimeJSONObject($0) },
+                "allProjects": projectBoard.allProjects.prefix(8).map { runtimeJSONObject($0) },
+            ] as [String: Any]
     }
 
     return object
@@ -300,9 +310,9 @@ private func runtimeJSONObject(_ performance: ModelInferencePerformance) -> [Str
                 "p90DurationSeconds": group.p90DurationSeconds,
                 "effectiveOutputTokensPerSecond": group.effectiveOutputTokensPerSecond,
                 "outputTokens": group.outputTokens,
-                "reasoningOutputTokens": group.reasoningOutputTokens
+                "reasoningOutputTokens": group.reasoningOutputTokens,
             ] as [String: Any]
-        }
+        },
     ] as [String: Any]
 }
 
@@ -330,11 +340,11 @@ private func runtimeJSONObject(_ taskBoard: TaskBoard) -> [String: Any] {
                         "rawStatus": runtimeJSONValue(item.rawStatus),
                         "nextRunAt": runtimeJSONValue(runtimeISOString(item.nextRunAt)),
                         "updatedAt": runtimeJSONValue(runtimeISOString(item.updatedAt)),
-                        "tokens": runtimeJSONValue(item.tokens)
+                        "tokens": runtimeJSONValue(item.tokens),
                     ] as [String: Any]
-                }
+                },
             ] as [String: Any]
-        }
+        },
     ] as [String: Any]
 }
 
@@ -348,10 +358,10 @@ private func runtimeJSONObject(_ usage: PricedTokenUsage) -> [String: Any] {
             "outputTokens": usage.tokens.outputTokens,
             "reasoningOutputTokens": usage.tokens.reasoningOutputTokens,
             "totalTokens": usage.tokens.totalTokens,
-            "visibleTotalTokens": usage.tokens.visibleTotalTokens
+            "visibleTotalTokens": usage.tokens.visibleTotalTokens,
         ] as [String: Any],
         "estimatedCostUSD": usage.estimatedCostUSD,
-        "usesReferencePricing": usage.usesReferencePricing
+        "usesReferencePricing": usage.usesReferencePricing,
     ] as [String: Any]
 }
 
@@ -363,7 +373,7 @@ private func runtimeJSONObject(_ project: ProjectUsage) -> [String: Any] {
         "estimatedCostUSD": runtimeJSONValue(project.estimatedCostUSD),
         "threadCount": project.threadCount,
         "lastActiveAt": runtimeJSONValue(runtimeISOString(project.lastActiveAt)),
-        "sourceQuality": project.sourceQuality.rawValue
+        "sourceQuality": project.sourceQuality.rawValue,
     ] as [String: Any]
 }
 
@@ -373,7 +383,7 @@ private func runtimeJSONObject(_ tool: ToolUsage) -> [String: Any] {
         "category": tool.category,
         "callCount": tool.callCount,
         "estimatedTokens": runtimeJSONValue(tool.estimatedTokens),
-        "estimatedCostUSD": runtimeJSONValue(tool.estimatedCostUSD)
+        "estimatedCostUSD": runtimeJSONValue(tool.estimatedCostUSD),
     ] as [String: Any]
 }
 
@@ -386,7 +396,7 @@ private func runtimeJSONObject(_ skill: SkillUsage) -> [String: Any] {
         "threadCount": skill.threadCount,
         "staticTokenEstimate": runtimeJSONValue(skill.staticTokenEstimate),
         "staticByteCount": runtimeJSONValue(skill.staticByteCount),
-        "lastLoadedAt": runtimeJSONValue(runtimeISOString(skill.lastLoadedAt))
+        "lastLoadedAt": runtimeJSONValue(runtimeISOString(skill.lastLoadedAt)),
     ] as [String: Any]
 }
 

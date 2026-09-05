@@ -2,16 +2,16 @@ import Foundation
 
 enum AppArchitecture: String, Codable, Equatable {
     case arm64
-    case x86_64
+    case x8664 = "x86_64"
     case unknown
 
     static var current: AppArchitecture {
         #if arch(arm64)
-        return .arm64
+            return .arm64
         #elseif arch(x86_64)
-        return .x86_64
+            return .x8664
         #else
-        return .unknown
+            return .unknown
         #endif
     }
 
@@ -20,7 +20,7 @@ enum AppArchitecture: String, Codable, Equatable {
         if normalized.contains("arm64") || normalized.contains("apple-silicon") || normalized.contains("aarch64") {
             self = .arm64
         } else if normalized.contains("x86_64") || normalized.contains("intel") || normalized.contains("amd64") {
-            self = .x86_64
+            self = .x8664
         } else {
             self = .unknown
         }
@@ -57,9 +57,9 @@ struct AppVersion: Codable, Equatable, Comparable, CustomStringConvertible {
         let parts = withoutPrefix.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
         let numberParts = parts[0].split(separator: ".")
         guard numberParts.count == 3,
-              let major = Int(numberParts[0]),
-              let minor = Int(numberParts[1]),
-              let patch = Int(numberParts[2])
+            let major = Int(numberParts[0]),
+            let minor = Int(numberParts[1]),
+            let patch = Int(numberParts[2])
         else { return nil }
 
         self.major = major
@@ -111,7 +111,7 @@ struct AppVersion: Codable, Equatable, Comparable, CustomStringConvertible {
             return false
         case (_?, nil):
             return true
-        case let (lhsLabel?, rhsLabel?):
+        case (let lhsLabel?, let rhsLabel?):
             let lhsRank = prereleaseRank(lhsLabel)
             let rhsRank = prereleaseRank(rhsLabel)
             if lhsRank != rhsRank { return lhsRank < rhsRank }
@@ -290,9 +290,9 @@ enum AppUpdateSelfTest {
         }
 
         guard let beta01 = AppVersion("v1.0.0-beta01"),
-              let beta02 = AppVersion("1.0.0-beta02"),
-              let stable = AppVersion("1.0.0"),
-              let nextPatch = AppVersion("1.0.1")
+            let beta02 = AppVersion("1.0.0-beta02"),
+            let stable = AppVersion("1.0.0"),
+            let nextPatch = AppVersion("1.0.1")
         else {
             print("update self-test failed: version parsing returned nil")
             return false
@@ -302,29 +302,29 @@ enum AppUpdateSelfTest {
         expect(beta02 < stable, "stable should be higher than beta")
         expect(stable < nextPatch, "next patch should be higher than current stable")
         expect(AppArchitecture(assetName: "CodexAccountManagerNext-1.0.0-mac-arm64.dmg") == .arm64, "arm64 asset detection")
-        expect(AppArchitecture(assetName: "CodexAccountManagerNext-1.0.0-mac-x86_64.dmg") == .x86_64, "x86_64 asset detection")
+        expect(AppArchitecture(assetName: "CodexAccountManagerNext-1.0.0-mac-x86_64.dmg") == .x8664, "x86_64 asset detection")
 
         let fixture = """
-        [
-          {
-            "tag_name": "v1.0.0-beta03",
-            "name": "Codex Account Manager Next v1.0.0-beta03",
-            "html_url": "https://github.com/BLACKIELF/codex-account-manager-next/releases/tag/v1.0.0-beta03",
-            "published_at": "2026-07-09T12:00:00Z",
-            "prerelease": true,
-            "draft": false,
-            "body": "Beta update",
-            "assets": [
+            [
               {
-                "name": "CodexAccountManagerNext-1.0.0-beta03-mac-arm64.dmg",
-                "browser_download_url": "https://github.com/BLACKIELF/codex-account-manager-next/releases/download/v1.0.0-beta03/CodexAccountManagerNext-1.0.0-beta03-mac-arm64.dmg",
-                "size": 1234,
-                "content_type": "application/octet-stream"
+                "tag_name": "v1.0.0-beta03",
+                "name": "Codex Account Manager Next v1.0.0-beta03",
+                "html_url": "https://github.com/BLACKIELF/codex-account-manager-next/releases/tag/v1.0.0-beta03",
+                "published_at": "2026-07-09T12:00:00Z",
+                "prerelease": true,
+                "draft": false,
+                "body": "Beta update",
+                "assets": [
+                  {
+                    "name": "CodexAccountManagerNext-1.0.0-beta03-mac-arm64.dmg",
+                    "browser_download_url": "https://github.com/BLACKIELF/codex-account-manager-next/releases/download/v1.0.0-beta03/CodexAccountManagerNext-1.0.0-beta03-mac-arm64.dmg",
+                    "size": 1234,
+                    "content_type": "application/octet-stream"
+                  }
+                ]
               }
             ]
-          }
-        ]
-        """.data(using: .utf8)!
+            """.data(using: .utf8)!
 
         do {
             let releases = try AppUpdateJSON.decoder.decode([GitHubReleaseInfo].self, from: fixture)

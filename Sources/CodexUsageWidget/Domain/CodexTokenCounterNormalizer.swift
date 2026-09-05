@@ -47,8 +47,8 @@ struct CodexTokenEventIdentity: Codable, Equatable {
     private let secondaryHash: UInt64
 
     init(cumulative: CodexTokenCounterSample?, lastUsage: CodexTokenCounterSample?) {
-        var primary: UInt64 = 0xcbf29ce484222325
-        var secondary: UInt64 = 0x9e3779b97f4a7c15
+        var primary: UInt64 = 0xcbf2_9ce4_8422_2325
+        var secondary: UInt64 = 0x9e37_79b9_7f4a_7c15
         for value in Self.values(from: cumulative) + Self.values(from: lastUsage) {
             Self.mix(value == nil ? 0 : 1, primary: &primary, secondary: &secondary)
             if let value {
@@ -67,7 +67,7 @@ struct CodexTokenEventIdentity: Codable, Equatable {
             sample.cacheWriteInputTokens,
             sample.outputTokens,
             sample.reasoningOutputTokens,
-            sample.totalTokens
+            sample.totalTokens,
         ]
     }
 
@@ -76,10 +76,10 @@ struct CodexTokenEventIdentity: Codable, Equatable {
         primary: inout UInt64,
         secondary: inout UInt64
     ) {
-        primary = (primary ^ value) &* 0x100000001b3
-        secondary ^= value &+ 0x9e3779b97f4a7c15
+        primary = (primary ^ value) &* 0x100_0000_01b3
+        secondary ^= value &+ 0x9e37_79b9_7f4a_7c15
         secondary = (secondary << 13) | (secondary >> 51)
-        secondary &*= 0xbf58476d1ce4e5b9
+        secondary &*= 0xbf58_476d_1ce4_e5b9
     }
 }
 
@@ -158,7 +158,7 @@ enum CodexTokenCounterNormalizer {
         previous: TokenBreakdown
     ) -> Bool {
         guard let total = sample.totalTokens,
-              let input = sample.inputTokens
+            let input = sample.inputTokens
         else { return false }
 
         // A single optional counter can move backwards when event schemas or
@@ -179,8 +179,8 @@ enum CodexTokenCounterNormalizer {
 enum CodexDetailedUsageSanity {
     static func isSuspicious(_ detailed: Int64, comparedWith approximate: Int64) -> Bool {
         guard approximate >= 1_000_000,
-              detailed > approximate,
-              detailed - approximate >= 500_000_000
+            detailed > approximate,
+            detailed - approximate >= 500_000_000
         else { return false }
 
         return Double(detailed) / Double(approximate) >= 8
@@ -242,7 +242,9 @@ enum CodexTokenCounterNormalizerSelfTest {
             lastUsage: sample(input: 40, cached: 20, output: 5, reasoning: 0, total: 45),
             state: &state
         )
-        expect(sparse == TokenBreakdown(inputTokens: 40, cachedInputTokens: 20, outputTokens: 5, reasoningOutputTokens: 0, totalTokens: 45), "missing auxiliary fields should not trigger a reset")
+        expect(
+            sparse == TokenBreakdown(inputTokens: 40, cachedInputTokens: 20, outputTokens: 5, reasoningOutputTokens: 0, totalTokens: 45),
+            "missing auxiliary fields should not trigger a reset")
 
         let auxiliaryRegression = CodexTokenCounterNormalizer.consume(
             cumulative: sample(input: 130, cached: 60, output: 27, reasoning: 2, total: 157),
@@ -356,13 +358,13 @@ enum CodexTokenCounterNormalizerSelfTest {
             identity(total: 100, last: 100),
             identity(total: 160, last: 60),
             identity(total: 240, last: 80),
-            identity(total: 300, last: 60)
+            identity(total: 300, last: 60),
         ]
         let forkEvents = [
             identity(total: 100, last: 100),
             identity(total: 160, last: 60),
             identity(total: 240, last: 80),
-            identity(total: 275, last: 35)
+            identity(total: 275, last: 35),
         ]
         expect(
             CodexForkUsageDeduplicator.inheritedPrefixLength(child: forkEvents, parent: parentEvents) == 3,

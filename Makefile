@@ -9,7 +9,9 @@ RESOURCES_DIR := $(APP_DIR)/Contents/Resources
 SOURCES := $(shell find Sources/CodexUsageWidget -name '*.swift' | sort)
 APP_ICON_SOURCE := Resources/codexU.icns
 APP_ICON := CodexAccountManagerNext.icns
+RUNTIME_PNG_RESOURCES := Resources/codexU-icon.png Resources/codex-color.png Resources/codex-template.png Resources/claudecode-color.png Resources/claudecode-template.png
 LEADERSHIP_BADGES := $(sort $(wildcard Resources/LeadershipBadges/leadership-badge-l*.png))
+SELF_TEST_RUNNER := ./scripts/run-self-tests.sh
 DEPLOYMENT_TARGET ?= 13.0
 HOST_ARCH := $(shell uname -m)
 APPLE_SILICON_TARGET_TRIPLE ?= arm64-apple-macos$(DEPLOYMENT_TARGET)
@@ -31,6 +33,7 @@ endif
 MODULE_CACHE_PATH ?= $(BUILD_DIR)/ModuleCache
 SWIFTC_TARGET_FLAGS := -target $(TARGET_TRIPLE) -sdk $(SDK_PATH) -module-cache-path $(MODULE_CACHE_PATH)
 SWIFT_OPTIMIZATION ?= -O
+SWIFTC_PARALLELISM ?= -j 4
 MACOS_SDK_MAJOR := $(shell /usr/libexec/PlistBuddy -c "Print Version" "$(SDK_PATH)/SDKSettings.plist" 2>/dev/null | cut -d. -f1)
 SWIFTC_FEATURE_FLAGS :=
 
@@ -45,19 +48,20 @@ CODESIGN_FLAGS := --force --deep --options runtime --timestamp --sign "$(SIGN_ID
 endif
 
 POWERSHELL ?= powershell.exe
+SWIFT_FORMAT ?= xcrun swift-format
 
-.PHONY: build debug run probe test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-cc-switch test-profile-store test-account-inspection test-automatic-account-switch test-feishu-webhook test-account-automation-audit test-account-switch-safety test-task-runtime test-leadership-model test-leadership-assets test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
+.PHONY: build debug run probe lint test verify-runtime-resources test-rate-limits test-statistics-time-zone test-token-counter test-model-pricing test-model-usage-trend test-model-inference-performance test-app-server-pipe test-cc-switch test-profile-store test-account-inspection test-automatic-account-switch test-feishu-webhook test-account-automation-audit test-account-switch-safety test-task-runtime test-leadership-model test-leadership-assets test-codex-session-link test-performance-monitor test-phase-one-gate test-particle-animation test-palettes test-macos-compatibility memory-risk-check phase-one-check phase-one-soak install dmg dmg-arm64 dmg-intel checksum checksum-arm64 checksum-intel release release-arm64 release-intel release-all release-package release-windows release-cross-platform-check release-check notarize verify clean clean-dist
 
 build:
 	rm -rf "$(APP_DIR)"
 	mkdir -p "$(MACOS_DIR)" "$(RESOURCES_DIR)"
 	cp Resources/Info.plist "$(APP_DIR)/Contents/Info.plist"
 	cp "$(APP_ICON_SOURCE)" "$(RESOURCES_DIR)/$(APP_ICON)"
-	cp Resources/codexU-icon.png Resources/codex-color.png Resources/codex-template.png "$(RESOURCES_DIR)/"
+	cp $(RUNTIME_PNG_RESOURCES) "$(RESOURCES_DIR)/"
 	cp Resources/THIRD_PARTY_NOTICES.txt "$(RESOURCES_DIR)/"
 	cp -R Resources/Palettes "$(RESOURCES_DIR)/Palettes"
 	/usr/bin/xattr -dr com.apple.quarantine "$(APP_DIR)" 2>/dev/null || true
-	MACOSX_DEPLOYMENT_TARGET="$(DEPLOYMENT_TARGET)" swiftc $(SWIFT_OPTIMIZATION) -parse-as-library $(SWIFTC_TARGET_FLAGS) $(SWIFTC_FEATURE_FLAGS) $(SOURCES) \
+	MACOSX_DEPLOYMENT_TARGET="$(DEPLOYMENT_TARGET)" swiftc $(SWIFT_OPTIMIZATION) $(SWIFTC_PARALLELISM) -parse-as-library $(SWIFTC_TARGET_FLAGS) $(SWIFTC_FEATURE_FLAGS) $(SOURCES) \
 		-o "$(MACOS_DIR)/$(APP_NAME)" \
 		-framework Cocoa \
 		-framework Carbon \
@@ -75,6 +79,21 @@ run: build
 probe: build
 	"$(MACOS_DIR)/$(APP_NAME)" --dump-json
 
+lint:
+	$(SWIFT_FORMAT) lint --strict --parallel --recursive --configuration .swift-format Sources/CodexUsageWidget
+
+verify-runtime-resources:
+	@for resource in $(RUNTIME_PNG_RESOURCES); do \
+		bundled="$(RESOURCES_DIR)/$$(basename "$$resource")"; \
+		test -s "$$bundled" || { echo "missing runtime resource: $$bundled"; exit 1; }; \
+		cmp -s "$$resource" "$$bundled" || { echo "runtime resource differs from source: $$bundled"; exit 1; }; \
+	done
+	@echo "Verified $(words $(RUNTIME_PNG_RESOURCES)) runtime PNG resources"
+
+test: build
+	@$(MAKE) --no-print-directory verify-runtime-resources BUILD_DIR="$(BUILD_DIR)"
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)"
+
 test-rate-limits:
 	./scripts/test-rate-limits.sh
 
@@ -82,46 +101,46 @@ test-statistics-time-zone:
 	./scripts/test-statistics-time-zone.sh
 
 test-token-counter: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-token-counter
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only token-counter
 
 test-model-pricing: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-model-pricing
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only model-pricing
 
 test-model-usage-trend: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-model-usage-trend
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only model-usage-trend
 
 test-model-inference-performance: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-model-inference-performance
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only model-inference-performance
 
 test-app-server-pipe: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-app-server-pipe
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only app-server-pipe
 
 test-cc-switch: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-cc-switch
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only cc-switch
 
 test-profile-store: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-profile-store
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only profile-store
 
 test-account-inspection: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-account-inspection
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only account-inspection
 
 test-automatic-account-switch: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-automatic-account-switch
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only automatic-account-switch
 
 test-feishu-webhook: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-feishu-webhook
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only feishu-webhook
 
 test-account-automation-audit: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-account-automation-audit
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only account-automation-audit
 
 test-account-switch-safety: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-account-switch-safety
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only account-switch-safety
 
 test-task-runtime: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-task-runtime
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only task-runtime
 
 test-leadership-model: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-leadership-model
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only leadership-model
 
 test-leadership-assets:
 	@test "$(words $(LEADERSHIP_BADGES))" -eq 7 || { echo "expected 7 leadership badge PNGs"; exit 1; }
@@ -133,13 +152,13 @@ test-leadership-assets:
 	done
 
 test-codex-session-link: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-codex-session-link
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only codex-session-link
 
 test-performance-monitor: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-performance-monitor
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only performance-monitor
 
 test-phase-one-gate: build
-	"$(MACOS_DIR)/$(APP_NAME)" --self-test-phase-one-gate
+	$(SELF_TEST_RUNNER) --skip-build --build-dir "$(BUILD_DIR)" --only phase-one-gate
 
 test-macos-compatibility:
 	./scripts/test-macos-compatibility.sh

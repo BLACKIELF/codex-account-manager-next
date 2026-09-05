@@ -4,25 +4,25 @@
 
 [![CI](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml/badge.svg)](https://github.com/BLACKIELF/codex-account-manager-next/actions/workflows/ci.yml)
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111111?logo=apple)
-![Version 0904v2](https://img.shields.io/badge/version-0904v2-6C4DFF)
+![Version 0905v1](https://img.shields.io/badge/version-0905v1-6C4DFF)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A local-first macOS workspace for multiple Codex accounts: inspect official quota, keep account homes isolated, choose a model/reasoning effort/speed per independent account, launch an isolated CLI, and reduce duplicate-use risk by blocking new starts from this app when a fresh Hub overview reports the mapped account busy.
+A local-first macOS workspace for one or multiple Codex accounts. Inspect official quota, choose GPT-6 Astra or another task model, and pass the model, reasoning effort and Standard/Fast speed to an isolated CLI. Multiple accounts retain occupancy monitoring and isolated account homes.
 
-Current formal version: `0904v2` · `9.4.2 (12)`. This is not an official OpenAI product. It does not provide accounts, increase quota, or bypass login, MFA, or platform restrictions.
+Current version: `0905v1` · `9.5.1 (13)`. This is not an official OpenAI product. It does not provide accounts, increase quota, or bypass login, MFA, or platform restrictions.
 
-![0904v2 Inspection and online Hub state, Retina feature capture](docs/images/0904v2/inspection-header@2x.png)
+![0905v1 single-account workspace, production SwiftUI at 2x](docs/images/0905v1/single-account-dark@2x.png)
 
-> These images come from the locally built 0904v2 app and are privacy-safe, pixel-preserving crops of Retina 2× captures; wide details reach 2340 px. They retain only feature controls and contain no real account alias, email, quota, token total, subscription, reset time, credential, webhook, task body, or private local path.
+> 0905v1 images render the production SwiftUI components at 2×; workspace images are 2160 × 1520 px. Accounts, quota and dates are synthetic. The renderer does not connect to Hub or read real credentials or Keychain. Unconfirmed task status accurately represents the disconnected fixture. Older 0904v2 detail captures below document unchanged features.
 
-## What changed in 0904v2
+## What changed in 0905v1
 
-- Added the blue-purple Execution Preference control. Each independent account can select a model, reasoning effort, and Standard/Fast speed, or apply one setting to every independent account.
-- Use in Terminal writes the selection into the launch command. Default subagents launched by that CLI inherit the same model and reasoning effort.
-- Account cards and Inspection poll Hub every 10 seconds and show approval, starting, working, cancellation, uncertain, and terminal states.
-- When Hub reports the account as busy, is offline, or becomes stale, terminal entry is disabled; a clicked warm-up is rejected by its execution gate.
-- Replaced the fixed-timeout CLI warm-up subprocess with a bounded direct SSE request to the ChatGPT Codex backend endpoint, preserving classified diagnostics.
-- A new active quota window supersedes an old warm-up failure. A failed idle window is not consumed repeatedly.
+- Added `gpt-6-astra` with all six CLI effort levels and Standard/Fast; existing preferences remain unchanged.
+- Refined the blue-purple model card, native stepped slider, model menu, Fast toggle and reset action. Apply to All appears when multiple independent accounts exist.
+- Added automatic single-account focus in the workspace and menu bar: quota, task model and Terminal first, with statistics and account automation still accessible.
+- Improved light/dark contrast and narrow-window cards; removed the duplicate Inspection page and merged snapshot-health notices into account cards.
+- Added Astra command, persistence, bulk-apply, pricing and account-deduplication regression coverage; consolidated the pure-test runner and Swift formatting checks.
+- Preserved Hub occupancy protection, warm-up, reminders, safe switching and account isolation.
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.
 
@@ -32,11 +32,22 @@ See [CHANGELOG.md](CHANGELOG.md) for full history.
 |---|---|
 | Workbench | Monitored account, 5-hour/7-day quota, reset times, official lifetime tokens, local all-agent tokens, and cost estimate |
 | Account card | Refresh, Warm Up, dispatch participation, execution preference, isolated CLI, monitoring, re-login, Chrome session, and explicit Desktop switch |
-| Inspection | Model configuration, quota, Hub state, dispatch-disabled accounts, stale snapshots, low quota, and configuration drift |
+| Inline health | Hub task state, stale snapshots, failed refreshes, quota colors and dispatch participation |
 | Automation Center | Low-quota account recommendations, Feishu notifications, safety gates, and recent audit events |
 | Menu bar and Settings | Quota ring, density, language, theme, palettes, shortcut, always-on-top, background residency, and update checks |
 
-The current full window has two top-level pages: Workbench and Inspection. Historical view code and the Windows workspace remain in the repository, but they do not imply equivalent entry points in the current macOS product.
+The full window is a unified workspace, without a duplicate Inspection page or page-switching navigation. The Windows workspace and historical analytics models do not imply additional macOS pages.
+
+## Using one account
+
+![0905v1 single-account menu bar](docs/images/0905v1/single-account-menu-dark@2x.png)
+
+- Monitor the existing Codex login without registering a second account or changing system identity.
+- To choose task models, use Set Up Isolated CLI and log the **same account** into a Next-managed environment. This does not switch Desktop identity.
+- System and managed copies of the same identity count as one account. Statistics and advanced management remain accessible; redundant bulk controls are hidden.
+- CLI and warm-up still require the Hub mapping and fresh state described below. Without Hub, single-account monitoring remains read-only; unknown availability never becomes an artificial idle state.
+
+![0905v1 multi-account light workspace](docs/images/0905v1/multi-account-light@2x.png)
 
 ## Five common account actions with different boundaries
 
@@ -52,12 +63,13 @@ Low-quota automation exposes no launch or switch action. It displays a candidate
 
 ## Per-account execution preference
 
-![0904v2 model, reasoning effort, speed, and Apply to All](docs/images/0904v2/execution-preference-control@2x.png)
+![0905v1 Astra, effort, Fast and Apply to All](docs/images/0905v1/astra-model-dark@2x.png)
 
 Each independent account stores one execution preference. A change immediately affects later CLI launches and their default subagents without editing the account's `config.toml`.
 
 | Model | Reasoning efforts | Speed |
 |---|---|---|
+| `gpt-6-astra` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-sol` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-terra` | Low / Medium / High / XHigh / Max / Ultra | Standard / Fast |
 | `gpt-5.6-luna` | Low / Medium / High / XHigh / Max | Standard / Fast |
@@ -65,6 +77,8 @@ Each independent account stores one execution preference. A change immediately a
 | `gpt-5.2` | Low / Medium / High / XHigh | Standard |
 
 The default is `gpt-5.6-sol + high + Standard`. Unsupported combinations are rejected without replacing the last valid setting. Apply to All is a one-time overwrite; accounts can still be adjusted individually afterward.
+
+Astra CLI parameters follow the local model catalog; server-side account access still applies and there is no silent downgrade. Max and Ultra are distinct. CLI Ultra must not be confused with the public API reasoning range. Local API-equivalent estimates now use Astra's own rates, not an older model's fallback price; this is not a subscription bill. See [OpenAI's Astra documentation](https://developers.openai.com/api/docs/models/gpt-6-astra).
 
 Propagation covers the primary model and effort, default subagent model and effort, and Standard/Fast service tier. If Hub creates work through another entry point, that dispatcher must explicitly reuse the generated command or the same parameter set; Next currently reads Hub state but does not create Hub tasks. Warm-up is a separate maintenance action fixed to lightweight `gpt-5.6-luna`; it does not reuse task execution preference.
 
@@ -83,7 +97,7 @@ This is account occupancy coordination and status feedback, not an in-app remote
 
 ### Hub integration prerequisites
 
-Hub coordination in 0904v2 is an externally provisioned integration. There is no mapping editor in the app, and a public source build does not discover account aliases or create these files automatically.
+Hub coordination is externally provisioned. There is no mapping editor in the app, and a public source build does not discover account aliases or create these files automatically. External dispatchers with model allowlists must also add `gpt-6-astra` and its six effort levels. Updating Next does not deploy a separate Hub service.
 
 Provision the account-card dispatch code and Hub alias before the app starts:
 
@@ -106,27 +120,7 @@ Provision the account-card dispatch code and Hub alias before the app starts:
 
 `code` must be a unique single letter from `A` through `Z`; `alias` and `profileId` must be nonempty. The process reads this file once at startup, so restart Next after changing it.
 
-Inspection reads a separate account list from external Hub configuration. Its default file is:
-
-```text
-~/Library/Application Support/CodexAccountManagerNext/inspection-config-v1.json
-```
-
-Alternatively, set `CAMNEXT_INSPECTION_CONFIG` in the **app process environment** to another JSON file with this shape:
-
-```json
-{
-  "accounts": [
-    {
-      "alias": "account-a",
-      "home": "/absolute/path/to/account/CODEX_HOME",
-      "dispatchDisabled": false
-    }
-  ]
-}
-```
-
-`home` must point to that account's isolated `CODEX_HOME`. Inspection derives the Profile ID from the directory name and read-only parses `model` and `model_reasoning_effort` from its `config.toml`. A normal Finder launch does not invent process environment variables, so the default Application Support file is usually the practical choice. A missing or unreadable Inspection configuration affects only the Inspection page; account-card CLI/warm-up fail closed when the dispatch mapping is missing, Hub is offline, or its overview is stale. Next neither writes these external configurations nor submits work through the Hub API.
+The standalone Inspection page has been removed. Next no longer reads `inspection-config-v1.json` / `CAMNEXT_INSPECTION_CONFIG`; existing local files are left untouched. Account cards still use `dispatch-codes-v1.json` and a fresh Hub overview for occupancy protection.
 
 ## Accounts and browser login
 
@@ -138,19 +132,11 @@ Alternatively, set `CAMNEXT_INSPECTION_CONFIG` in the **app process environment*
 - Pro `5x/20x` is display metadata only; it cannot change the real plan or quota.
 - Local reset history can be corrected manually but is never presented as an official available reset count.
 
-## Multi-account Inspection
+## State lives on the account cards
 
-Inspection places accounts mapped by external Hub configuration on one screen and shows:
+The workspace now brings together quota, task occupancy, recent results and refresh health. Snapshots older than 30 minutes, invalid timestamps and failed refreshes receive inline notices. Quota colors and dispatch participation remain in place.
 
-- Dispatch alias, masked email, plan, model, and reasoning effort.
-- Official 5-hour and 7-day remaining quota.
-- Matching Hub CLI task state.
-- Quota snapshots older than 30 minutes.
-- Either quota window below 20%.
-- Configuration drift from `gpt-5.6-sol + high`.
-- Accounts excluded from dispatch.
-
-Inspection only reports state. It does not log in, mutate configuration, or switch accounts.
+The old fixed `gpt-5.6-sol + high` configuration baseline has been removed so a deliberate Astra selection is not treated as an anomaly. Notices do not trigger login, configuration writes, warm-up or switching.
 
 ## Smart warm-up
 
@@ -221,7 +207,7 @@ The legacy manager does not share Next's switch lock. Do not switch accounts in 
 
 ![0904v2 General Settings, appearance, and palette Retina feature capture](docs/images/0904v2/settings-general@2x.png)
 
-- The menu-bar popover and Settings support Chinese/English; the 0904v2 full Workbench, Inspection, and Automation Center are currently Chinese-only.
+- The menu-bar popover and Settings support Chinese/English; the full workspace, model editor and Automation Center are currently Chinese-only.
 - System, Light, and Dark appearance.
 - Built-in palettes including Default, Blue-and-White Porcelain, Forbidden City Red, A Thousand Li of Rivers and Mountains, Dunhuang, Lanshu, and Liquid Keycap, each with light/dark variants.
 - Minimal, Classic, and Rich menu-bar styles with used/remaining mode, 5h, 7d, monthly, today's tokens, and reset countdown options.
@@ -347,7 +333,7 @@ Confirm a complete official Custom Bot webhook, that the bot is still in the gro
 
 ### Where are the old Trends, Projects, Skills, and Leadership pages?
 
-The 0904v2 full window currently mounts only Workbench and Inspection. Some historical view code remains but has no user-reachable entry point, so this README does not advertise it as a current feature.
+0905v1 focuses on one workspace. The duplicate Inspection page and unmounted legacy views have been removed. Underlying analytics models still support current totals and menu-bar data; unavailable pages are not advertised as current features.
 
 ## Development and verification
 
@@ -374,9 +360,9 @@ git diff --check
 
 ## Version, provenance, and license
 
-- Formal release: `0904v2`
-- Marketing version: `9.4.2`
-- Build: `12`
+- Version name: `0905v1`
+- Marketing version: `9.5.1`
+- Build: `13`
 - Baseline design: [docs/0826v1-IMPLEMENTATION.md](docs/0826v1-IMPLEMENTATION.md)
 - Security boundary: [SECURITY.md](SECURITY.md)
 - Full history: [CHANGELOG.md](CHANGELOG.md)

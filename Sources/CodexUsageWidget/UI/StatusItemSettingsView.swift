@@ -24,7 +24,7 @@ struct StatusItemSettingsView: View {
                 options: [
                     SettingsSegmentOption(value: .minimal, title: language.text("简约", "Minimal")),
                     SettingsSegmentOption(value: .classic, title: language.text("经典", "Classic")),
-                    SettingsSegmentOption(value: .rich, title: language.text("丰富", "Rich"))
+                    SettingsSegmentOption(value: .rich, title: language.text("丰富", "Rich")),
                 ],
                 width: settingsAccessoryColumnWidth
             )
@@ -38,7 +38,7 @@ struct StatusItemSettingsView: View {
                 selection: quotaModeBinding,
                 options: [
                     SettingsSegmentOption(value: .used, title: language.text("已用量", "Used")),
-                    SettingsSegmentOption(value: .remaining, title: language.text("剩余量", "Remaining"))
+                    SettingsSegmentOption(value: .remaining, title: language.text("剩余量", "Remaining")),
                 ],
                 width: settingsAccessoryColumnWidth
             )
@@ -119,7 +119,8 @@ struct StatusItemSettingsView: View {
 
     private var metricsDetail: String {
         if preferences.displayMode == .minimal,
-           preferences.visibleMetrics.contains(.todayTokens) {
+            preferences.visibleMetrics.contains(.todayTokens)
+        {
             return language.text(
                 "简约模式只绘制额度环；今日 token 仍保留在提示中",
                 "Minimal draws quota rings only; today tokens remain in the tooltip"
@@ -156,7 +157,7 @@ struct StatusItemSettingsView: View {
         switch settings.updateStatusItemPreferences(mutation) {
         case .success:
             preferenceError = nil
-        case let .failure(error):
+        case .failure(let error):
             preferenceError = error
         }
     }

@@ -100,34 +100,35 @@ enum TaskRuntimeSelfTest {
         )
 
         var reducer = TaskRuntimeReducer()
-        reducer.replaceThreads([
+        reducer.replaceThreads(
             [
-                "id": "active-with-unknown-flag",
-                "updatedAt": Int(now.timeIntervalSince1970),
-                "status": ["type": "active", "activeFlags": ["unknownFlag"]]
-            ],
-            [
-                "id": "input-thread",
-                "updatedAt": Int(now.timeIntervalSince1970),
-                "status": ["type": "active", "activeFlags": ["waitingOnUserInput"]]
-            ],
-            [
-                "id": "running-thread",
-                "updatedAt": Int(now.timeIntervalSince1970),
-                "status": ["type": "active", "activeFlags": []]
-            ],
-            [
-                "id": "record-thread",
-                "updatedAt": Int(now.timeIntervalSince1970),
-                "status": ["type": "notLoaded"]
-            ],
-            [
-                "id": "hidden-subagent",
-                "threadSource": "subagent",
-                "updatedAt": Int(now.timeIntervalSince1970),
-                "status": ["type": "active", "activeFlags": []]
-            ]
-        ], connectionMode: .isolated)
+                [
+                    "id": "active-with-unknown-flag",
+                    "updatedAt": Int(now.timeIntervalSince1970),
+                    "status": ["type": "active", "activeFlags": ["unknownFlag"]],
+                ],
+                [
+                    "id": "input-thread",
+                    "updatedAt": Int(now.timeIntervalSince1970),
+                    "status": ["type": "active", "activeFlags": ["waitingOnUserInput"]],
+                ],
+                [
+                    "id": "running-thread",
+                    "updatedAt": Int(now.timeIntervalSince1970),
+                    "status": ["type": "active", "activeFlags": []],
+                ],
+                [
+                    "id": "record-thread",
+                    "updatedAt": Int(now.timeIntervalSince1970),
+                    "status": ["type": "notLoaded"],
+                ],
+                [
+                    "id": "hidden-subagent",
+                    "threadSource": "subagent",
+                    "updatedAt": Int(now.timeIntervalSince1970),
+                    "status": ["type": "active", "activeFlags": []],
+                ],
+            ], connectionMode: .isolated)
 
         var snapshot = reducer.snapshot(at: now)
         expect(
@@ -157,12 +158,14 @@ enum TaskRuntimeSelfTest {
             displayState: .recentlyActive,
             stateBasis: .activityWindow
         )
-        let baseBoard = TaskBoard(refreshedAt: now, columns: [
-            TaskColumn(id: .active, title: "Active", count: 1, items: [recentItem]),
-            TaskColumn(id: .pending, title: "Pending", count: 0, items: []),
-            TaskColumn(id: .scheduled, title: "Scheduled", count: 0, items: []),
-            TaskColumn(id: .done, title: "Done", count: 0, items: [])
-        ])
+        let baseBoard = TaskBoard(
+            refreshedAt: now,
+            columns: [
+                TaskColumn(id: .active, title: "Active", count: 1, items: [recentItem]),
+                TaskColumn(id: .pending, title: "Pending", count: 0, items: []),
+                TaskColumn(id: .scheduled, title: "Scheduled", count: 0, items: []),
+                TaskColumn(id: .done, title: "Done", count: 0, items: []),
+            ])
         let recordedSnapshot = CodexTaskLiveSnapshot(
             connectionMode: .isolated,
             records: [
@@ -192,7 +195,7 @@ enum TaskRuntimeSelfTest {
         let attention = TaskAttentionSelector.highestPriority([
             TaskAttentionItem(id: "update", kind: .update, runtimeScope: nil, threadID: nil, title: "Update", since: nil),
             TaskAttentionItem(id: "failure", kind: .failure, runtimeScope: .codex, threadID: "a", title: "Failure", since: now),
-            TaskAttentionItem(id: "input", kind: .userInput, runtimeScope: .codex, threadID: "b", title: "Input", since: now.addingTimeInterval(-10))
+            TaskAttentionItem(id: "input", kind: .userInput, runtimeScope: .codex, threadID: "b", title: "Input", since: now.addingTimeInterval(-10)),
         ])
         expect(attention?.id == "input", "user input must outrank failure and update")
 
@@ -212,9 +215,11 @@ enum TaskRuntimeSelfTest {
             displayState: .recentlyActive,
             stateBasis: .activityWindow
         )
-        let waitingBoard = TaskBoard(refreshedAt: now, columns: [
-            TaskColumn(id: .active, title: "Recent", count: 1, items: [waitingItem])
-        ])
+        let waitingBoard = TaskBoard(
+            refreshedAt: now,
+            columns: [
+                TaskColumn(id: .active, title: "Recent", count: 1, items: [waitingItem])
+            ])
         expect(
             waitingBoard.attentionItems(scope: .codex).isEmpty,
             "waiting-input live state must not be exposed as a product attention item"

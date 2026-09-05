@@ -11,24 +11,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Build
-        run: make build
-      - name: Account automation safety tests
-        run: |
-          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-automatic-account-switch
-          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-switch-safety
-          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-feishu-webhook
-          build/CodexAccountManagerNext.app/Contents/MacOS/CodexAccountManagerNext --self-test-account-automation-audit
-      - name: Palette package and rendering tests
-        run: ./scripts/test-palettes.sh
-      - name: Menu bar rendering tests
-        run: ./scripts/test-status-item.sh
-      - name: Particle animation tests
-        run: ./scripts/test-particle-animation.sh
-      - name: Rate limit tests
-        run: ./scripts/test-rate-limits.sh
-      - name: Statistics time zone tests
-        run: ./scripts/test-statistics-time-zone.sh
+      - name: Lint Swift sources
+        run: make lint
+      - name: Build, verify runtime resources, and run self-tests
+        run: make test
 
   windows-rust-format:
     runs-on: windows-latest

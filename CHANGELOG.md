@@ -1,5 +1,23 @@
 # Changelog
 
+## 9.5.1 / 0905v1 - 2026-09-05
+
+- 新增 GPT-6 Astra：六档 CLI 思考强度、Standard/Fast、主 Agent 与默认子 Agent 参数一致；已有设置和默认 Sol/High 保持不变。
+- 重做共享模型选择控件：蓝紫色模型卡、原生分档滑杆、模型菜单、Fast 切换、恢复默认和多账号批量应用。
+- 主窗口和菜单栏自动切换单账号专注布局；同身份入口去重，未知系统占位不误计为第二个账号，额度与任务对象保持一致。
+- 升级浅色／深色表面、字号与信息层级，收拢单账号高级功能，改进窄窗口账号卡；移除独立巡检页和固定 Sol 配置基线，将过期／刷新失败提示并入账号卡，保留原有 Hub 门禁。
+- Astra 本地 API 等效估算覆盖缓存读取、缓存写入、Fast 和长上下文；提升本地分析缓存版本以避免旧参考价残留。
+- 完成上一阶段 macOS 结构整理：入口、生命周期、业务模型、读取与存储、设置和图表布局各归其层；统一 Swift 风格与 25 组纯测试入口。
+- 新增隔离的 2× SwiftUI 文档预览，覆盖单账号／系统只读／多账号与浅深主题，修正旧设置截图入口会加载真实 UsageStore 的问题。
+
+### English
+
+- Added GPT-6 Astra with all six CLI efforts, Standard/Fast and consistent primary/default-subagent arguments, preserving existing defaults.
+- Refined the shared model selector and introduced automatic single-account focus in the workspace and menu bar without weakening Hub gates.
+- Improved contrast, narrow-window layout and identity-aware quota presentation; removed the duplicate Inspection page and merged snapshot-health notices into account cards.
+- Added explicit Astra pricing, cache invalidation, regression coverage and isolated 2× production-view documentation renders.
+- Consolidated the preceding macOS lifecycle/domain/service/UI refactor, Swift formatting and the 25-test runner.
+
 ## 9.4.2 / 0904v2 - 2026-09-04
 
 - 修复暖号命令达到固定 90 秒后被强制结束、同时丢弃错误输出，导致长期只显示“暖号失败”的问题。

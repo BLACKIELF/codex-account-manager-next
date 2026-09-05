@@ -11,9 +11,11 @@ struct PaletteCatalog {
     static func loadFromMainBundle() -> PaletteCatalog {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.5"
         guard let resources = Bundle.main.resourceURL else {
-            return PaletteCatalog(definitions: [:], diagnostics: [
-                PaletteDiagnostic(paletteID: nil, severity: .error, ruleID: "PAL001", relativePath: "Palettes", message: "Bundle resource directory is unavailable.")
-            ])
+            return PaletteCatalog(
+                definitions: [:],
+                diagnostics: [
+                    PaletteDiagnostic(paletteID: nil, severity: .error, ruleID: "PAL001", relativePath: "Palettes", message: "Bundle resource directory is unavailable.")
+                ])
         }
         return load(rootURL: resources.appendingPathComponent("Palettes", isDirectory: true), appVersion: version)
     }
@@ -31,13 +33,14 @@ struct PaletteCatalog {
             diagnostics.append(contentsOf: result.diagnostics)
             guard let definition = result.definition else { continue }
             if definitions[definition.manifest.id] != nil {
-                diagnostics.append(PaletteDiagnostic(
-                    paletteID: definition.manifest.id,
-                    severity: .error,
-                    ruleID: "PAL003",
-                    relativePath: definition.manifest.id,
-                    message: "Duplicate palette id was isolated."
-                ))
+                diagnostics.append(
+                    PaletteDiagnostic(
+                        paletteID: definition.manifest.id,
+                        severity: .error,
+                        ruleID: "PAL003",
+                        relativePath: definition.manifest.id,
+                        message: "Duplicate palette id was isolated."
+                    ))
                 definitions.removeValue(forKey: definition.manifest.id)
             } else {
                 definitions[definition.manifest.id] = definition
@@ -45,7 +48,10 @@ struct PaletteCatalog {
         }
 
         if definitions[defaultPaletteID] == nil {
-            diagnostics.append(PaletteDiagnostic(paletteID: defaultPaletteID, severity: .error, ruleID: "PAL001", relativePath: defaultPaletteID, message: "Default package is unavailable; using compiled safe defaults."))
+            diagnostics.append(
+                PaletteDiagnostic(
+                    paletteID: defaultPaletteID, severity: .error, ruleID: "PAL001", relativePath: defaultPaletteID,
+                    message: "Default package is unavailable; using compiled safe defaults."))
         }
         return PaletteCatalog(definitions: definitions, diagnostics: diagnostics)
     }
@@ -57,12 +63,15 @@ struct PaletteCatalog {
     func descriptors(language: String, includingDeprecatedID: String? = nil) -> [PaletteDescriptor] {
         definitions.values.compactMap { definition in
             let manifest = definition.manifest
-            guard manifest.lifecycle == .stable
-                    || (manifest.lifecycle == .deprecated && manifest.id == includingDeprecatedID) else {
+            guard
+                manifest.lifecycle == .stable
+                    || (manifest.lifecycle == .deprecated && manifest.id == includingDeprecatedID)
+            else {
                 return nil
             }
             let preferredLocale = language.lowercased().hasPrefix("zh") ? "zh-Hans" : "en"
-            let localization = definition.localizations[preferredLocale]
+            let localization =
+                definition.localizations[preferredLocale]
                 ?? definition.localizations[manifest.defaultLocale]
                 ?? PaletteLocalizationDTO(displayName: manifest.id, shortDescription: "", inspirationNote: "")
             return PaletteDescriptor(

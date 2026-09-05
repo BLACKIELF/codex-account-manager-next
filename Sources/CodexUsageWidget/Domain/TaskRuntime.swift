@@ -87,14 +87,17 @@ enum TaskScheduleParser {
         let weekdays: [Int]
 
         init(_ rawRule: String) {
-            let lines = rawRule
+            let lines =
+                rawRule
                 .split(whereSeparator: \.isNewline)
                 .map(String.init)
             let startLine = lines.first { $0.uppercased().hasPrefix("DTSTART") }
-            let ruleLine = lines.first { $0.uppercased().hasPrefix("RRULE:") }
+            let ruleLine =
+                lines.first { $0.uppercased().hasPrefix("RRULE:") }
                 ?? lines.first { $0.uppercased().contains("FREQ=") }
                 ?? rawRule
-            let ruleBody = ruleLine.uppercased().hasPrefix("RRULE:")
+            let ruleBody =
+                ruleLine.uppercased().hasPrefix("RRULE:")
                 ? String(ruleLine.dropFirst("RRULE:".count))
                 : ruleLine
 
@@ -162,11 +165,11 @@ enum TaskScheduleParser {
 
         func nextRunAt(after now: Date) -> Date? {
             guard fields["INTERVAL"].flatMap(Int.init) ?? 1 == 1,
-                  let timeZone,
-                  let hour,
-                  let minute,
-                  (0...23).contains(hour),
-                  (0...59).contains(minute)
+                let timeZone,
+                let hour,
+                let minute,
+                (0...23).contains(hour),
+                (0...59).contains(minute)
             else { return nil }
 
             var calendar = Calendar(identifier: .gregorian)
@@ -210,7 +213,7 @@ enum TaskScheduleParser {
 
         private static func parseStartLine(_ line: String?) -> (timeZone: TimeZone?, date: Date?) {
             guard let line,
-                  let separator = line.lastIndex(of: ":")
+                let separator = line.lastIndex(of: ":")
             else { return (nil, nil) }
             let prefix = String(line[..<separator])
             let value = String(line[line.index(after: separator)...])
@@ -295,7 +298,8 @@ enum TaskActivityClassifier {
 
 enum TaskThreadVisibility {
     static func isSubagent(_ thread: [String: Any]) -> Bool {
-        let directSource = (thread["threadSource"] as? String)
+        let directSource =
+            (thread["threadSource"] as? String)
             ?? (thread["thread_source"] as? String)
         if directSource?.lowercased() == "subagent" { return true }
 
@@ -388,7 +392,7 @@ struct TaskRuntimeReducer {
 
         case "turn/completed":
             guard let threadID = params["threadId"] as? String,
-                  let turn = params["turn"] as? [String: Any]
+                let turn = params["turn"] as? [String: Any]
             else { return false }
             let state = Self.turnState(turn["status"] as? String)
             updateRecord(
@@ -401,7 +405,7 @@ struct TaskRuntimeReducer {
 
         case "item/completed":
             guard let threadID = params["threadId"] as? String,
-                  let item = params["item"] as? [String: Any]
+                let item = params["item"] as? [String: Any]
             else { return false }
             let status = item["status"] as? String
             if status == "failed" {
@@ -532,7 +536,7 @@ enum TaskAttentionSelector {
                 return lhs.kind.rawValue < rhs.kind.rawValue
             }
             switch (lhs.since, rhs.since) {
-            case let (left?, right?) where left != right:
+            case (let left?, let right?) where left != right:
                 return left < right
             case (nil, _?):
                 return false
@@ -621,7 +625,7 @@ extension TaskBoard {
         func sorted(_ kind: TaskColumnKind) -> [TaskItem] {
             threadItems.filter { $0.kind == kind }.sorted { lhs, rhs in
                 switch (lhs.updatedAt, rhs.updatedAt) {
-                case let (left?, right?) where left != right:
+                case (let left?, let right?) where left != right:
                     return left > right
                 case (_?, nil):
                     return true
@@ -639,7 +643,7 @@ extension TaskBoard {
         let done = sorted(.done)
         let scheduled = scheduledItems.sorted { lhs, rhs in
             switch (lhs.nextRunAt, rhs.nextRunAt) {
-            case let (left?, right?) where left != right:
+            case (let left?, let right?) where left != right:
                 return left < right
             case (_?, nil):
                 return true
@@ -651,12 +655,14 @@ extension TaskBoard {
             }
         }
 
-        return TaskBoard(refreshedAt: now, columns: [
-            TaskColumn(id: .active, title: titles[.active] ?? "Active", count: active.count, items: active),
-            TaskColumn(id: .pending, title: titles[.pending] ?? "Pending", count: pending.count, items: pending),
-            TaskColumn(id: .scheduled, title: titles[.scheduled] ?? "Scheduled", count: scheduled.count, items: scheduled),
-            TaskColumn(id: .done, title: titles[.done] ?? "Done", count: done.count, items: done)
-        ])
+        return TaskBoard(
+            refreshedAt: now,
+            columns: [
+                TaskColumn(id: .active, title: titles[.active] ?? "Active", count: active.count, items: active),
+                TaskColumn(id: .pending, title: titles[.pending] ?? "Pending", count: pending.count, items: pending),
+                TaskColumn(id: .scheduled, title: titles[.scheduled] ?? "Scheduled", count: scheduled.count, items: scheduled),
+                TaskColumn(id: .done, title: titles[.done] ?? "Done", count: done.count, items: done),
+            ])
     }
 
     func attentionItems(scope: RuntimeScope) -> [TaskAttentionItem] {

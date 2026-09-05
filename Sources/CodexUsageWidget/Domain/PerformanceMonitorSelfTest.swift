@@ -34,6 +34,12 @@ enum PerformanceMonitorSelfTest {
         expect((refresh?.p95Milliseconds ?? -1) >= 0, "p95 should be available")
         expect(report.resources.count == 8, "resource samples should be bounded")
         expect(FileManager.default.fileExists(atPath: reportURL.path), "report should be persisted")
+        let fileAttributes = try? FileManager.default.attributesOfItem(atPath: reportURL.path)
+        let directoryAttributes = try? FileManager.default.attributesOfItem(atPath: directory.path)
+        let fileMode = (fileAttributes?[.posixPermissions] as? NSNumber)?.intValue ?? -1
+        let directoryMode = (directoryAttributes?[.posixPermissions] as? NSNumber)?.intValue ?? -1
+        expect(fileMode & 0o777 == PrivateLocalFileStore.filePermissions, "report permissions should be 0600")
+        expect(directoryMode & 0o777 == PrivateLocalFileStore.directoryPermissions, "report directory permissions should be 0700")
 
         let restoredMonitor = PerformanceMonitor(
             reportURL: reportURL,
