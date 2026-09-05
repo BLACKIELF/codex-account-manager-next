@@ -26,6 +26,8 @@ Current version: `0905v1` · `9.5.1 (13)`. This is not an official OpenAI produc
 
 See [CHANGELOG.md](CHANGELOG.md) for full history.
 
+Using one account or several? Join the [next-version feedback discussion](docs/feedback/0905v1-discussion.md) and tell us which repeated step you would most like to remove. A [Chinese social post](docs/announcements/0905v1-social-post.md) is also available. The discussion contains proposals, not shipped features or a committed roadmap.
+
 ## Feature map
 
 | Area | Available now |
@@ -43,6 +45,7 @@ The full window is a unified workspace, without a duplicate Inspection page or p
 ![0905v1 single-account menu bar](docs/images/0905v1/single-account-menu-dark@2x.png)
 
 - Monitor the existing Codex login without registering a second account or changing system identity.
+- Enable automatic warm-up for that one account to attempt starting the next quota window without sending a message manually each time. Five-hour and seven-day controls are independent; warm-up consumes allowance and requires the safeguards explained under [Smart warm-up](#smart-warm-up).
 - To choose task models, use Set Up Isolated CLI and log the **same account** into a Next-managed environment. This does not switch Desktop identity.
 - System and managed copies of the same identity count as one account. Statistics and advanced management remain accessible; redundant bulk controls are hidden.
 - CLI and warm-up still require the Hub mapping and fresh state described below. Without Hub, single-account monitoring remains read-only; unknown availability never becomes an artificial idle state.
@@ -143,6 +146,18 @@ The old fixed `gpt-5.6-sol + high` configuration baseline has been removed so a 
 ![0904v2 independent five-hour and seven-day Smart Warm-up controls](docs/images/0904v2/warm-up-controls@2x.png)
 
 The 5-hour and 7-day warm-up controls are independent, off by default, and opt-in.
+
+Single-account users can also enable automatic warm-up; a second account is not required. Next must remain running on an awake, connected Mac, and identity, quota, Hub mapping and idle-state checks must pass. Five-hour warm-up normally follows account dispatch participation, with separate handling for detected unexpected resets. Seven-day warm-up is independently controlled.
+
+### How the five-hour window relates to warm-up
+
+Five hours is a usage window, not five hours of guaranteed continuous work. Local and cloud usage share the allowance, and weekly limits may also apply. Check the official dashboard or CLI `/status` for the account's current limits. [Official usage guidance](https://learn.chatgpt.com/docs/pricing#what-are-the-usage-limits-for-my-plan)
+
+Next uses the server's `resetsAt` timestamp and `windowDurationMins`, not a timer restarted when you open Next or run out of quota. Remaining time is `max(0, resetsAt - now)`. [Official field definitions](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt)
+
+For illustration, if a request at 9 a.m. starts a window and the server reports a 2 p.m. reset, starting work at 11 a.m. leaves three hours until that reset. Public documentation does not guarantee “first message plus five hours” for every plan and circumstance. Warm-up attempts a minimal request after the old window ends, then reads official state again; request success alone does not prove a new window started. It consumes allowance, does not force an early reset, add quota, consume an earned reset credit, or lift weekly limits. Work-hour scheduling and daily maintenance-request caps remain proposals.
+
+### Execution and safeguards
 
 Execution flow:
 
