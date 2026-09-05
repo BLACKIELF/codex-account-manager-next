@@ -8,5 +8,6 @@ Each ZIP contains only `CodexAccountManagerNext.app` and macOS archive metadata.
 | --- | --- | --- |
 | 0904v1 / build 11 | `CodexAccountManagerNext-0904v1-build11.zip` | `39a4266c0e6dcbf1501d31437e1a0c2a63429785f03140cec167e378e3894f91` |
 | 0904v2 / build 12 | `CodexAccountManagerNext-0904v2-build12.zip` | `4986b681260409cef3ceae47a0c55268d8d0ebf415e3207573bc4b0a1bd815e2` |
+| 0905v1 / build 13 | `CodexAccountManagerNext-0905v1-build13.zip` | `d30683b18c0cb08e4ff9aa4dbd0c2fbbec941afbc257a06ba88679ec2c03a5c8` |
 
-Both ZIP integrity checks passed before upload. This archive is separate from `main` so old binaries do not enlarge normal source checkouts. Keep only the most recent previous-app ZIP in the local release-archives folder after verifying these remote backups.
+ZIP integrity checks passed before upload. This archive is separate from `main` so old binaries do not enlarge normal source checkouts. Keep only the most recent previous-app ZIP in the local release-archives folder after verifying these remote backups.
